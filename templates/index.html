@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VGrand Infra Tracking</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+</head>
+<body>
+    <div id="app">
+        <!-- Top Bar -->
+        <header class="top-bar">
+            <div class="logo">VGrand Infra Tracking</div>
+            <nav class="block-tabs">
+                <button class="block-tab active" data-block="A">A Block</button>
+                <button class="block-tab" data-block="B">B Block</button>
+            </nav>
+            <div class="user-info">
+                <span id="userEmail"></span>
+                <button id="settingsBtn" class="btn-icon" title="Work Items Settings">&#9881;</button>
+                <button id="signOutBtn" class="btn-secondary">Sign Out</button>
+            </div>
+        </header>
+
+        <!-- Floor Tabs -->
+        <div class="floor-tabs">
+            <button class="floor-tab active" data-floor="1">1st Floor</button>
+            <button class="floor-tab" data-floor="2">2nd Floor</button>
+            <button class="floor-tab" data-floor="3">3rd Floor</button>
+            <button class="floor-tab" data-floor="4">4th Floor</button>
+            <button class="floor-tab" data-floor="5">5th Floor</button>
+        </div>
+
+        <!-- Legend -->
+        <div class="legend">
+            <span class="legend-item"><span class="dot red"></span> Yet to start</span>
+            <span class="legend-item"><span class="dot yellow"></span> In progress</span>
+            <span class="legend-item"><span class="dot blue"></span> Patch work</span>
+            <span class="legend-item"><span class="dot green"></span> Completed</span>
+        </div>
+
+        <!-- Tracker Grid -->
+        <div class="grid-container">
+            <table id="trackerGrid" class="tracker-table">
+                <thead>
+                    <tr id="gridHeader">
+                        <th class="work-col">Work Item</th>
+                        <th>101</th>
+                        <th>102</th>
+                        <th>103</th>
+                        <th>104</th>
+                        <th>105</th>
+                        <th>106</th>
+                        <th class="remarks-col">Remarks</th>
+                    </tr>
+                </thead>
+                <tbody id="gridBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Status Picker Popup -->
+    <div id="statusPopup" class="modal">
+        <div class="modal-content popup-small">
+            <h3 id="popupTitle">Flat 101 - Brick work</h3>
+            <p>Current status: <span id="popupCurrentStatus">None</span></p>
+            <div class="color-picker">
+                <button class="color-btn red" data-color="red">Yet to start</button>
+                <button class="color-btn yellow" data-color="yellow">In progress</button>
+                <button class="color-btn blue" data-color="blue">Patch work</button>
+                <button class="color-btn green" data-color="green">Completed</button>
+            </div>
+            <div class="popup-actions">
+                <button id="clearStatusBtn" class="btn-text">Clear</button>
+                <button id="cancelStatusBtn" class="btn-secondary">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Timeline Modal -->
+    <div id="timelineModal" class="modal">
+        <div class="modal-content popup-large">
+            <div class="modal-header">
+                <h3 id="timelineTitle">Flat 101 - Brick work</h3>
+                <button class="close-btn" id="closeTimeline">&times;</button>
+            </div>
+            <div class="timeline-list" id="timelineList"></div>
+            <div class="remarks-section">
+                <label>Remarks</label>
+                <textarea id="remarksTextarea" rows="4"></textarea>
+                <button id="saveRemarksBtn" class="btn-primary">Save Remarks</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settingsModal" class="modal">
+        <div class="modal-content popup-large">
+            <div class="modal-header">
+                <h3>Work Items Settings</h3>
+                <button class="close-btn" id="closeSettings">&times;</button>
+            </div>
+            <p class="settings-hint">Drag to reorder. Click text to rename. Use + to add, &times; to remove.</p>
+            <ul id="workItemsList" class="sortable-list"></ul>
+            <div class="settings-actions">
+                <button id="addWorkItemBtn" class="btn-secondary">+ Add Work Item</button>
+                <button id="saveSettingsBtn" class="btn-primary">Save Changes</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
