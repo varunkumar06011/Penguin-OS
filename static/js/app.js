@@ -3316,10 +3316,11 @@ function openPOView(poId) {
         <div class="inv-view-reason"><span class="inv-view-label">Description</span><p>${escapeHtml(po.description)}</p></div>
 
         <div class="po-view-financials">
-            <div class="po-fin-card"><div class="att-rc-label">Quoted / PO Value</div><div class="att-rc-value">${po.quotedAmount ? '&#8377;' + parseFloat(po.quotedAmount).toLocaleString('en-IN', {maximumFractionDigits:0}) : '&#8212;'}</div></div>
-            <div class="po-fin-card"><div class="att-rc-label">Final Billed</div><div class="att-rc-value">${base ? '&#8377;' + base.toLocaleString('en-IN', {maximumFractionDigits:0}) : '&#8212;'}</div></div>
-            <div class="po-fin-card"><div class="att-rc-label">Total Paid</div><div class="att-rc-value att-rc-green">&#8377;${paid.toLocaleString('en-IN', {maximumFractionDigits:0})}</div></div>
-            <div class="po-fin-card ${outstanding > 0 ? 'po-fin-card-danger' : ''}"><div class="att-rc-label">Outstanding</div><div class="att-rc-value ${outstanding > 0 ? 'po-outstanding-val' : 'att-rc-green'}">${outstanding > 0 ? '&#8377;' + outstanding.toLocaleString('en-IN', {maximumFractionDigits:0}) : '&#10003; Fully paid'}</div></div>
+            <div class="po-fin-card"><div class="att-rc-label">Quoted / PO Value</div><div class="att-rc-value po-fin-masked" data-value="${po.quotedAmount ? '&#8377;' + parseFloat(po.quotedAmount).toLocaleString('en-IN', {maximumFractionDigits:0}) : '&#8212;'}">****</div></div>
+            <div class="po-fin-card"><div class="att-rc-label">Final Billed</div><div class="att-rc-value po-fin-masked" data-value="${base ? '&#8377;' + base.toLocaleString('en-IN', {maximumFractionDigits:0}) : '&#8212;'}">****</div></div>
+            <div class="po-fin-card"><div class="att-rc-label">Total Paid</div><div class="att-rc-value att-rc-green po-fin-masked" data-value="&#8377;${paid.toLocaleString('en-IN', {maximumFractionDigits:0})}">****</div></div>
+            <div class="po-fin-card ${outstanding > 0 ? 'po-fin-card-danger' : ''}"><div class="att-rc-label">Outstanding</div><div class="att-rc-value ${outstanding > 0 ? 'po-outstanding-val' : 'att-rc-green'} po-fin-masked" data-value="${outstanding > 0 ? '&#8377;' + outstanding.toLocaleString('en-IN', {maximumFractionDigits:0}) : '&#10003; Fully paid'}">****</div></div>
+            <button class="po-eye-toggle" title="Show/hide amounts">&#128065;</button>
         </div>
 
         <div class="po-view-section-label">Documents</div>
@@ -3345,6 +3346,31 @@ function openPOView(poId) {
             if (pay && pay.proof) openLightboxFromData(pay.proof);
         });
     });
+
+    const eyeBtn = body.querySelector('.po-eye-toggle');
+    if (eyeBtn) {
+        eyeBtn.addEventListener('click', () => {
+            const masked = body.querySelectorAll('.po-fin-masked');
+            const isHidden = masked.length > 0 && masked[0].textContent === '****';
+            if (isHidden) {
+                const pin = prompt('Enter PIN to view amounts:');
+                if (pin === '1313') {
+                    masked.forEach(el => { el.textContent = el.dataset.value; el.classList.remove('po-fin-masked'); });
+                    eyeBtn.innerHTML = '&#128064;';
+                } else {
+                    showToast('Incorrect PIN', true);
+                }
+            } else {
+                const values = body.querySelectorAll('.po-view-financials .att-rc-value');
+                values.forEach(el => {
+                    if (!el.dataset.value) el.dataset.value = el.textContent;
+                    el.textContent = '****';
+                    el.classList.add('po-fin-masked');
+                });
+                eyeBtn.innerHTML = '&#128065;';
+            }
+        });
+    }
 
     document.getElementById('editPOBtn').onclick = () => { closePOView(); openPOForm(poId); };
     document.getElementById('addPaymentBtn').onclick = () => openPaymentModal(poId);

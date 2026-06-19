@@ -2574,6 +2574,7 @@ body {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     gap: 10px;
+    position: relative;
 }
 
 .po-fin-card {
@@ -2590,6 +2591,29 @@ body {
     color: #c0392b;
     font-size: 1.15rem;
     font-weight: 800;
+}
+
+.po-eye-toggle {
+    position: absolute;
+    top: -28px;
+    right: 0;
+    background: none;
+    border: none;
+    font-size: 1.1rem;
+    cursor: pointer;
+    color: #555;
+    padding: 4px 8px;
+    border-radius: 6px;
+    transition: background 0.15s;
+}
+.po-eye-toggle:hover {
+    background: #e9ecef;
+}
+
+.po-fin-masked {
+    letter-spacing: 2px;
+    color: #888;
+    font-family: monospace;
 }
 
 .po-view-section-label {
