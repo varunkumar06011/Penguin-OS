@@ -146,19 +146,21 @@ body {
 }
 
 .block-tab {
-    background: rgba(255,255,255,0.15);
+    background: rgba(255,255,255,0.85);
     border: none;
-    color: #fff;
+    color: #1a2a6c;
     padding: 8px 20px;
     border-radius: 6px;
     cursor: pointer;
     font-size: 0.95rem;
+    font-weight: 600;
     transition: background 0.2s;
 }
 
 .block-tab.active,
 .block-tab:hover {
-    background: rgba(255,255,255,0.35);
+    background: #fff;
+    color: #1a2a6c;
 }
 
 .user-info {
@@ -526,6 +528,57 @@ body {
     color: #777;
     font-size: 0.85rem;
     margin-bottom: 12px;
+}
+
+.settings-section-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #1a2a6c;
+    margin-bottom: 8px;
+}
+
+.blocks-settings-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.block-setting-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: #f8f9fa;
+    padding: 10px 12px;
+    border-radius: 6px;
+    border: 1px solid #e9ecef;
+}
+
+.block-setting-row input {
+    padding: 8px 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 0.9rem;
+}
+
+.block-setting-row .block-name-input {
+    flex: 1;
+}
+
+.block-setting-row .block-number-input {
+    width: 80px;
+}
+
+.block-setting-row .remove-block-btn {
+    background: #dc3545;
+    color: #fff;
+    border: none;
+    width: 28px;
+    height: 28px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1;
 }
 
 .sortable-list {

@@ -122,6 +122,20 @@ def api_cell_post(cell_id):
     return jsonify({'success': True})
 
 
+@app.route('/api/cells/batch', methods=['POST'])
+@login_required
+def api_cells_batch():
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    body = request.get_json() or {}
+    cells = body.get('cells', [])
+    if not cells:
+        return jsonify({'success': True})
+    rows = [{'id': c['id'], 'data': c.get('data', {})} for c in cells]
+    supabase.table('cell_data').upsert(rows).execute()
+    return jsonify({'success': True, 'count': len(rows)})
+
+
 # ========================
 # Ventures API
 # ========================

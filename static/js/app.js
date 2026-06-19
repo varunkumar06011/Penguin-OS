@@ -196,6 +196,8 @@ const els = {
     addWorkItemBtn: document.getElementById('addWorkItemBtn'),
     saveSettingsBtn: document.getElementById('saveSettingsBtn'),
     closeSettings: document.getElementById('closeSettings'),
+    blocksSettingsList: document.getElementById('blocksSettingsList'),
+    addBlockBtn: document.getElementById('addBlockBtn'),
 };
 
 // ========================
@@ -337,6 +339,100 @@ async function saveVenturesToLS() {
     await apiPost('/api/ventures', venturesList);
 }
 
+async function seedEliteBlockColors(blockId) {
+    const gateKey = `elite_${blockId}_seeded`;
+    if (localStorage.getItem(gateKey) === 'true') return;
+
+    const elite = venturesList.find(v => v.id === 'elite');
+    if (!elite) return;
+
+    // Generate item IDs exactly like ensureItemIds does for DEFAULT_WORK_ITEMS
+    const items = DEFAULT_WORK_ITEMS.map((label, i) => ({ id: `item_${slugId(label)}_${i}`, label }));
+
+    const colorMap = {
+        G: { color: 'green', status_label: 'Completed' },
+        Y: { color: 'yellow', status_label: 'In progress' },
+        R: { color: 'red', status_label: 'Yet to start' }
+    };
+
+    // Color data matrix: floor -> flat -> itemIndex -> 'G'|'Y'|'R'
+    const matrix = {
+        1: {
+            101: {0:'G',1:'G',2:'G',3:'G',4:'G',5:'G',6:'G',7:'G',8:'G',9:'G',10:'G',11:'G',12:'G',13:'G',14:'G',15:'G',16:'G',17:'G',18:'G',19:'G',20:'G'},
+            102: {0:'G',1:'G',2:'G',3:'G',4:'G',5:'G',6:'G',7:'G',8:'G',9:'G',10:'G',11:'G',12:'G',13:'G',14:'G',15:'G',16:'G',17:'G',18:'G',19:'G',20:'G'},
+            103: {0:'G',1:'G',2:'G',3:'G',4:'G',5:'G',6:'G',7:'G',8:'G',9:'G',10:'G',11:'G',12:'G',13:'G',14:'G',15:'G',16:'G',17:'G',18:'G',19:'G',20:'G'},
+            104: {0:'G',1:'G',2:'G',3:'G',4:'G',5:'G',6:'G',7:'G',8:'G',9:'G',10:'G',11:'G',12:'G',13:'G',14:'G',15:'G',16:'G',17:'G',18:'G',19:'G',20:'G'},
+            105: {0:'G',1:'G',2:'G',3:'G',4:'G',5:'G',6:'G',7:'G',8:'G',9:'G',10:'G',11:'G',12:'G',13:'G',14:'G',15:'G',16:'G',17:'G',18:'G',19:'G',20:'G'},
+            106: {0:'G',1:'G',2:'G',3:'G',4:'G',5:'G',6:'G',7:'G',8:'G',9:'G',10:'G',11:'G',12:'G',13:'G',14:'G',15:'G',16:'G',17:'G',18:'G',19:'G',20:'G'}
+        },
+        2: {
+            201: {0:'G',1:'G',2:'G',3:'G',4:'G',5:'G',6:'G',7:'G',8:'G',9:'G',10:'G',11:'G',12:'G',13:'G',14:'G',15:'G',16:'G',17:'G',18:'G',19:'G',20:'G'},
+            202: {0:'G',1:'G',2:'G',3:'G',4:'G',5:'G',6:'G',7:'G',8:'G',9:'G',10:'G',11:'G',12:'G',13:'G',14:'G',15:'G',16:'G',17:'G',18:'G',19:'G',20:'G'},
+            203: {0:'G',1:'G',2:'G',3:'G',4:'G',5:'G',6:'G',7:'G',8:'G',9:'G',10:'G',11:'G',12:'G',13:'G',14:'G',15:'G',16:'G',17:'G',18:'G',19:'G',20:'G'},
+            204: {0:'G',1:'G',2:'G',3:'G',4:'G',5:'G',6:'G',7:'G',8:'G',9:'G',10:'G',11:'G',12:'G',13:'G',14:'G',15:'G',16:'G',17:'G',18:'G',19:'G',20:'G'},
+            205: {0:'G',1:'G',2:'G',3:'G',4:'G',5:'G',6:'G',7:'G',8:'G',9:'G',10:'G',11:'G',12:'G',13:'G',14:'G',15:'G',16:'Y',17:'Y',18:'R',19:'R',20:'R'},
+            206: {0:'G',1:'G',2:'G',3:'G',4:'G',5:'G',6:'G',7:'G',8:'G',9:'G',10:'G',11:'G',12:'G',13:'G',14:'G',15:'G',16:'G',17:'G',18:'G',19:'G',20:'G'}
+        },
+        3: {
+            301: {0:'G',1:'G',2:'G',3:'G',4:'G',5:'G',6:'G',7:'G',8:'G',9:'G',10:'G',11:'G',12:'G',13:'G',14:'G',15:'G',16:'G',17:'G',18:'G',19:'G',20:'G'},
+            302: {0:'G',1:'G',2:'G',3:'G',4:'G',5:'G',6:'G',7:'G',8:'G',9:'G',10:'G',11:'G',12:'G',13:'G',14:'G',15:'G',16:'G',17:'G',18:'G',19:'G',20:'G'},
+            303: {0:'G',1:'G',2:'G',3:'G',4:'G',5:'G',6:'G',7:'G',8:'G',9:'G',10:'G',11:'G',12:'G',13:'G',14:'G',15:'G',16:'G',17:'G',18:'G',19:'G',20:'G'},
+            304: {0:'G',1:'G',2:'G',3:'G',4:'G',5:'G',6:'G',7:'G',8:'G',9:'G',10:'G',11:'G',12:'G',13:'R',14:'R',15:'R',16:'R',17:'R',18:'R',19:'R',20:'R'},
+            305: {0:'G',1:'G',2:'G',3:'G',4:'G',5:'G',6:'G',7:'G',8:'G',9:'G',10:'G',11:'G',12:'G',13:'G',14:'G',15:'G',16:'G',17:'G',18:'G',19:'G',20:'G'},
+            306: {0:'G',1:'G',2:'G',3:'G',4:'G',5:'G',6:'G',7:'G',8:'G',9:'G',10:'G',11:'G',12:'G',13:'G',14:'G',15:'G',16:'G',17:'G',18:'G',19:'G',20:'G'}
+        },
+        4: {
+            401: {0:'G',1:'G',2:'G',3:'G',4:'G',5:'G',6:'G',7:'G',8:'G',9:'G',10:'G',11:'G',12:'G',13:'G',14:'G',15:'G',16:'G',17:'G',18:'G',19:'G',20:'G'},
+            402: {0:'G',1:'G',2:'G',3:'G',4:'G',5:'G',6:'G',7:'G',8:'G',9:'G',10:'G',11:'G',12:'G',13:'G',14:'G',15:'G',16:'G',17:'G',18:'G',19:'G',20:'G'},
+            403: {0:'G',1:'G',2:'G',3:'G',4:'G',5:'G',6:'G',7:'G',8:'G',9:'G',10:'G',11:'G',12:'G',13:'Y',14:'R',15:'R',16:'R',17:'R',18:'R',19:'R',20:'R'},
+            404: {0:'G',1:'G',2:'G',3:'G',4:'G',5:'G',6:'G',7:'G',8:'G',9:'G',10:'G',11:'G',12:'G',13:'Y',14:'R',15:'R',16:'R',17:'R',18:'R',19:'R',20:'R'},
+            405: {0:'G',1:'G',2:'G',3:'G',4:'G',5:'G',6:'G',7:'G',8:'G',9:'G',10:'G',11:'G',12:'G',13:'R',14:'R',15:'R',16:'R',17:'R',18:'R',19:'R',20:'R'},
+            406: {0:'G',1:'G',2:'G',3:'G',4:'G',5:'G',6:'G',7:'G',8:'G',9:'G',10:'G',11:'G',12:'G',13:'R',14:'R',15:'R',16:'R',17:'R',18:'R',19:'R',20:'R'}
+        },
+        5: {
+            501: {0:'G',1:'G',2:'G',3:'G',4:'G',5:'G',6:'G',7:'G',8:'G',9:'G',10:'G',11:'G',12:'G',13:'G',14:'G',15:'G',16:'G',17:'G',18:'G',19:'G',20:'G'},
+            502: {0:'G',1:'G',2:'G',3:'G',4:'G',5:'G',6:'G',7:'G',8:'G',9:'G',10:'G',11:'G',12:'G',13:'G',14:'G',15:'G',16:'G',17:'G',18:'G',19:'G',20:'G'},
+            503: {0:'G',1:'G',2:'G',3:'G',4:'R',5:'R',6:'R',7:'R',8:'R',9:'R',10:'R',11:'R',12:'R',13:'R',14:'R',15:'R',16:'R',17:'R',18:'R',19:'R',20:'R'},
+            504: {0:'G',1:'G',2:'G',3:'G',4:'R',5:'R',6:'R',7:'R',8:'R',9:'R',10:'R',11:'R',12:'R',13:'R',14:'R',15:'R',16:'R',17:'R',18:'R',19:'R',20:'R'},
+            505: {0:'G',1:'G',2:'G',3:'G',4:'R',5:'R',6:'R',7:'R',8:'R',9:'R',10:'R',11:'R',12:'R',13:'R',14:'R',15:'R',16:'R',17:'R',18:'R',19:'R',20:'R'},
+            506: {0:'G',1:'G',2:'G',3:'G',4:'R',5:'R',6:'R',7:'R',8:'R',9:'R',10:'R',11:'R',12:'R',13:'R',14:'R',15:'R',16:'R',17:'R',18:'R',19:'R',20:'R'}
+        }
+    };
+
+    const ventureId = 'elite';
+    const batch = [];
+
+    for (let floor = 1; floor <= 5; floor++) {
+        const floorData = matrix[floor];
+        if (!floorData) continue;
+        for (let flatPos = 1; flatPos <= 6; flatPos++) {
+            const flat = (floor * 100) + flatPos;
+            const flatData = floorData[flat];
+            if (!flatData) continue;
+            for (let itemIdx = 0; itemIdx < 21; itemIdx++) {
+                const code = flatData[itemIdx];
+                if (!code || !colorMap[code]) continue;
+                const item = items[itemIdx];
+                const cellId = cellKeyById(blockId, floor, flat, item.id);
+                const ck = `${ventureId}_${cellId}`;
+                const data = {
+                    color: colorMap[code].color,
+                    status_label: colorMap[code].status_label,
+                    timeline: [],
+                    remarks: ''
+                };
+                batch.push({ id: ck, data });
+                cellsCache[ck] = data;
+            }
+        }
+    }
+
+    if (batch.length > 0) {
+        await apiPost('/api/cells/batch', { cells: batch });
+    }
+    localStorage.setItem(gateKey, 'true');
+}
+
 async function loadVenturesFromLS() {
     const saved = await apiGet('/api/ventures');
     if (saved && saved.length > 0) {
@@ -345,6 +441,10 @@ async function loadVenturesFromLS() {
         venturesList = createDefaultVentures();
         await saveVenturesToLS();
     }
+
+    // Seed ELITE A and B block colors once per block
+    try { await seedEliteBlockColors('A'); } catch (e) { console.error('Seed A failed', e); }
+    try { await seedEliteBlockColors('B'); } catch (e) { console.error('Seed B failed', e); }
 }
 
 // ========================
@@ -827,6 +927,63 @@ els.saveRemarksBtn.addEventListener('click', async () => {
 // ========================
 // Settings Modal
 // ========================
+function renderBlocksSettings() {
+    if (!els.blocksSettingsList) return;
+    els.blocksSettingsList.innerHTML = '';
+    if (!currentVenture || !currentVenture.blocks) return;
+    currentVenture.blocks.forEach((block, index) => {
+        const row = document.createElement('div');
+        row.className = 'block-setting-row';
+
+        const nameInput = document.createElement('input');
+        nameInput.type = 'text';
+        nameInput.className = 'block-name-input';
+        nameInput.value = block.name || block.id;
+        nameInput.addEventListener('change', () => {
+            block.name = nameInput.value.trim() || block.id;
+        });
+
+        const floorsInput = document.createElement('input');
+        floorsInput.type = 'number';
+        floorsInput.className = 'block-number-input';
+        floorsInput.value = block.floors || 5;
+        floorsInput.min = 1;
+        floorsInput.title = 'Floors';
+        floorsInput.addEventListener('change', () => {
+            block.floors = parseInt(floorsInput.value) || 1;
+        });
+
+        const flatsInput = document.createElement('input');
+        flatsInput.type = 'number';
+        flatsInput.className = 'block-number-input';
+        flatsInput.value = block.flats_per_floor || 6;
+        flatsInput.min = 1;
+        flatsInput.title = 'Flats per floor';
+        flatsInput.addEventListener('change', () => {
+            block.flats_per_floor = parseInt(flatsInput.value) || 1;
+        });
+
+        const remove = document.createElement('button');
+        remove.className = 'remove-block-btn';
+        remove.innerHTML = '&times;';
+        remove.title = 'Remove block';
+        remove.addEventListener('click', () => {
+            if (currentVenture.blocks.length <= 1) {
+                showToast('A venture must have at least one block', true);
+                return;
+            }
+            currentVenture.blocks.splice(index, 1);
+            renderBlocksSettings();
+        });
+
+        row.appendChild(nameInput);
+        row.appendChild(floorsInput);
+        row.appendChild(flatsInput);
+        row.appendChild(remove);
+        els.blocksSettingsList.appendChild(row);
+    });
+}
+
 function openSettingsModal() {
     els.workItemsList.innerHTML = '';
     workItems.forEach((item, index) => {
@@ -890,6 +1047,7 @@ function openSettingsModal() {
             els.workItemsList.insertBefore(dragging, next || null);
         });
     });
+    renderBlocksSettings();
     els.settingsModal.classList.add('show');
 }
 
@@ -908,15 +1066,33 @@ els.addWorkItemBtn.addEventListener('click', () => {
     openSettingsModal();
 });
 
+if (els.addBlockBtn) {
+    els.addBlockBtn.addEventListener('click', () => {
+        if (!currentVenture) return;
+        const nextId = String.fromCharCode(65 + (currentVenture.blocks.length || 0));
+        currentVenture.blocks.push({ id: nextId, name: `${nextId} Block`, floors: 5, flats_per_floor: 6 });
+        renderBlocksSettings();
+    });
+}
+
 els.saveSettingsBtn.addEventListener('click', async () => {
-    // Sync from DOM in case edits were made
+    // Sync work items from DOM
     const newItems = [];
     els.workItemsList.querySelectorAll('li').forEach(row => {
         const nameSpan = row.querySelector('.work-item-name');
         newItems.push(nameSpan.textContent.trim());
     });
     workItems = newItems.filter(w => w.length > 0);
+    if (currentVenture) {
+        currentVenture.flat_view_items = workItems;
+    }
     await saveWorkItems(workItems);
+    // Save venture blocks changes
+    if (currentVenture) {
+        await saveVentureConfig();
+        // Refresh block tabs if visible
+        renderBlockTabs();
+    }
     closeSettingsModal();
     if (currentView === 'flat') {
         renderGrid();

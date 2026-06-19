@@ -258,13 +258,25 @@
     <div id="settingsModal" class="modal">
         <div class="modal-content popup-large">
             <div class="modal-header">
-                <h3>Work Items Settings</h3>
+                <h3>Venture Settings</h3>
                 <button class="close-btn" id="closeSettings">&times;</button>
             </div>
+
+            <h4 class="settings-section-title">Work Items</h4>
             <p class="settings-hint">Drag to reorder. Click text to rename. Use + to add, &times; to remove.</p>
             <ul id="workItemsList" class="sortable-list"></ul>
             <div class="settings-actions">
                 <button id="addWorkItemBtn" class="btn-secondary">+ Add Work Item</button>
+            </div>
+
+            <h4 class="settings-section-title" style="margin-top:24px;">Blocks</h4>
+            <p class="settings-hint">Add or remove blocks for this venture.</p>
+            <div id="blocksSettingsList" class="blocks-settings-list"></div>
+            <div class="settings-actions">
+                <button id="addBlockBtn" class="btn-secondary">+ Add Block</button>
+            </div>
+
+            <div class="settings-actions" style="margin-top:20px;border-top:1px solid #eee;padding-top:16px;">
                 <button id="saveSettingsBtn" class="btn-primary">Save Changes</button>
             </div>
         </div>
