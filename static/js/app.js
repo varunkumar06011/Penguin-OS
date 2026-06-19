@@ -1424,6 +1424,18 @@ function exitToDashboard() {
 }
 
 document.getElementById('backToVentures').addEventListener('click', exitToDashboard);
+
+document.getElementById('pendingWorkBtn').addEventListener('click', () => {
+    document.querySelectorAll('.view-tab').forEach(b => b.classList.remove('active'));
+    currentView = 'pending';
+    cellsCache = {};
+    document.getElementById('flatViewContainer').style.display = 'none';
+    document.getElementById('workViewContainer').style.display = 'none';
+    document.getElementById('superStructureContainer').style.display = 'none';
+    document.getElementById('pendingViewContainer').style.display = '';
+    renderPendingView();
+});
+
 document.getElementById('bcHome').addEventListener('click', exitToDashboard);
 
 // ========================

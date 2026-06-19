@@ -90,6 +90,7 @@
             <div class="venture-header">
                 <button id="backToVentures" class="back-btn">&larr; Back to Ventures</button>
                 <span class="venture-title" id="ventureTitle">ELITE</span>
+                <button id="pendingWorkBtn" class="btn-pending-filter">Pending Work</button>
             </div>
 
             <!-- Block Tabs (dynamic) -->
@@ -115,12 +116,6 @@
 
             <!-- Flat View -->
             <div id="flatViewContainer">
-                <div class="flat-filter-bar">
-                    <label class="filter-checkbox">
-                        <input type="checkbox" id="pendingOnlyFilter">
-                        <span>Pending Only</span>
-                    </label>
-                </div>
                 <div class="grid-container">
                     <table id="trackerGrid" class="tracker-table">
                         <thead>
@@ -145,6 +140,9 @@
 
             <!-- Super Structure View -->
             <div id="superStructureContainer" class="ss-container" style="display:none;"></div>
+
+            <!-- Pending Work View -->
+            <div id="pendingViewContainer" style="display:none;"></div>
         </div>
     </div>
 
