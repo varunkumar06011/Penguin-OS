@@ -52,6 +52,39 @@ const COLOR_LABELS = {
 
 const FLATS_PER_FLOOR = 6;
 
+const WORK_CATEGORIES = {
+    'CIVIL WORK': [
+        "Brick work", "Lintel", "Lanter", "Mesh", "Mesh & Brickwork NCC",
+        "Connections", "Lift", "Cupboards", "Red Oxide Duraplus Primer",
+        "Red Oxide Duraplus Primer (2nd coat)", "Bathroom Service Chargable"
+    ],
+    'ELECTRICAL & PLUMBING WORK': [
+        "Electrical pipe", "Pipe & GI box", "Wiring",
+        "Bathroom Chipped", "Bathroom Geyser Pipe",
+        "Bathroom Geyser & Pipes", "Sanitary Board & Nand",
+        "GC & Bath Fitting"
+    ],
+    'POP CEILING': [
+        "Pop bolster work", "Pop ready work", "Casing",
+        "Balloon PVC Box Fitting", "Connections / Measurement"
+    ],
+    'PAINTING': [
+        "Colour Primer", "Wall Care Plaster",
+        "Wall Care Slastoat", "Wall Primer", "Primer",
+        "Colour to Edge"
+    ],
+    'FLOORING': [
+        "Bathroom Wall Tiles", "Tile Laying",
+        "Tile Cutting", "Connections", "Window Dhanis",
+        "Colour to Edge", "Wedding Dhanis"
+    ]
+};
+
+const CORRIDORS = ["Plaster", "Mesh", "Lanter", "Wiring", "Stains & Cleaning", "Flooring"];
+const ELEVATION_WORK = ["Marka", "Elevation", "Electrics", "Wall Care", "Texture"];
+
+let currentView = 'flat';
+
 // ========================
 // DOM Elements
 // ========================
@@ -251,6 +284,19 @@ function getCellId(block, floor, flat, workIndex) {
     return `${block}_floor${floor}_${flat}_${workIndex}`;
 }
 
+function getWorkViewCellId(block, floor, category, workIndex, flat) {
+    const slug = {
+        'CIVIL WORK': 'civil',
+        'ELECTRICAL & PLUMBING WORK': 'electrical_plumbing',
+        'POP CEILING': 'pop_ceiling',
+        'PAINTING': 'painting',
+        'FLOORING': 'flooring',
+        'CORRIDORS': 'corridors',
+        'ELEVATION WORK': 'elevation'
+    }[category] || category.toLowerCase().replace(/[^a-z0-9]/g, '_');
+    return `${block}_floor${floor}_${slug}_${workIndex}_${flat}`;
+}
+
 async function renderGrid() {
     els.gridBody.innerHTML = '';
     const flatNumbers = [];
@@ -342,6 +388,167 @@ async function renderGrid() {
 
         els.gridBody.appendChild(row);
     }
+}
+
+async function renderWorkView() {
+    const container = document.getElementById('workViewContainer');
+    container.innerHTML = '';
+
+    const flatNumbers = [];
+    for (let i = 1; i <= FLATS_PER_FLOOR; i++) {
+        flatNumbers.push((currentFloor * 100) + i);
+    }
+
+    // Preload all cell data
+    const promises = [];
+
+    function queueLoads(category, items, flats) {
+        items.forEach((item, wi) => {
+            flats.forEach(flat => {
+                const cellId = getWorkViewCellId(currentBlock, currentFloor, category, wi, flat);
+                promises.push(getCellData(cellId));
+            });
+        });
+    }
+
+    Object.entries(WORK_CATEGORIES).forEach(([cat, items]) => {
+        queueLoads(cat, items, flatNumbers);
+    });
+    queueLoads('CORRIDORS', CORRIDORS, ['P-004']);
+    queueLoads('ELEVATION WORK', ELEVATION_WORK, ['P-004']);
+    await Promise.all(promises);
+
+    // Render 5 main category sections
+    Object.entries(WORK_CATEGORIES).forEach(([category, items]) => {
+        container.appendChild(createSectionTable(category, items, flatNumbers));
+    });
+
+    // Corridors
+    container.appendChild(createSectionTable('CORRIDORS', CORRIDORS, ['P-004']));
+
+    // Elevation Work
+    container.appendChild(createSectionTable('ELEVATION WORK', ELEVATION_WORK, ['P-004']));
+}
+
+function createSectionTable(category, items, flats) {
+    const section = document.createElement('div');
+    section.className = 'work-view-section';
+
+    const header = document.createElement('div');
+    header.className = 'section-header';
+    header.textContent = category;
+    section.appendChild(header);
+
+    const tableWrapper = document.createElement('div');
+    tableWrapper.className = 'grid-container';
+    tableWrapper.style.padding = '0';
+
+    const table = document.createElement('table');
+    table.className = 'tracker-table';
+
+    // Table header
+    const thead = document.createElement('thead');
+    const headerRow = document.createElement('tr');
+
+    const thSNo = document.createElement('th');
+    thSNo.textContent = 'S.No';
+    thSNo.style.width = '50px';
+    headerRow.appendChild(thSNo);
+
+    const thWork = document.createElement('th');
+    thWork.textContent = 'Work Description';
+    thWork.className = 'work-col';
+    headerRow.appendChild(thWork);
+
+    flats.forEach(flat => {
+        const th = document.createElement('th');
+        th.textContent = flat;
+        headerRow.appendChild(th);
+    });
+
+    const thRemarks = document.createElement('th');
+    thRemarks.className = 'remarks-col';
+    thRemarks.textContent = 'Remarks';
+    headerRow.appendChild(thRemarks);
+
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+
+    // Table body
+    const tbody = document.createElement('tbody');
+
+    items.forEach((item, wi) => {
+        const row = document.createElement('tr');
+
+        const tdSNo = document.createElement('td');
+        tdSNo.textContent = wi + 1;
+        row.appendChild(tdSNo);
+
+        const tdWork = document.createElement('td');
+        tdWork.className = 'work-cell';
+        tdWork.textContent = item;
+        row.appendChild(tdWork);
+
+        flats.forEach(flat => {
+            const cellId = getWorkViewCellId(currentBlock, currentFloor, category, wi, flat);
+            const cellData = cellsCache[cellId];
+            const color = cellData?.color || null;
+
+            const td = document.createElement('td');
+            const wrapper = document.createElement('div');
+            wrapper.className = 'cell-wrapper';
+
+            const btn = document.createElement('button');
+            btn.className = 'cell-btn ' + (color || 'empty');
+            btn.title = `${flat} - ${item}`;
+
+            const history = document.createElement('button');
+            history.className = 'history-link';
+            history.textContent = 'history';
+
+            wrapper.appendChild(btn);
+            wrapper.appendChild(history);
+            td.appendChild(wrapper);
+            row.appendChild(td);
+
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                openStatusPopup(cellId, item, flat, color);
+            });
+
+            btn.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                openTimelineModal(cellId, item, flat);
+            });
+
+            history.addEventListener('click', () => {
+                openTimelineModal(cellId, item, flat);
+            });
+        });
+
+        // Remarks summary
+        const remarksTd = document.createElement('td');
+        remarksTd.className = 'remarks-cell';
+        const remarksParts = [];
+        flats.forEach(flat => {
+            const cellId = getWorkViewCellId(currentBlock, currentFloor, category, wi, flat);
+            const cellData = cellsCache[cellId];
+            if (cellData?.remarks) {
+                remarksParts.push(`${flat}: ${cellData.remarks}`);
+            }
+        });
+        remarksTd.textContent = remarksParts.join(' | ');
+        remarksTd.title = remarksTd.textContent;
+        row.appendChild(remarksTd);
+
+        tbody.appendChild(row);
+    });
+
+    table.appendChild(tbody);
+    tableWrapper.appendChild(table);
+    section.appendChild(tableWrapper);
+
+    return section;
 }
 
 // ========================
@@ -529,7 +736,11 @@ els.saveSettingsBtn.addEventListener('click', async () => {
     workItems = newItems.filter(w => w.length > 0);
     await saveWorkItems(workItems);
     closeSettingsModal();
-    renderGrid();
+    if (currentView === 'flat') {
+        renderGrid();
+    } else {
+        renderWorkView();
+    }
 });
 
 // ========================
@@ -541,7 +752,11 @@ document.querySelectorAll('.block-tab').forEach(btn => {
         btn.classList.add('active');
         currentBlock = btn.dataset.block;
         cellsCache = {};
-        renderGrid();
+        if (currentView === 'flat') {
+            renderGrid();
+        } else {
+            renderWorkView();
+        }
     });
 });
 
@@ -551,7 +766,30 @@ document.querySelectorAll('.floor-tab').forEach(btn => {
         btn.classList.add('active');
         currentFloor = parseInt(btn.dataset.floor);
         cellsCache = {};
-        renderGrid();
+        if (currentView === 'flat') {
+            renderGrid();
+        } else {
+            renderWorkView();
+        }
+    });
+});
+
+// View toggle
+document.querySelectorAll('.view-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.view-tab').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentView = btn.dataset.view;
+        cellsCache = {};
+        if (currentView === 'flat') {
+            document.getElementById('flatViewContainer').style.display = '';
+            document.getElementById('workViewContainer').style.display = 'none';
+            renderGrid();
+        } else {
+            document.getElementById('flatViewContainer').style.display = 'none';
+            document.getElementById('workViewContainer').style.display = '';
+            renderWorkView();
+        }
     });
 });
 
@@ -575,6 +813,7 @@ async function init() {
     const ok = await checkSession();
     if (!ok) return;
     await loadWorkItems();
+    currentView = 'flat';
     await renderGrid();
 }
 

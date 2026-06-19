@@ -33,6 +33,12 @@
             <button class="floor-tab" data-floor="5">5th Floor</button>
         </div>
 
+        <!-- View Toggle -->
+        <div class="view-toggle">
+            <button class="view-tab active" data-view="flat">Flat View</button>
+            <button class="view-tab" data-view="work">Work View</button>
+        </div>
+
         <!-- Legend -->
         <div class="legend">
             <span class="legend-item"><span class="dot red"></span> Yet to start</span>
@@ -41,24 +47,29 @@
             <span class="legend-item"><span class="dot green"></span> Completed</span>
         </div>
 
-        <!-- Tracker Grid -->
-        <div class="grid-container">
-            <table id="trackerGrid" class="tracker-table">
-                <thead>
-                    <tr id="gridHeader">
-                        <th class="work-col">Work Item</th>
-                        <th>101</th>
-                        <th>102</th>
-                        <th>103</th>
-                        <th>104</th>
-                        <th>105</th>
-                        <th>106</th>
-                        <th class="remarks-col">Remarks</th>
-                    </tr>
-                </thead>
-                <tbody id="gridBody"></tbody>
-            </table>
+        <!-- Flat View -->
+        <div id="flatViewContainer">
+            <div class="grid-container">
+                <table id="trackerGrid" class="tracker-table">
+                    <thead>
+                        <tr id="gridHeader">
+                            <th class="work-col">Work Item</th>
+                            <th>101</th>
+                            <th>102</th>
+                            <th>103</th>
+                            <th>104</th>
+                            <th>105</th>
+                            <th>106</th>
+                            <th class="remarks-col">Remarks</th>
+                        </tr>
+                    </thead>
+                    <tbody id="gridBody"></tbody>
+                </table>
+            </div>
         </div>
+
+        <!-- Work View -->
+        <div id="workViewContainer" class="work-view-container" style="display:none;"></div>
     </div>
 
     <!-- Status Picker Popup -->

@@ -605,6 +605,55 @@ body {
     to { transform: translateX(0); opacity: 1; }
 }
 
+/* View Toggle */
+.view-toggle {
+    display: flex;
+    gap: 8px;
+    padding: 12px 24px;
+    background: #fff;
+    border-bottom: 1px solid #e0e4e8;
+}
+
+.view-tab {
+    background: #f0f2f5;
+    border: none;
+    color: #555;
+    padding: 8px 20px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: all 0.2s;
+}
+
+.view-tab.active,
+.view-tab:hover {
+    background: #1a2a6c;
+    color: #fff;
+}
+
+/* Work View */
+.work-view-container {
+    padding: 24px;
+}
+
+.work-view-section {
+    margin-bottom: 24px;
+    background: #fff;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+
+.section-header {
+    background: #1a2a6c;
+    color: #fff;
+    padding: 12px 20px;
+    font-weight: 700;
+    font-size: 1rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar {
     width: 8px;
