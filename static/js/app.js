@@ -102,8 +102,7 @@ const SUPER_STRUCTURE_ITEMS = [
 let currentView = 'flat';
 let editMode = false;
 let archivedItems = {};
-let pendingFilterFloor = 'all';
-let pendingFilterFlat = 'all';
+let pendingOnly = false;
 
 function cacheKey(cellId) {
     return currentVenture ? `${currentVenture.id}_${cellId}` : cellId;
@@ -306,7 +305,6 @@ async function updateCellColor(cellId, color, workItem, flat) {
     cellsCache[cacheKey(cellId)] = data;
     if (currentView === 'flat') renderGrid();
     else if (currentView === 'work') renderWorkView();
-    else if (currentView === 'pending') renderPendingView();
     showToast('Status updated');
 }
 
@@ -322,7 +320,6 @@ async function saveCellRemarks(cellId, remarks) {
     cellsCache[cacheKey(cellId)] = data;
     if (currentView === 'flat') renderGrid();
     else if (currentView === 'work') renderWorkView();
-    else if (currentView === 'pending') renderPendingView();
     showToast('Remarks saved');
 }
 
@@ -1427,17 +1424,6 @@ function exitToDashboard() {
 }
 
 document.getElementById('backToVentures').addEventListener('click', exitToDashboard);
-
-document.getElementById('pendingWorkBtn').addEventListener('click', () => {
-    document.querySelectorAll('.view-tab').forEach(b => b.classList.remove('active'));
-    currentView = 'pending';
-    cellsCache = {};
-    document.getElementById('flatViewContainer').style.display = 'none';
-    document.getElementById('workViewContainer').style.display = 'none';
-    document.getElementById('superStructureContainer').style.display = 'none';
-    document.getElementById('pendingViewContainer').style.display = '';
-    renderPendingView();
-});
 document.getElementById('bcHome').addEventListener('click', exitToDashboard);
 
 // ========================
@@ -2182,3 +2168,499 @@ async function renderPendingView() {
     tableWrapper.appendChild(table);
     container.appendChild(tableWrapper);
 }
+
+// ========================
+// Invoices Module
+// ========================
+let invoicesEditingId = null; // null = adding new, string = editing existing
+let invoiceAttachmentsBuffer = []; // Array of { name, type, dataUrl } for current form session
+
+function invoicesKey() {
+    return 'invoices';
+}
+
+function loadAllInvoices() {
+    return lsGet(invoicesKey()) || [];
+}
+
+function saveAllInvoices(invoices) {
+    lsSet(invoicesKey(), invoices);
+}
+
+function loadInvoiceCategories() {
+    return lsGet('invoice_categories') || [
+        'Brick', 'Sand', 'Steel', 'Cement', 'Tiles',
+        'Electrical', 'Plumbing', 'Labour', 'Paint', 'Wood'
+    ];
+}
+
+function saveInvoiceCategory(cat) {
+    if (!cat) return;
+    const cats = loadInvoiceCategories();
+    if (!cats.includes(cat)) {
+        cats.push(cat);
+        lsSet('invoice_categories', cats);
+    }
+}
+
+function openInvoicesPanel() {
+    document.getElementById('venturesDashboard').style.display = 'none';
+    document.getElementById('invoicesPanel').style.display = '';
+    document.getElementById('breadcrumbBar').style.display = 'none';
+    populateInvoiceFilterVentures();
+    populateInvoiceFilterCategories();
+    renderInvoiceCards();
+}
+
+function closeInvoicesPanel() {
+    document.getElementById('invoicesPanel').style.display = 'none';
+    document.getElementById('venturesDashboard').style.display = '';
+}
+
+function populateInvoiceFilterVentures() {
+    const sel = document.getElementById('invoiceFilterVenture');
+    const current = sel.value;
+    sel.innerHTML = '<option value="all">All Ventures</option>';
+    venturesList.forEach(v => {
+        const opt = document.createElement('option');
+        opt.value = v.id;
+        opt.textContent = v.name;
+        sel.appendChild(opt);
+    });
+    if (current) sel.value = current;
+}
+
+function populateInvoiceFilterCategories() {
+    const sel = document.getElementById('invoiceFilterCategory');
+    const current = sel.value;
+    sel.innerHTML = '<option value="all">All Categories</option>';
+    const cats = loadInvoiceCategories();
+    cats.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c;
+        opt.textContent = c;
+        sel.appendChild(opt);
+    });
+    if (current) sel.value = current;
+}
+
+function renderInvoiceCards() {
+    const grid = document.getElementById('invoiceCardsGrid');
+    const summaryBar = document.getElementById('invoiceSummaryBar');
+    grid.innerHTML = '';
+
+    let invoices = loadAllInvoices();
+
+    const filterVenture = document.getElementById('invoiceFilterVenture').value;
+    const filterCat = document.getElementById('invoiceFilterCategory').value;
+    const filterFrom = document.getElementById('invoiceFilterFrom').value;
+    const filterTo = document.getElementById('invoiceFilterTo').value;
+
+    if (filterVenture !== 'all') invoices = invoices.filter(inv => inv.ventureId === filterVenture);
+    if (filterCat !== 'all') invoices = invoices.filter(inv => inv.category === filterCat);
+    if (filterFrom) invoices = invoices.filter(inv => inv.purchaseDate >= filterFrom);
+    if (filterTo) invoices = invoices.filter(inv => inv.purchaseDate <= filterTo);
+
+    invoices = invoices.slice().sort((a, b) => (b.purchaseDate || '').localeCompare(a.purchaseDate || ''));
+
+    const totalAmount = invoices.reduce((sum, inv) => sum + (parseFloat(inv.amount) || 0), 0);
+    summaryBar.innerHTML = `
+        <span class="inv-summary-count">${invoices.length} invoice${invoices.length !== 1 ? 's' : ''}</span>
+        <span class="inv-summary-sep">&#183;</span>
+        <span class="inv-summary-total">Total: &#8377;${totalAmount.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span>
+    `;
+
+    if (invoices.length === 0) {
+        grid.innerHTML = '<div class="invoice-empty-state">No invoices found. Click "+ Add Invoice" to get started.</div>';
+        return;
+    }
+
+    invoices.forEach(inv => {
+        const venture = venturesList.find(v => v.id === inv.ventureId);
+        const ventureName = venture ? venture.name : (inv.ventureName || 'Unknown');
+        const dateDisplay = inv.purchaseDate ? new Date(inv.purchaseDate + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '&#8212;';
+        const amountDisplay = inv.amount ? '&#8377;' + parseFloat(inv.amount).toLocaleString('en-IN', { maximumFractionDigits: 2 }) : '&#8212;';
+        const attachCount = (inv.attachments || []).length;
+
+        const card = document.createElement('div');
+        card.className = 'invoice-card';
+        card.innerHTML = `
+            <div class="invoice-card-header">
+                <span class="invoice-card-category">${escapeHtml(inv.category || '&#8212;')}</span>
+                <span class="invoice-card-venture">${escapeHtml(ventureName)}</span>
+            </div>
+            <div class="invoice-card-amount">${amountDisplay}</div>
+            <div class="invoice-card-meta">
+                <span>&#128197; ${dateDisplay}</span>
+                ${inv.paymentMode ? `<span>&#128179; ${escapeHtml(inv.paymentMode)}</span>` : ''}
+                ${inv.vendor ? `<span>&#127976; ${escapeHtml(inv.vendor)}</span>` : ''}
+            </div>
+            <div class="invoice-card-reason">${escapeHtml(inv.reason || '')}</div>
+            ${attachCount > 0 ? `<div class="invoice-card-attach">&#128206; ${attachCount} attachment${attachCount > 1 ? 's' : ''}</div>` : ''}
+        `;
+        card.addEventListener('click', () => openInvoiceView(inv.id));
+        grid.appendChild(card);
+    });
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+function openInvoiceForm(invoiceId = null) {
+    invoicesEditingId = invoiceId;
+    invoiceAttachmentsBuffer = [];
+    document.getElementById('invoiceFormTitle').textContent = invoiceId ? 'Edit Invoice' : 'Add Invoice';
+
+    const sel = document.getElementById('invoiceVentureSelect');
+    sel.innerHTML = '<option value="">-- Select Venture --</option>';
+    venturesList.forEach(v => {
+        const opt = document.createElement('option');
+        opt.value = v.id;
+        opt.textContent = v.name;
+        sel.appendChild(opt);
+    });
+
+    const dl = document.getElementById('invoiceCategoryList');
+    dl.innerHTML = '';
+    loadInvoiceCategories().forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c;
+        dl.appendChild(opt);
+    });
+
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('invoiceDateInput').value = today;
+    document.getElementById('invoiceAmountInput').value = '';
+    document.getElementById('invoiceReasonInput').value = '';
+    document.getElementById('invoiceVendorInput').value = '';
+    document.getElementById('invoicePaymentMode').value = '';
+    document.getElementById('invoiceCategoryInput').value = '';
+    document.getElementById('invoiceFilePreview').innerHTML = '';
+    document.getElementById('invoiceFileDropLabel').textContent = 'Click to choose or drag & drop (JPG, PNG, PDF -- max 5MB per file, up to 5 files)';
+
+    if (invoiceId) {
+        const invoices = loadAllInvoices();
+        const inv = invoices.find(i => i.id === invoiceId);
+        if (inv) {
+            sel.value = inv.ventureId || '';
+            document.getElementById('invoiceCategoryInput').value = inv.category || '';
+            document.getElementById('invoiceDateInput').value = inv.purchaseDate || today;
+            document.getElementById('invoiceAmountInput').value = inv.amount || '';
+            document.getElementById('invoiceReasonInput').value = inv.reason || '';
+            document.getElementById('invoiceVendorInput').value = inv.vendor || '';
+            document.getElementById('invoicePaymentMode').value = inv.paymentMode || '';
+            invoiceAttachmentsBuffer = (inv.attachments || []).map(a => ({ ...a }));
+            renderAttachmentPreview();
+        }
+    }
+
+    document.getElementById('invoiceFormModal').classList.add('show');
+}
+
+function closeInvoiceForm() {
+    document.getElementById('invoiceFormModal').classList.remove('show');
+    invoicesEditingId = null;
+    invoiceAttachmentsBuffer = [];
+}
+
+function handleInvoiceFiles(files) {
+    const allowed = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+    const maxSize = 5 * 1024 * 1024;
+
+    files.forEach(file => {
+        if (invoiceAttachmentsBuffer.length >= 5) {
+            showToast('Maximum 5 attachments per invoice', true);
+            return;
+        }
+        if (!allowed.includes(file.type)) {
+            showToast(`${file.name}: Only JPG, PNG, WebP, PDF allowed`, true);
+            return;
+        }
+        if (file.size > maxSize) {
+            showToast(`${file.name}: File too large (max 5MB)`, true);
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            invoiceAttachmentsBuffer.push({
+                name: file.name,
+                type: file.type,
+                dataUrl: e.target.result,
+                size: file.size
+            });
+            renderAttachmentPreview();
+        };
+        reader.readAsDataURL(file);
+    });
+}
+
+function renderAttachmentPreview() {
+    const preview = document.getElementById('invoiceFilePreview');
+    preview.innerHTML = '';
+    invoiceAttachmentsBuffer.forEach((att, idx) => {
+        const item = document.createElement('div');
+        item.className = 'attach-preview-item';
+        const thumb = document.createElement('div');
+        thumb.className = 'attach-thumb';
+        if (att.type.startsWith('image/')) {
+            const img = document.createElement('img');
+            img.src = att.dataUrl;
+            img.alt = att.name;
+            img.className = 'attach-thumb-img';
+            thumb.appendChild(img);
+        } else {
+            thumb.innerHTML = '<span class="attach-pdf-icon">PDF</span>';
+        }
+        const label = document.createElement('span');
+        label.className = 'attach-name';
+        label.textContent = att.name.length > 20 ? att.name.substring(0, 18) + '&#8230;' : att.name;
+        const removeBtn = document.createElement('button');
+        removeBtn.className = 'attach-remove-btn';
+        removeBtn.innerHTML = '&times;';
+        removeBtn.title = 'Remove';
+        removeBtn.addEventListener('click', () => {
+            invoiceAttachmentsBuffer.splice(idx, 1);
+            renderAttachmentPreview();
+        });
+        item.appendChild(thumb);
+        item.appendChild(label);
+        item.appendChild(removeBtn);
+        preview.appendChild(item);
+    });
+    const dropLabel = document.getElementById('invoiceFileDropLabel');
+    if (invoiceAttachmentsBuffer.length > 0) {
+        dropLabel.textContent = `${invoiceAttachmentsBuffer.length} file(s) selected. Click to add more.`;
+    } else {
+        dropLabel.textContent = 'Click to choose or drag & drop (JPG, PNG, PDF -- max 5MB per file, up to 5 files)';
+    }
+}
+
+function openInvoiceView(invoiceId) {
+    const invoices = loadAllInvoices();
+    const inv = invoices.find(i => i.id === invoiceId);
+    if (!inv) return;
+
+    const venture = venturesList.find(v => v.id === inv.ventureId);
+    const ventureName = venture ? venture.name : (inv.ventureName || 'Unknown');
+    const dateDisplay = inv.purchaseDate ? new Date(inv.purchaseDate + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '&#8212;';
+    const amountDisplay = inv.amount ? '&#8377;' + parseFloat(inv.amount).toLocaleString('en-IN', { maximumFractionDigits: 2 }) : '&#8212;';
+
+    document.getElementById('invoiceViewTitle').textContent = `${inv.category} &#8212; ${dateDisplay}`;
+
+    const body = document.getElementById('invoiceViewBody');
+    body.innerHTML = `
+        <div class="inv-view-grid">
+            <div class="inv-view-field"><span class="inv-view-label">Venture</span><span class="inv-view-value">${escapeHtml(ventureName)}</span></div>
+            <div class="inv-view-field"><span class="inv-view-label">Category</span><span class="inv-view-value">${escapeHtml(inv.category)}</span></div>
+            <div class="inv-view-field"><span class="inv-view-label">Purchase Date</span><span class="inv-view-value">${dateDisplay}</span></div>
+            <div class="inv-view-field"><span class="inv-view-label">Amount Paid</span><span class="inv-view-value inv-view-amount">${amountDisplay}</span></div>
+            ${inv.paymentMode ? `<div class="inv-view-field"><span class="inv-view-label">Payment Mode</span><span class="inv-view-value">${escapeHtml(inv.paymentMode)}</span></div>` : ''}
+            ${inv.vendor ? `<div class="inv-view-field"><span class="inv-view-label">Vendor</span><span class="inv-view-value">${escapeHtml(inv.vendor)}</span></div>` : ''}
+        </div>
+        <div class="inv-view-reason"><span class="inv-view-label">Reason / Description</span><p>${escapeHtml(inv.reason)}</p></div>
+        ${(inv.attachments && inv.attachments.length > 0) ? `
+            <div class="inv-view-attachments">
+                <span class="inv-view-label">Attachments (${inv.attachments.length})</span>
+                <div class="inv-view-attach-grid" id="invViewAttachGrid"></div>
+            </div>
+        ` : '<div class="inv-view-no-attach">No attachments</div>'}
+        <div class="inv-view-meta">Added by ${escapeHtml(inv.createdBy || 'Unknown')} &#183; ${inv.createdAt ? new Date(inv.createdAt).toLocaleDateString('en-IN') : ''}</div>
+    `;
+
+    if (inv.attachments && inv.attachments.length > 0) {
+        const attachGrid = body.querySelector('#invViewAttachGrid');
+        inv.attachments.forEach((att, idx) => {
+            const item = document.createElement('div');
+            item.className = 'inv-attach-thumb-item';
+            item.title = att.name;
+            if (att.type && att.type.startsWith('image/')) {
+                item.innerHTML = `<img src="${att.dataUrl}" alt="${escapeHtml(att.name)}" class="inv-attach-img">`;
+            } else {
+                item.innerHTML = `<div class="inv-attach-pdf-thumb"><span>PDF</span><span class="inv-attach-pdf-name">${escapeHtml(att.name)}</span></div>`;
+            }
+            item.addEventListener('click', () => openLightbox(att));
+            attachGrid.appendChild(item);
+        });
+    }
+
+    document.getElementById('editInvoiceBtn').onclick = () => {
+        closeInvoiceView();
+        openInvoiceForm(invoiceId);
+    };
+    document.getElementById('deleteInvoiceBtn').onclick = () => {
+        showConfirm('Delete Invoice', `Delete this invoice (${inv.category} &#8212; ${dateDisplay})? This cannot be undone.`, () => {
+            deleteInvoice(invoiceId);
+            closeInvoiceView();
+        });
+    };
+
+    document.getElementById('invoiceViewModal').classList.add('show');
+}
+
+function closeInvoiceView() {
+    document.getElementById('invoiceViewModal').classList.remove('show');
+}
+
+function deleteInvoice(invoiceId) {
+    const invoices = loadAllInvoices().filter(i => i.id !== invoiceId);
+    saveAllInvoices(invoices);
+    renderInvoiceCards();
+    showToast('Invoice deleted');
+}
+
+function openLightbox(att) {
+    document.getElementById('lightboxFileName').textContent = att.name;
+    const content = document.getElementById('lightboxContent');
+    content.innerHTML = '';
+
+    if (att.type && att.type.startsWith('image/')) {
+        const img = document.createElement('img');
+        img.src = att.dataUrl;
+        img.alt = att.name;
+        img.className = 'lightbox-img';
+        content.appendChild(img);
+    } else if (att.type === 'application/pdf') {
+        const embed = document.createElement('embed');
+        embed.src = att.dataUrl;
+        embed.type = 'application/pdf';
+        embed.className = 'lightbox-pdf';
+        content.appendChild(embed);
+    }
+
+    document.getElementById('lightboxDownload').onclick = () => {
+        const a = document.createElement('a');
+        a.href = att.dataUrl;
+        a.download = att.name;
+        a.click();
+    };
+
+    document.getElementById('attachmentLightbox').style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+}
+
+function closeLightbox() {
+    document.getElementById('attachmentLightbox').style.display = 'none';
+    document.getElementById('lightboxContent').innerHTML = '';
+    document.body.style.overflow = '';
+}
+
+// Invoice event wiring
+document.getElementById('openInvoicesBtn').addEventListener('click', openInvoicesPanel);
+document.getElementById('backFromInvoices').addEventListener('click', closeInvoicesPanel);
+
+document.getElementById('addInvoiceBtn').addEventListener('click', () => openInvoiceForm(null));
+document.getElementById('closeInvoiceForm').addEventListener('click', closeInvoiceForm);
+document.getElementById('cancelInvoiceForm').addEventListener('click', closeInvoiceForm);
+document.getElementById('invoiceFormModal').addEventListener('click', (e) => {
+    if (e.target === document.getElementById('invoiceFormModal')) closeInvoiceForm();
+});
+
+document.getElementById('closeInvoiceView').addEventListener('click', closeInvoiceView);
+document.getElementById('closeInvoiceViewBtn').addEventListener('click', closeInvoiceView);
+document.getElementById('invoiceViewModal').addEventListener('click', (e) => {
+    if (e.target === document.getElementById('invoiceViewModal')) closeInvoiceView();
+});
+
+['invoiceFilterVenture', 'invoiceFilterCategory', 'invoiceFilterFrom', 'invoiceFilterTo'].forEach(id => {
+    document.getElementById(id).addEventListener('change', renderInvoiceCards);
+});
+
+document.getElementById('invoiceClearFilters').addEventListener('click', () => {
+    document.getElementById('invoiceFilterVenture').value = 'all';
+    document.getElementById('invoiceFilterCategory').value = 'all';
+    document.getElementById('invoiceFilterFrom').value = '';
+    document.getElementById('invoiceFilterTo').value = '';
+    renderInvoiceCards();
+});
+
+const invoiceFileDrop = document.getElementById('invoiceFileDrop');
+const invoiceFileInput = document.getElementById('invoiceFileInput');
+
+invoiceFileDrop.addEventListener('click', () => invoiceFileInput.click());
+
+invoiceFileDrop.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    invoiceFileDrop.classList.add('drag-over');
+});
+
+invoiceFileDrop.addEventListener('dragleave', () => {
+    invoiceFileDrop.classList.remove('drag-over');
+});
+
+invoiceFileDrop.addEventListener('drop', (e) => {
+    e.preventDefault();
+    invoiceFileDrop.classList.remove('drag-over');
+    handleInvoiceFiles(Array.from(e.dataTransfer.files));
+});
+
+invoiceFileInput.addEventListener('change', () => {
+    handleInvoiceFiles(Array.from(invoiceFileInput.files));
+    invoiceFileInput.value = '';
+});
+
+document.getElementById('saveInvoiceBtn').addEventListener('click', () => {
+    const ventureId = document.getElementById('invoiceVentureSelect').value;
+    const category = document.getElementById('invoiceCategoryInput').value.trim();
+    const purchaseDate = document.getElementById('invoiceDateInput').value;
+    const amount = document.getElementById('invoiceAmountInput').value;
+    const reason = document.getElementById('invoiceReasonInput').value.trim();
+
+    if (!ventureId) { showToast('Please select a venture', true); return; }
+    if (!category) { showToast('Please enter a category', true); return; }
+    if (!purchaseDate) { showToast('Please select a purchase date', true); return; }
+    if (!amount || parseFloat(amount) < 0) { showToast('Please enter a valid amount', true); return; }
+    if (!reason) { showToast('Please enter a reason/description', true); return; }
+
+    const venture = venturesList.find(v => v.id === ventureId);
+    const invoices = loadAllInvoices();
+
+    const invoiceData = {
+        id: invoicesEditingId || generateId(),
+        ventureId,
+        ventureName: venture ? venture.name : '',
+        category,
+        purchaseDate,
+        amount: parseFloat(amount),
+        reason,
+        vendor: document.getElementById('invoiceVendorInput').value.trim(),
+        paymentMode: document.getElementById('invoicePaymentMode').value,
+        attachments: invoiceAttachmentsBuffer.map(a => ({ name: a.name, type: a.type, dataUrl: a.dataUrl })),
+        createdAt: invoicesEditingId ? (invoices.find(i => i.id === invoicesEditingId)?.createdAt || new Date().toISOString()) : new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        createdBy: currentUser
+    };
+
+    if (invoicesEditingId) {
+        const idx = invoices.findIndex(i => i.id === invoicesEditingId);
+        if (idx >= 0) invoices[idx] = invoiceData;
+        else invoices.push(invoiceData);
+    } else {
+        invoices.push(invoiceData);
+    }
+
+    saveAllInvoices(invoices);
+    saveInvoiceCategory(category);
+    populateInvoiceFilterCategories();
+    closeInvoiceForm();
+    renderInvoiceCards();
+    showToast(invoicesEditingId ? 'Invoice updated' : 'Invoice saved');
+
+    if (!document.getElementById('invoiceViewModal').classList.contains('show')) return;
+    openInvoiceView(invoiceData.id);
+});
+
+document.getElementById('closeLightbox').addEventListener('click', closeLightbox);
+document.getElementById('attachmentLightbox').addEventListener('click', (e) => {
+    if (e.target === document.getElementById('attachmentLightbox')) closeLightbox();
+});
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && document.getElementById('attachmentLightbox').style.display === 'flex') {
+        closeLightbox();
+    }
+});

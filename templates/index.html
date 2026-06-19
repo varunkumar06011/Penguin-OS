@@ -36,7 +36,52 @@
             <div class="dashboard-header">
                 <h2>Your Ventures</h2>
             </div>
+            <div class="invoice-dashboard-bar">
+                <button id="openInvoicesBtn" class="btn-primary">&#128196; Invoices</button>
+            </div>
             <div class="venture-grid" id="ventureCards"></div>
+        </div>
+
+        <!-- Invoices Panel -->
+        <div id="invoicesPanel" style="display:none;">
+            <div class="invoice-panel-header">
+                <button id="backFromInvoices" class="back-btn">&larr; Back to Ventures</button>
+                <h2 class="invoice-panel-title">&#128196; Invoices</h2>
+                <button id="addInvoiceBtn" class="btn-primary">+ Add Invoice</button>
+            </div>
+
+            <!-- Filter Bar -->
+            <div class="invoice-filter-bar">
+                <div class="invoice-filter-group">
+                    <label>Venture</label>
+                    <select id="invoiceFilterVenture">
+                        <option value="all">All Ventures</option>
+                    </select>
+                </div>
+                <div class="invoice-filter-group">
+                    <label>Category</label>
+                    <select id="invoiceFilterCategory">
+                        <option value="all">All Categories</option>
+                    </select>
+                </div>
+                <div class="invoice-filter-group">
+                    <label>From Date</label>
+                    <input type="date" id="invoiceFilterFrom">
+                </div>
+                <div class="invoice-filter-group">
+                    <label>To Date</label>
+                    <input type="date" id="invoiceFilterTo">
+                </div>
+                <div class="invoice-filter-group" style="align-self:flex-end;">
+                    <button id="invoiceClearFilters" class="btn-secondary">Clear Filters</button>
+                </div>
+            </div>
+
+            <!-- Summary Bar -->
+            <div class="invoice-summary-bar" id="invoiceSummaryBar"></div>
+
+            <!-- Invoice Cards Grid -->
+            <div class="invoice-cards-grid" id="invoiceCardsGrid"></div>
         </div>
 
         <!-- Tracker View -->
@@ -45,7 +90,6 @@
             <div class="venture-header">
                 <button id="backToVentures" class="back-btn">&larr; Back to Ventures</button>
                 <span class="venture-title" id="ventureTitle">ELITE</span>
-                <button id="pendingWorkBtn" class="btn-pending-filter">Pending Work</button>
             </div>
 
             <!-- Block Tabs (dynamic) -->
@@ -71,6 +115,12 @@
 
             <!-- Flat View -->
             <div id="flatViewContainer">
+                <div class="flat-filter-bar">
+                    <label class="filter-checkbox">
+                        <input type="checkbox" id="pendingOnlyFilter">
+                        <span>Pending Only</span>
+                    </label>
+                </div>
                 <div class="grid-container">
                     <table id="trackerGrid" class="tracker-table">
                         <thead>
@@ -95,9 +145,6 @@
 
             <!-- Super Structure View -->
             <div id="superStructureContainer" class="ss-container" style="display:none;"></div>
-
-            <!-- Pending Work View -->
-            <div id="pendingViewContainer" style="display:none;"></div>
         </div>
     </div>
 
@@ -178,6 +225,105 @@
                 <button id="confirmAction" class="btn-primary" style="background:#c0392b;">Delete</button>
             </div>
         </div>
+    </div>
+
+    <!-- Invoice Form Modal -->
+    <div id="invoiceFormModal" class="modal">
+        <div class="modal-content invoice-modal-content">
+            <div class="modal-header">
+                <h3 id="invoiceFormTitle">Add Invoice</h3>
+                <button class="close-btn" id="closeInvoiceForm">&times;</button>
+            </div>
+            <div class="invoice-form-body">
+                <div class="invoice-form-row">
+                    <div class="invoice-form-field">
+                        <label>Venture <span class="req">*</span></label>
+                        <select id="invoiceVentureSelect"></select>
+                    </div>
+                    <div class="invoice-form-field">
+                        <label>Category <span class="req">*</span></label>
+                        <input type="text" id="invoiceCategoryInput" placeholder="e.g. Brick, Steel, Sand, Labour" list="invoiceCategoryList">
+                        <datalist id="invoiceCategoryList"></datalist>
+                    </div>
+                </div>
+                <div class="invoice-form-row">
+                    <div class="invoice-form-field">
+                        <label>Purchase Date <span class="req">*</span></label>
+                        <input type="date" id="invoiceDateInput">
+                    </div>
+                    <div class="invoice-form-field">
+                        <label>Amount Paid (&#8377;) <span class="req">*</span></label>
+                        <input type="number" id="invoiceAmountInput" placeholder="e.g. 25000" min="0" step="0.01">
+                    </div>
+                </div>
+                <div class="invoice-form-row">
+                    <div class="invoice-form-field" style="flex:1;">
+                        <label>Reason / Description <span class="req">*</span></label>
+                        <textarea id="invoiceReasonInput" rows="3" placeholder="e.g. 500 bricks purchased for 3rd floor A Block"></textarea>
+                    </div>
+                </div>
+                <div class="invoice-form-row">
+                    <div class="invoice-form-field" style="flex:1;">
+                        <label>Supplier / Vendor Name</label>
+                        <input type="text" id="invoiceVendorInput" placeholder="e.g. Ravi Brick Works">
+                    </div>
+                    <div class="invoice-form-field">
+                        <label>Payment Mode</label>
+                        <select id="invoicePaymentMode">
+                            <option value="">-- Select --</option>
+                            <option value="Cash">Cash</option>
+                            <option value="UPI">UPI</option>
+                            <option value="Bank Transfer">Bank Transfer</option>
+                            <option value="Cheque">Cheque</option>
+                            <option value="Credit">Credit / Due</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="invoice-form-row">
+                    <div class="invoice-form-field" style="flex:1;">
+                        <label>Invoice / Receipt Image or PDF</label>
+                        <div class="invoice-file-drop" id="invoiceFileDrop">
+                            <span id="invoiceFileDropLabel">Click to choose or drag & drop (JPG, PNG, PDF -- max 5MB per file, up to 5 files)</span>
+                            <input type="file" id="invoiceFileInput" accept="image/jpeg,image/png,image/webp,application/pdf" multiple style="display:none;">
+                        </div>
+                        <small style="color:#999;font-size:0.75rem;margin-top:4px;display:block;">Note: files are stored in your browser. Keep attachments small for best performance.</small>
+                        <div class="invoice-file-preview" id="invoiceFilePreview"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="invoice-form-actions">
+                <button id="cancelInvoiceForm" class="btn-secondary">Cancel</button>
+                <button id="saveInvoiceBtn" class="btn-primary">Save Invoice</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Invoice View Modal -->
+    <div id="invoiceViewModal" class="modal">
+        <div class="modal-content invoice-modal-content">
+            <div class="modal-header">
+                <h3 id="invoiceViewTitle">Invoice Details</h3>
+                <button class="close-btn" id="closeInvoiceView">&times;</button>
+            </div>
+            <div id="invoiceViewBody" class="invoice-view-body"></div>
+            <div class="invoice-form-actions">
+                <button id="editInvoiceBtn" class="btn-secondary">Edit</button>
+                <button id="deleteInvoiceBtn" class="btn-secondary" style="color:#c0392b;border-color:#c0392b;">Delete</button>
+                <button id="closeInvoiceViewBtn" class="btn-primary">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Attachment Lightbox -->
+    <div id="attachmentLightbox" class="attachment-lightbox" style="display:none;">
+        <div class="lightbox-toolbar">
+            <span id="lightboxFileName" class="lightbox-filename"></span>
+            <div style="display:flex;gap:8px;">
+                <button id="lightboxDownload" class="btn-secondary" style="font-size:0.8rem;">&#11015; Download</button>
+                <button id="closeLightbox" class="close-btn" style="font-size:1.8rem;">&times;</button>
+            </div>
+        </div>
+        <div class="lightbox-content" id="lightboxContent"></div>
     </div>
 
     <script src="/static/js/app.js"></script>
