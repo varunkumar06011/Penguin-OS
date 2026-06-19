@@ -1,18 +1,23 @@
 // ========================
-// LocalStorage Persistence
+// API Persistence
 // ========================
-const LS_PREFIX = 'vgrand_';
 
-function lsGet(key) {
-    try { return JSON.parse(localStorage.getItem(LS_PREFIX + key)); } catch { return null; }
+async function apiGet(path) {
+    const res = await fetch(path);
+    if (!res.ok) return null;
+    return res.json();
 }
 
-function lsSet(key, value) {
-    localStorage.setItem(LS_PREFIX + key, JSON.stringify(value));
+async function apiPost(path, data) {
+    await fetch(path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+    });
 }
 
-function lsDelete(key) {
-    localStorage.removeItem(LS_PREFIX + key);
+async function apiDelete(path) {
+    await fetch(path, { method: 'DELETE' });
 }
 
 function generateId() {
@@ -33,6 +38,12 @@ let selectedCellId = null;
 let selectedWorkItem = null;
 let selectedFlat = null;
 let venturesList = [];
+
+// Global caches for invoices, POs, vendors, categories (loaded once at init)
+let allInvoices = [];
+let allCategories = [];
+let allPOs = [];
+let allVendors = [];
 
 const DEFAULT_WORK_ITEMS = [
     "BRICK WORK", "ELECTRICAL PIPES", "MESH", "PLASTERING",
@@ -210,15 +221,8 @@ els.signOutBtn.addEventListener('click', async () => {
 });
 
 // ========================
-// LocalStorage Persistence Helpers
+// Persistence Helpers
 // ========================
-function lsCellKey(cellId) {
-    return 'cell_' + cacheKey(cellId);
-}
-
-function lsSsKey(cellId) {
-    return 'ss_' + cacheKey(cellId);
-}
 
 async function loadWorkItems() {
     if (currentVenture && currentVenture.flat_view_items) {
@@ -231,17 +235,18 @@ async function loadWorkItems() {
 async function saveWorkItems(items) {
     if (currentVenture) {
         currentVenture.flat_view_items = items;
-        saveVenturesToLS();
+        await saveVenturesToLS();
         showToast('Work items saved successfully');
         return;
     }
-    showToast('Work items saved locally');
+    showToast('Work items saved');
 }
 
 async function getCellData(cellId) {
     const ck = cacheKey(cellId);
     if (cellsCache[ck] !== undefined) return cellsCache[ck];
-    const data = lsGet(lsCellKey(cellId));
+    // Preloaded at init; if missing, try API fallback
+    const data = await apiGet('/api/cell/' + encodeURIComponent(ck));
     cellsCache[ck] = data;
     return data;
 }
@@ -249,7 +254,7 @@ async function getCellData(cellId) {
 async function getSsCellData(cellId) {
     const ck = cacheKey(cellId);
     if (cellsCache[ck] !== undefined) return cellsCache[ck];
-    const data = lsGet(lsSsKey(cellId));
+    const data = await apiGet('/api/cell/' + encodeURIComponent(ck));
     cellsCache[ck] = data;
     return data;
 }
@@ -270,7 +275,8 @@ async function updateCellColor(cellId, color, workItem, flat) {
         changed_by: currentUser
     };
 
-    const existing = lsGet(lsCellKey(cellId)) || null;
+    const ck = cacheKey(cellId);
+    const existing = cellsCache[ck] || null;
     if (existing && existing.timeline && existing.timeline.length > 0) {
         const lastEntry = existing.timeline[existing.timeline.length - 1];
         if (lastEntry && lastEntry.color === color) {
@@ -303,40 +309,41 @@ async function updateCellColor(cellId, color, workItem, flat) {
             updated_by: currentUser
         };
     }
-    lsSet(lsCellKey(cellId), data);
-    cellsCache[cacheKey(cellId)] = data;
+    await apiPost('/api/cell/' + encodeURIComponent(ck), data);
+    cellsCache[ck] = data;
     if (currentView === 'flat') renderGrid();
     else if (currentView === 'work') renderWorkView();
     showToast('Status updated');
 }
 
 async function saveCellRemarks(cellId, remarks) {
-    const existing = lsGet(lsCellKey(cellId)) || {};
+    const ck = cacheKey(cellId);
+    const existing = cellsCache[ck] || {};
     const data = {
         ...existing,
         remarks: remarks,
         updated_at: new Date().toISOString(),
         updated_by: currentUser
     };
-    lsSet(lsCellKey(cellId), data);
-    cellsCache[cacheKey(cellId)] = data;
+    await apiPost('/api/cell/' + encodeURIComponent(ck), data);
+    cellsCache[ck] = data;
     if (currentView === 'flat') renderGrid();
     else if (currentView === 'work') renderWorkView();
     showToast('Remarks saved');
 }
 
 // Venture persistence
-function saveVenturesToLS() {
-    lsSet('ventures', venturesList);
+async function saveVenturesToLS() {
+    await apiPost('/api/ventures', venturesList);
 }
 
-function loadVenturesFromLS() {
-    const saved = lsGet('ventures');
+async function loadVenturesFromLS() {
+    const saved = await apiGet('/api/ventures');
     if (saved && saved.length > 0) {
         venturesList = saved;
     } else {
         venturesList = createDefaultVentures();
-        saveVenturesToLS();
+        await saveVenturesToLS();
     }
 }
 
@@ -1028,7 +1035,22 @@ function showToast(message, isError = false) {
 async function init() {
     const ok = await checkSession();
     if (!ok) return;
+    await preloadCells();
     await loadVentures();
+    allInvoices = await apiGet('/api/invoices') || [];
+    allCategories = await apiGet('/api/settings/invoice_categories') || [
+        'Brick', 'Sand', 'Steel', 'Cement', 'Tiles',
+        'Electrical', 'Plumbing', 'Labour', 'Paint', 'Wood'
+    ];
+    allPOs = await apiGet('/api/pos') || [];
+    allVendors = await apiGet('/api/vendors') || [];
+}
+
+async function preloadCells() {
+    const allCells = await apiGet('/api/cells');
+    if (allCells) {
+        cellsCache = allCells;
+    }
 }
 
 init();
@@ -1248,7 +1270,8 @@ async function updateSuperStructureStatus(block, itemId, status, workItem) {
         changed_by: currentUser
     };
 
-    const existing = lsGet(lsSsKey(cellId)) || null;
+    const ck = cacheKey(cellId);
+    const existing = cellsCache[ck] || null;
     let data;
     if (existing) {
         const timeline = existing.timeline || [];
@@ -1274,8 +1297,8 @@ async function updateSuperStructureStatus(block, itemId, status, workItem) {
             updated_by: currentUser
         };
     }
-    lsSet(lsSsKey(cellId), data);
-    cellsCache[cacheKey(cellId)] = data;
+    await apiPost('/api/cell/' + encodeURIComponent(ck), data);
+    cellsCache[ck] = data;
     renderSuperStructure();
     showToast('Status updated');
 }
@@ -1320,7 +1343,7 @@ function createDefaultVentures() {
 
 async function seedDefaultVentures() {
     venturesList = createDefaultVentures();
-    saveVenturesToLS();
+    await saveVenturesToLS();
 }
 
 function renderVentureDashboard() {
@@ -1655,7 +1678,7 @@ async function createVentureFromWizard() {
         archived: {}
     };
     venturesList.push(newVenture);
-    saveVenturesToLS();
+    await saveVenturesToLS();
     showToast('Venture created successfully');
     closeWizard();
     await loadVentures();
@@ -1768,12 +1791,12 @@ async function saveVentureConfig() {
     const idx = venturesList.findIndex(v => v.id === currentVenture.id);
     if (idx >= 0) {
         venturesList[idx] = currentVenture;
-        saveVenturesToLS();
+        await saveVenturesToLS();
     }
     showToast('Changes saved');
 }
 
-function logEdit(action, section, itemId, oldVal, newVal) {
+async function logEdit(action, section, itemId, oldVal, newVal) {
     if (!currentVenture) return;
     const logEntry = {
         action, section, item_id: itemId,
@@ -1782,9 +1805,9 @@ function logEdit(action, section, itemId, oldVal, newVal) {
         changed_at: new Date().toISOString()
     };
     const key = 'editlog_' + currentVenture.id;
-    const existing = lsGet(key) || { entries: [] };
+    const existing = (await apiGet('/api/settings/' + encodeURIComponent(key))) || { entries: [] };
     existing.entries.push(logEntry);
-    lsSet(key, existing);
+    await apiPost('/api/settings/' + encodeURIComponent(key), existing);
 }
 
 // Flat View Editing
@@ -1795,7 +1818,7 @@ async function renameFlatItem(itemId, newLabel) {
     const old = item.label;
     item.label = newLabel;
     currentVenture.flat_view_items = items;
-    logEdit('rename', 'flat_view', itemId, old, newLabel);
+    await logEdit('rename', 'flat_view', itemId, old, newLabel);
     await saveVentureConfig();
     cellsCache = {};
     renderGrid();
@@ -1806,7 +1829,7 @@ async function addFlatItem(label) {
     const newId = `item_${slugId(label)}_${Date.now()}`;
     items.push({ id: newId, label });
     currentVenture.flat_view_items = items;
-    logEdit('add', 'flat_view', newId, null, label);
+    await logEdit('add', 'flat_view', newId, null, label);
     await saveVentureConfig();
     cellsCache = {};
     renderGrid();
@@ -1816,7 +1839,7 @@ async function archiveFlatItem(itemId) {
     if (!archivedItems['flat_view']) archivedItems['flat_view'] = [];
     archivedItems['flat_view'].push(itemId);
     currentVenture.archived = archivedItems;
-    logEdit('delete', 'flat_view', itemId, null, null);
+    await logEdit('delete', 'flat_view', itemId, null, null);
     await saveVentureConfig();
     cellsCache = {};
     renderGrid();
@@ -1825,7 +1848,7 @@ async function archiveFlatItem(itemId) {
 async function restoreFlatItem(itemId) {
     archivedItems['flat_view'] = (archivedItems['flat_view'] || []).filter(id => id !== itemId);
     currentVenture.archived = archivedItems;
-    logEdit('restore', 'flat_view', itemId, null, null);
+    await logEdit('restore', 'flat_view', itemId, null, null);
     await saveVentureConfig();
     cellsCache = {};
     renderGrid();
@@ -1839,7 +1862,7 @@ async function reorderFlatItem(itemId, direction) {
     if (newIdx < 0 || newIdx >= items.length) return;
     [items[idx], items[newIdx]] = [items[newIdx], items[idx]];
     currentVenture.flat_view_items = items;
-    logEdit('reorder', 'flat_view', itemId, idx, newIdx);
+    await logEdit('reorder', 'flat_view', itemId, idx, newIdx);
     await saveVentureConfig();
     cellsCache = {};
     renderGrid();
@@ -1855,7 +1878,7 @@ async function renameWorkCategory(oldName, newName) {
     cats[newName] = cats[oldName];
     delete cats[oldName];
     currentVenture.work_categories = cats;
-    logEdit('rename', 'work_category', oldName, oldName, newName);
+    await logEdit('rename', 'work_category', oldName, oldName, newName);
     await saveVentureConfig();
     cellsCache = {};
     renderWorkView();
@@ -1868,7 +1891,7 @@ async function renameWorkItem(category, itemId, newLabel) {
     const old = item.label;
     item.label = newLabel;
     currentVenture.work_categories = cats;
-    logEdit('rename', 'work_item', itemId, old, newLabel);
+    await logEdit('rename', 'work_item', itemId, old, newLabel);
     await saveVentureConfig();
     cellsCache = {};
     renderWorkView();
@@ -1879,7 +1902,7 @@ async function addWorkItem(category, label) {
     const newId = `item_${slugId(category)}_${slugId(label)}_${Date.now()}`;
     cats[category].push({ id: newId, label });
     currentVenture.work_categories = cats;
-    logEdit('add', 'work_item', newId, null, label);
+    await logEdit('add', 'work_item', newId, null, label);
     await saveVentureConfig();
     cellsCache = {};
     renderWorkView();
@@ -1889,7 +1912,7 @@ async function deleteWorkItem(category, itemId) {
     const cats = ensureWorkCategories(currentVenture.work_categories || WORK_CATEGORIES);
     cats[category] = cats[category].filter(i => i.id !== itemId);
     currentVenture.work_categories = cats;
-    logEdit('delete', 'work_item', itemId, null, null);
+    await logEdit('delete', 'work_item', itemId, null, null);
     await saveVentureConfig();
     cellsCache = {};
     renderWorkView();
@@ -1904,7 +1927,7 @@ async function reorderWorkItem(category, itemId, direction) {
     if (newIdx < 0 || newIdx >= items.length) return;
     [items[idx], items[newIdx]] = [items[newIdx], items[idx]];
     currentVenture.work_categories = cats;
-    logEdit('reorder', 'work_item', itemId, idx, newIdx);
+    await logEdit('reorder', 'work_item', itemId, idx, newIdx);
     await saveVentureConfig();
     cellsCache = {};
     renderWorkView();
@@ -1918,7 +1941,7 @@ async function renameSuperItem(itemId, newLabel) {
     const old = item.label;
     item.label = newLabel;
     currentVenture.super_structure_items = items;
-    logEdit('rename', 'super_structure', itemId, old, newLabel);
+    await logEdit('rename', 'super_structure', itemId, old, newLabel);
     await saveVentureConfig();
     cellsCache = {};
     renderSuperStructure();
@@ -1929,7 +1952,7 @@ async function addSuperItem(label) {
     const newId = `ss_item_${slugId(label)}_${Date.now()}`;
     items.push({ id: newId, label });
     currentVenture.super_structure_items = items;
-    logEdit('add', 'super_structure', newId, null, label);
+    await logEdit('add', 'super_structure', newId, null, label);
     await saveVentureConfig();
     cellsCache = {};
     renderSuperStructure();
@@ -1939,7 +1962,7 @@ async function archiveSuperItem(itemId) {
     if (!archivedItems['super_structure']) archivedItems['super_structure'] = [];
     archivedItems['super_structure'].push(itemId);
     currentVenture.archived = archivedItems;
-    logEdit('delete', 'super_structure', itemId, null, null);
+    await logEdit('delete', 'super_structure', itemId, null, null);
     await saveVentureConfig();
     cellsCache = {};
     renderSuperStructure();
@@ -1948,7 +1971,7 @@ async function archiveSuperItem(itemId) {
 async function restoreSuperItem(itemId) {
     archivedItems['super_structure'] = (archivedItems['super_structure'] || []).filter(id => id !== itemId);
     currentVenture.archived = archivedItems;
-    logEdit('restore', 'super_structure', itemId, null, null);
+    await logEdit('restore', 'super_structure', itemId, null, null);
     await saveVentureConfig();
     cellsCache = {};
     renderSuperStructure();
@@ -1962,7 +1985,7 @@ async function reorderSuperItem(itemId, direction) {
     if (newIdx < 0 || newIdx >= items.length) return;
     [items[idx], items[newIdx]] = [items[newIdx], items[idx]];
     currentVenture.super_structure_items = items;
-    logEdit('reorder', 'super_structure', itemId, idx, newIdx);
+    await logEdit('reorder', 'super_structure', itemId, idx, newIdx);
     await saveVentureConfig();
     cellsCache = {};
     renderSuperStructure();
@@ -1973,7 +1996,7 @@ async function renameVenture(ventureId, newName) {
     const venture = venturesList.find(v => v.id === ventureId);
     if (!venture) return;
     venture.name = newName;
-    saveVenturesToLS();
+    await saveVenturesToLS();
     showToast('Venture renamed');
     renderVentureDashboard();
 }
@@ -1982,7 +2005,7 @@ async function deleteVenture(ventureId) {
     const venture = venturesList.find(v => v.id === ventureId);
     if (!venture) return;
     venturesList = venturesList.filter(v => v.id !== ventureId);
-    saveVenturesToLS();
+    await saveVenturesToLS();
     showToast('Venture deleted');
     renderVentureDashboard();
 }
@@ -2286,31 +2309,28 @@ function getColorHex(color) {
 let invoicesEditingId = null; // null = adding new, string = editing existing
 let invoiceAttachmentsBuffer = []; // Array of { name, type, dataUrl } for current form session
 
-function invoicesKey() {
-    return 'invoices';
-}
-
 function loadAllInvoices() {
-    return lsGet(invoicesKey()) || [];
+    return allInvoices;
 }
 
-function saveAllInvoices(invoices) {
-    lsSet(invoicesKey(), invoices);
+async function saveAllInvoices(invoices) {
+    allInvoices = invoices;
+    for (const inv of invoices) {
+        await apiPost('/api/invoice', inv);
+    }
 }
 
 function loadInvoiceCategories() {
-    return lsGet('invoice_categories') || [
-        'Brick', 'Sand', 'Steel', 'Cement', 'Tiles',
-        'Electrical', 'Plumbing', 'Labour', 'Paint', 'Wood'
-    ];
+    return allCategories;
 }
 
-function saveInvoiceCategory(cat) {
+async function saveInvoiceCategory(cat) {
     if (!cat) return;
     const cats = loadInvoiceCategories();
     if (!cats.includes(cat)) {
         cats.push(cat);
-        lsSet('invoice_categories', cats);
+        allCategories = cats;
+        await apiPost('/api/settings/invoice_categories', cats);
     }
 }
 
@@ -2605,8 +2625,8 @@ function openInvoiceView(invoiceId) {
         openInvoiceForm(invoiceId);
     };
     document.getElementById('deleteInvoiceBtn').onclick = () => {
-        showConfirm('Delete Invoice', `Delete this invoice (${inv.category} &#8212; ${dateDisplay})? This cannot be undone.`, () => {
-            deleteInvoice(invoiceId);
+        showConfirm('Delete Invoice', `Delete this invoice (${inv.category} &#8212; ${dateDisplay})? This cannot be undone.`, async () => {
+            await deleteInvoice(invoiceId);
             closeInvoiceView();
         });
     };
@@ -2618,9 +2638,10 @@ function closeInvoiceView() {
     document.getElementById('invoiceViewModal').classList.remove('show');
 }
 
-function deleteInvoice(invoiceId) {
+async function deleteInvoice(invoiceId) {
     const invoices = loadAllInvoices().filter(i => i.id !== invoiceId);
-    saveAllInvoices(invoices);
+    await apiDelete('/api/invoice/' + encodeURIComponent(invoiceId));
+    allInvoices = invoices;
     renderInvoiceCards();
     showToast('Invoice deleted');
 }
@@ -2682,11 +2703,11 @@ document.getElementById('invoiceViewModal').addEventListener('click', (e) => {
     document.getElementById(id).addEventListener('change', renderInvoiceCards);
 });
 
-document.getElementById('invoiceAddCategoryBtn').addEventListener('click', () => {
+document.getElementById('invoiceAddCategoryBtn').addEventListener('click', async () => {
     const input = document.getElementById('invoiceAddCategoryInput');
     const val = input.value.trim();
     if (!val) return;
-    saveInvoiceCategory(val);
+    await saveInvoiceCategory(val);
     populateInvoiceFilterCategories();
     const dl = document.getElementById('invoiceCategoryList');
     if (dl) {
@@ -2734,7 +2755,7 @@ invoiceFileInput.addEventListener('change', () => {
     invoiceFileInput.value = '';
 });
 
-document.getElementById('saveInvoiceBtn').addEventListener('click', () => {
+document.getElementById('saveInvoiceBtn').addEventListener('click', async () => {
     const ventureId = document.getElementById('invoiceVentureSelect').value;
     const category = document.getElementById('invoiceCategoryInput').value.trim();
     const purchaseDate = document.getElementById('invoiceDateInput').value;
@@ -2774,8 +2795,8 @@ document.getElementById('saveInvoiceBtn').addEventListener('click', () => {
         invoices.push(invoiceData);
     }
 
-    saveAllInvoices(invoices);
-    saveInvoiceCategory(category);
+    await saveAllInvoices(invoices);
+    await saveInvoiceCategory(category);
     populateInvoiceFilterCategories();
     closeInvoiceForm();
     renderInvoiceCards();
@@ -2832,10 +2853,20 @@ const PO_STATUS_COLORS = {
     closed: '#1a2a6c'
 };
 
-function loadPOs() { return lsGet('purchase_orders') || []; }
-function savePOs(pos) { lsSet('purchase_orders', pos); }
-function loadVendors() { return lsGet('vendors') || []; }
-function saveVendors(vendors) { lsSet('vendors', vendors); }
+function loadPOs() { return allPOs; }
+async function savePOs(pos) {
+    allPOs = pos;
+    for (const po of pos) {
+        await apiPost('/api/po', po);
+    }
+}
+function loadVendors() { return allVendors; }
+async function saveVendors(vendors) {
+    allVendors = vendors;
+    for (const v of vendors) {
+        await apiPost('/api/vendor', v);
+    }
+}
 
 function poAutoNumber() {
     const pos = loadPOs();
@@ -3193,7 +3224,7 @@ document.getElementById('poAddVendorInlineBtn').addEventListener('click', () => 
     openVendorForm(null, true);
 });
 
-document.getElementById('savePOBtn').addEventListener('click', () => {
+document.getElementById('savePOBtn').addEventListener('click', async () => {
     const vendorId = document.getElementById('poVendorSelect').value;
     const desc = document.getElementById('poDescInput').value.trim();
     const orderDate = document.getElementById('poDateInput').value;
@@ -3234,7 +3265,7 @@ document.getElementById('savePOBtn').addEventListener('click', () => {
         pos.push(poData);
     }
 
-    savePOs(pos);
+    await savePOs(pos);
     showToast(poEditingId ? 'PO updated' : 'PO created');
     closePOForm();
     renderPOCards();
@@ -3329,8 +3360,9 @@ function openPOView(poId) {
     document.getElementById('editPOBtn').onclick = () => { closePOView(); openPOForm(poId); };
     document.getElementById('addPaymentBtn').onclick = () => openPaymentModal(poId);
     document.getElementById('deletePOBtn').onclick = () => {
-        showConfirm('Delete PO', 'Delete PO ' + (po.poNumber || '') + '? This cannot be undone.', () => {
-            savePOs(loadPOs().filter(p => p.id !== poId));
+        showConfirm('Delete PO', 'Delete PO ' + (po.poNumber || '') + '? This cannot be undone.', async () => {
+            await apiDelete('/api/po/' + encodeURIComponent(poId));
+            allPOs = loadPOs().filter(p => p.id !== poId);
             closePOView();
             renderPOCards();
             showToast('PO deleted');
@@ -3398,7 +3430,7 @@ payFileInput.addEventListener('change', () => {
     payFileInput.value = '';
 });
 
-document.getElementById('savePaymentBtn').addEventListener('click', () => {
+document.getElementById('savePaymentBtn').addEventListener('click', async () => {
     const amount = parseFloat(document.getElementById('payAmountInput').value);
     const date = document.getElementById('payDateInput').value;
     if (!date) { showToast('Please select a payment date', true); return; }
@@ -3431,7 +3463,7 @@ document.getElementById('savePaymentBtn').addEventListener('click', () => {
         showToast(`Payment of &#8377;${amount.toLocaleString('en-IN')} recorded. Outstanding: &#8377;${outstanding.toLocaleString('en-IN', {maximumFractionDigits:0})}`);
     }
 
-    savePOs(pos);
+    await savePOs(pos);
     closePaymentModal();
     renderPOCards();
     openPOView(poPaymentTargetId);
@@ -3475,8 +3507,9 @@ function renderVendorDirList() {
         `;
         div.querySelector('.edit-vendor-btn').addEventListener('click', () => openVendorForm(v.id));
         div.querySelector('.del-vendor-btn').addEventListener('click', () => {
-            showConfirm('Delete Vendor', 'Delete ' + v.name + '? POs referencing this vendor will still exist.', () => {
-                saveVendors(loadVendors().filter(x => x.id !== v.id));
+            showConfirm('Delete Vendor', 'Delete ' + v.name + '? POs referencing this vendor will still exist.', async () => {
+                await apiDelete('/api/vendor/' + encodeURIComponent(v.id));
+                allVendors = loadVendors().filter(x => x.id !== v.id);
                 renderVendorDirList();
                 populatePOFilters();
                 showToast('Vendor deleted');
@@ -3537,7 +3570,7 @@ document.getElementById('vendorFormModal').addEventListener('click', e => {
     if (e.target === document.getElementById('vendorFormModal')) closeVendorForm();
 });
 
-document.getElementById('saveVendorBtn').addEventListener('click', () => {
+document.getElementById('saveVendorBtn').addEventListener('click', async () => {
     const name = document.getElementById('vendorNameInput').value.trim();
     const phone = document.getElementById('vendorPhoneInput').value.trim();
     if (!name) { showToast('Please enter a vendor name', true); return; }
@@ -3568,7 +3601,7 @@ document.getElementById('saveVendorBtn').addEventListener('click', () => {
         vendors.push(vendorData);
     }
 
-    saveVendors(vendors);
+    await saveVendors(vendors);
     showToast(vendorEditingId ? 'Vendor updated' : 'Vendor added');
     closeVendorForm();
     renderVendorDirList();
