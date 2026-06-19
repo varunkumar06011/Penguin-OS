@@ -102,7 +102,8 @@ const SUPER_STRUCTURE_ITEMS = [
 let currentView = 'flat';
 let editMode = false;
 let archivedItems = {};
-let pendingOnly = false;
+let pendingFilterFloor = 'all';
+let pendingFilterFlat = 'all';
 
 function cacheKey(cellId) {
     return currentVenture ? `${currentVenture.id}_${cellId}` : cellId;
