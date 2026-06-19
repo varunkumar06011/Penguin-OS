@@ -2235,6 +2235,7 @@ function exportPendingWorkPDF() {
             </tr>`;
     });
 
+    const logoUrl = window.location.origin + '/static/images/image.png';
     const html = `<!DOCTYPE html>
 <html>
 <head>
@@ -2243,9 +2244,11 @@ function exportPendingWorkPDF() {
     <style>
         @media print { body { margin: 0; } .no-print { display: none !important; } }
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 40px; color: #333; }
-        .report-header { text-align: center; margin-bottom: 30px; border-bottom: 3px solid #1a2a6c; padding-bottom: 20px; }
-        .report-header h1 { color: #1a2a6c; font-size: 1.6rem; margin: 0 0 6px 0; }
-        .report-header p { margin: 2px 0; color: #555; font-size: 0.9rem; }
+        .report-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 30px; border-bottom: 3px solid #1a2a6c; padding-bottom: 20px; }
+        .report-header-left { text-align: left; }
+        .report-header-left h1 { color: #1a2a6c; font-size: 1.6rem; margin: 0 0 6px 0; }
+        .report-header-left p { margin: 2px 0; color: #555; font-size: 0.9rem; }
+        .report-logo { max-height: 50px; width: auto; }
         .report-meta { display: flex; justify-content: space-between; margin-bottom: 20px; font-size: 0.85rem; color: #777; }
         table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
         th { background: #1a2a6c; color: #fff; padding: 12px; text-align: left; border: 1px solid #1a2a6c; }
@@ -2255,9 +2258,12 @@ function exportPendingWorkPDF() {
 </head>
 <body>
     <div class="report-header">
-        <h1>VGrand Infra Tracking</h1>
-        <p><strong>Pending Work Report</strong></p>
-        <p>Venture: ${ventureName}${blockName ? ' | Block: ' + blockName : ''} | ${floorLabelText} — ${flatLabelText}</p>
+        <div class="report-header-left">
+            <h1>VGrand Infra Tracking</h1>
+            <p><strong>Pending Work Report</strong></p>
+            <p>Venture: ${ventureName}${blockName ? ' | Block: ' + blockName : ''} | ${floorLabelText} — ${flatLabelText}</p>
+        </div>
+        <img src="${logoUrl}" alt="Logo" class="report-logo">
     </div>
     <div class="report-meta">
         <span>Generated on: ${dateStr} at ${timeStr}</span>
