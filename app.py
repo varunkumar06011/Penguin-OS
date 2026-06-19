@@ -149,6 +149,15 @@ def api_ventures_post():
     return jsonify({'success': True})
 
 
+@app.route('/api/venture/<venture_id>', methods=['DELETE'])
+@login_required
+def api_venture_delete(venture_id):
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    supabase.table('ventures').delete().eq('id', venture_id).execute()
+    return jsonify({'success': True})
+
+
 # ========================
 # Invoices API
 # ========================

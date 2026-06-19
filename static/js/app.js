@@ -1993,6 +1993,7 @@ async function renameVenture(ventureId, newName) {
 async function deleteVenture(ventureId) {
     const venture = venturesList.find(v => v.id === ventureId);
     if (!venture) return;
+    await apiDelete('/api/venture/' + encodeURIComponent(ventureId));
     venturesList = venturesList.filter(v => v.id !== ventureId);
     await saveVenturesToLS();
     showToast('Venture deleted');
