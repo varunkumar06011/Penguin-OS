@@ -13,10 +13,6 @@
         <!-- Top Bar -->
         <header class="top-bar">
             <div class="logo">VGrand Infra Tracking</div>
-            <nav class="block-tabs">
-                <button class="block-tab active" data-block="A">A Block</button>
-                <button class="block-tab" data-block="B">B Block</button>
-            </nav>
             <div class="user-info">
                 <span id="userEmail"></span>
                 <button id="settingsBtn" class="btn-icon" title="Work Items Settings">&#9881;</button>
@@ -24,56 +20,77 @@
             </div>
         </header>
 
-        <!-- Floor Tabs -->
-        <div class="floor-tabs">
-            <button class="floor-tab active" data-floor="1">1st Floor</button>
-            <button class="floor-tab" data-floor="2">2nd Floor</button>
-            <button class="floor-tab" data-floor="3">3rd Floor</button>
-            <button class="floor-tab" data-floor="4">4th Floor</button>
-            <button class="floor-tab" data-floor="5">5th Floor</button>
+        <!-- Breadcrumb -->
+        <div id="breadcrumbBar" class="breadcrumb" style="display:none;">
+            <span class="bc-home" id="bcHome">Home</span>
+            <span class="bc-sep">&rsaquo;</span>
+            <span class="bc-venture" id="bcVenture"></span>
         </div>
 
-        <!-- View Toggle -->
-        <div class="view-toggle">
-            <button class="view-tab active" data-view="flat">Flat View</button>
-            <button class="view-tab" data-view="work">Work View</button>
-            <button class="view-tab" data-view="super">Super Structure</button>
-        </div>
-
-        <!-- Legend -->
-        <div class="legend">
-            <span class="legend-item"><span class="dot red"></span> Yet to start</span>
-            <span class="legend-item"><span class="dot yellow"></span> In progress</span>
-            <span class="legend-item"><span class="dot blue"></span> Patch work</span>
-            <span class="legend-item"><span class="dot green"></span> Completed</span>
-        </div>
-
-        <!-- Flat View -->
-        <div id="flatViewContainer">
-            <div class="grid-container">
-                <table id="trackerGrid" class="tracker-table">
-                    <thead>
-                        <tr id="gridHeader">
-                            <th class="work-col">Work Item</th>
-                            <th>101</th>
-                            <th>102</th>
-                            <th>103</th>
-                            <th>104</th>
-                            <th>105</th>
-                            <th>106</th>
-                            <th class="remarks-col">Remarks</th>
-                        </tr>
-                    </thead>
-                    <tbody id="gridBody"></tbody>
-                </table>
+        <!-- Ventures Dashboard -->
+        <div id="venturesDashboard" class="venture-dashboard" style="display:none;">
+            <div class="dashboard-header">
+                <h2>Your Ventures</h2>
             </div>
+            <div class="venture-grid" id="ventureCards"></div>
         </div>
 
-        <!-- Work View -->
-        <div id="workViewContainer" class="work-view-container" style="display:none;"></div>
+        <!-- Tracker View -->
+        <div id="trackerView" style="display:none;">
+            <!-- Venture Header -->
+            <div class="venture-header">
+                <button id="backToVentures" class="back-btn">&larr; Back to Ventures</button>
+                <span class="venture-title" id="ventureTitle">ELITE</span>
+            </div>
 
-        <!-- Super Structure View -->
-        <div id="superStructureContainer" class="ss-container" style="display:none;"></div>
+            <!-- Block Tabs (dynamic) -->
+            <div class="block-tabs" id="blockTabsContainer"></div>
+
+            <!-- Floor Tabs (dynamic) -->
+            <div class="floor-tabs" id="floorTabsContainer"></div>
+
+            <!-- View Toggle -->
+            <div class="view-toggle">
+                <button class="view-tab active" data-view="flat">Flat View</button>
+                <button class="view-tab" data-view="work">Work View</button>
+                <button class="view-tab" data-view="super">Super Structure</button>
+            </div>
+
+            <!-- Legend -->
+            <div class="legend">
+                <span class="legend-item"><span class="dot red"></span> Yet to start</span>
+                <span class="legend-item"><span class="dot yellow"></span> In progress</span>
+                <span class="legend-item"><span class="dot blue"></span> Patch work</span>
+                <span class="legend-item"><span class="dot green"></span> Completed</span>
+            </div>
+
+            <!-- Flat View -->
+            <div id="flatViewContainer">
+                <div class="grid-container">
+                    <table id="trackerGrid" class="tracker-table">
+                        <thead>
+                            <tr id="gridHeader">
+                                <th class="work-col">Work Item</th>
+                                <th>101</th>
+                                <th>102</th>
+                                <th>103</th>
+                                <th>104</th>
+                                <th>105</th>
+                                <th>106</th>
+                                <th class="remarks-col">Remarks</th>
+                            </tr>
+                        </thead>
+                        <tbody id="gridBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Work View -->
+            <div id="workViewContainer" class="work-view-container" style="display:none;"></div>
+
+            <!-- Super Structure View -->
+            <div id="superStructureContainer" class="ss-container" style="display:none;"></div>
+        </div>
     </div>
 
     <!-- Status Picker Popup -->
@@ -122,6 +139,21 @@
             <div class="settings-actions">
                 <button id="addWorkItemBtn" class="btn-secondary">+ Add Work Item</button>
                 <button id="saveSettingsBtn" class="btn-primary">Save Changes</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Setup Wizard Modal -->
+    <div id="wizardModal" class="modal">
+        <div class="modal-content popup-large">
+            <div class="modal-header">
+                <h3 id="wizardTitle">Add New Venture — Step 1</h3>
+                <button class="close-btn" id="closeWizard">&times;</button>
+            </div>
+            <div id="wizardBody" class="wizard-body"></div>
+            <div class="wizard-actions">
+                <button id="wizardBack" class="btn-secondary" style="display:none;">Back</button>
+                <button id="wizardNext" class="btn-primary">Next</button>
             </div>
         </div>
     </div>
