@@ -1569,3 +1569,108 @@ body {
         font-size: 0.8rem;
     }
 }
+
+/* ========================
+   Pending Work View Styles
+   ======================== */
+.pending-filter-bar {
+    display: flex;
+    gap: 16px;
+    padding: 16px 24px;
+    background: #fff;
+    border-bottom: 1px solid #e0e4e8;
+    flex-wrap: wrap;
+    align-items: flex-end;
+}
+
+.pending-filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 140px;
+}
+
+.pending-filter-group label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #555;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.pending-filter-group select {
+    padding: 8px 12px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    background: #fff;
+    min-width: 140px;
+}
+
+.pending-filter-group select:disabled {
+    background: #f0f2f5;
+    color: #999;
+    cursor: not-allowed;
+}
+
+.pending-readonly {
+    padding: 8px 12px;
+    background: #f8f9fb;
+    border: 1px solid #e0e4e8;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #1a2a6c;
+    min-width: 140px;
+}
+
+.pending-summary {
+    padding: 12px 24px;
+    font-size: 0.85rem;
+    color: #777;
+    background: #f8f9fb;
+    border-bottom: 1px solid #e0e4e8;
+}
+
+.pending-table th,
+.pending-table td {
+    padding: 10px 12px;
+    font-size: 0.85rem;
+}
+
+.pending-table .pending-work-cell {
+    font-weight: 500;
+    color: #333;
+}
+
+.dot.empty-dot {
+    background: #f0f2f5;
+    border: 2px dashed #ccc;
+}
+
+/* Pending view responsive */
+@media (max-width: 768px) {
+    .pending-filter-bar {
+        gap: 12px;
+        padding: 12px;
+    }
+    .pending-filter-group {
+        min-width: 100px;
+        flex: 1;
+    }
+    .pending-filter-group select,
+    .pending-readonly {
+        min-width: 100px;
+        font-size: 0.85rem;
+        padding: 6px 10px;
+    }
+    .pending-summary {
+        padding: 8px 12px;
+        font-size: 0.8rem;
+    }
+    .pending-table th,
+    .pending-table td {
+        padding: 6px 8px;
+        font-size: 0.75rem;
+    }
+}

@@ -101,6 +101,8 @@ const SUPER_STRUCTURE_ITEMS = [
 let currentView = 'flat';
 let editMode = false;
 let archivedItems = {};
+let pendingFilterFloor = 'all';
+let pendingFilterFlat = 'all';
 
 function cacheKey(cellId) {
     return currentVenture ? `${currentVenture.id}_${cellId}` : cellId;
@@ -242,6 +244,14 @@ async function getCellData(cellId) {
     return data;
 }
 
+async function getSsCellData(cellId) {
+    const ck = cacheKey(cellId);
+    if (cellsCache[ck] !== undefined) return cellsCache[ck];
+    const data = lsGet(lsSsKey(cellId));
+    cellsCache[ck] = data;
+    return data;
+}
+
 async function updateCellColor(cellId, color, workItem, flat) {
     const today = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
     const statusLabel = color ? COLOR_LABELS[color] : 'Cleared';
@@ -259,6 +269,13 @@ async function updateCellColor(cellId, color, workItem, flat) {
     };
 
     const existing = lsGet(lsCellKey(cellId)) || null;
+    if (existing && existing.timeline && existing.timeline.length > 0) {
+        const lastEntry = existing.timeline[existing.timeline.length - 1];
+        if (lastEntry && lastEntry.color === color) {
+            closeStatusPopup();
+            return;
+        }
+    }
     let data;
     if (existing) {
         const timeline = existing.timeline || [];
@@ -894,6 +911,8 @@ els.saveSettingsBtn.addEventListener('click', async () => {
         renderGrid();
     } else if (currentView === 'work') {
         renderWorkView();
+    } else if (currentView === 'pending') {
+        renderPendingView();
     } else {
         renderSuperStructure();
     }
@@ -923,6 +942,8 @@ function renderBlockTabs() {
                 renderGrid();
             } else if (currentView === 'work') {
                 renderWorkView();
+            } else if (currentView === 'pending') {
+                renderPendingView();
             } else {
                 renderSuperStructure();
             }
@@ -955,6 +976,8 @@ function renderFloorTabs() {
                 renderGrid();
             } else if (currentView === 'work') {
                 renderWorkView();
+            } else if (currentView === 'pending') {
+                renderPendingView();
             } else {
                 renderSuperStructure();
             }
@@ -974,12 +997,16 @@ document.querySelectorAll('.view-tab').forEach(btn => {
         document.getElementById('flatViewContainer').style.display = 'none';
         document.getElementById('workViewContainer').style.display = 'none';
         document.getElementById('superStructureContainer').style.display = 'none';
+        document.getElementById('pendingViewContainer').style.display = 'none';
         if (currentView === 'flat') {
             document.getElementById('flatViewContainer').style.display = '';
             renderGrid();
         } else if (currentView === 'work') {
             document.getElementById('workViewContainer').style.display = '';
             renderWorkView();
+        } else if (currentView === 'pending') {
+            document.getElementById('pendingViewContainer').style.display = '';
+            renderPendingView();
         } else {
             document.getElementById('superStructureContainer').style.display = '';
             renderSuperStructure();
@@ -1028,7 +1055,7 @@ async function renderSuperStructure() {
     blocks.forEach(block => {
         activeItems.forEach(itemObj => {
             const cellId = ssCellKeyById(block.id, itemObj.id);
-            promises.push(getCellData(cellId));
+            promises.push(getSsCellData(cellId));
         });
     });
     await Promise.all(promises);
@@ -1383,6 +1410,7 @@ async function openVenture(venture) {
     document.getElementById('flatViewContainer').style.display = '';
     document.getElementById('workViewContainer').style.display = 'none';
     document.getElementById('superStructureContainer').style.display = 'none';
+    document.getElementById('pendingViewContainer').style.display = 'none';
 
     renderBlockTabs();
     renderFloorTabs();
@@ -1645,6 +1673,7 @@ document.getElementById('editModeBtn').addEventListener('click', () => {
     cellsCache = {};
     if (currentView === 'flat') renderGrid();
     else if (currentView === 'work') renderWorkView();
+    else if (currentView === 'pending') renderPendingView();
     else renderSuperStructure();
 });
 
@@ -1950,4 +1979,200 @@ async function deleteVenture(ventureId) {
     saveVenturesToLS();
     showToast('Venture deleted');
     renderVentureDashboard();
+}
+
+// ========================
+// Pending Work View
+// ========================
+async function renderPendingView() {
+    const container = document.getElementById('pendingViewContainer');
+    container.innerHTML = '';
+
+    if (!currentVenture || !currentBlockObj) return;
+
+    const floors = currentBlockObj.floors || 5;
+    const flatsPerFloor = currentBlockObj.flats_per_floor || FLATS_PER_FLOOR;
+    const floorLabels = ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th', '10th'];
+
+    // Filter bar
+    const filterBar = document.createElement('div');
+    filterBar.className = 'pending-filter-bar';
+
+    // Venture label (read-only)
+    const ventureGroup = document.createElement('div');
+    ventureGroup.className = 'pending-filter-group';
+    ventureGroup.innerHTML = `<label>Venture</label><div class="pending-readonly">${currentVenture.name}</div>`;
+    filterBar.appendChild(ventureGroup);
+
+    // Floor dropdown
+    const floorGroup = document.createElement('div');
+    floorGroup.className = 'pending-filter-group';
+    let floorOptions = '<option value="all">All Floors</option>';
+    for (let f = 1; f <= floors; f++) {
+        const label = floors === 1 ? 'Ground Floor' : `${floorLabels[f - 1] || f + 'th'} Floor`;
+        floorOptions += `<option value="${f}" ${pendingFilterFloor == f ? 'selected' : ''}>${label}</option>`;
+    }
+    floorGroup.innerHTML = `<label>Floor</label><select id="pendingFloorSelect">${floorOptions}</select>`;
+    filterBar.appendChild(floorGroup);
+
+    // Flat dropdown
+    const flatGroup = document.createElement('div');
+    flatGroup.className = 'pending-filter-group';
+    let flatOptions = '<option value="all">All Flats</option>';
+    if (pendingFilterFloor !== 'all') {
+        const floorNum = parseInt(pendingFilterFloor);
+        for (let i = 1; i <= flatsPerFloor; i++) {
+            const flatNum = (floorNum * 100) + i;
+            flatOptions += `<option value="${flatNum}" ${pendingFilterFlat == flatNum ? 'selected' : ''}>${flatNum}</option>`;
+        }
+    }
+    flatGroup.innerHTML = `<label>Flat</label><select id="pendingFlatSelect" ${pendingFilterFloor === 'all' ? 'disabled' : ''}>${flatOptions}</select>`;
+    filterBar.appendChild(flatGroup);
+
+    container.appendChild(filterBar);
+
+    // Event listeners for filters
+    filterBar.querySelector('#pendingFloorSelect').addEventListener('change', (e) => {
+        pendingFilterFloor = e.target.value;
+        if (pendingFilterFloor === 'all') pendingFilterFlat = 'all';
+        renderPendingView();
+    });
+    const flatSelect = filterBar.querySelector('#pendingFlatSelect');
+    if (flatSelect) {
+        flatSelect.addEventListener('change', (e) => {
+            pendingFilterFlat = e.target.value;
+            renderPendingView();
+        });
+    }
+
+    // Determine floors and flats to iterate
+    const floorsToCheck = pendingFilterFloor === 'all'
+        ? Array.from({ length: floors }, (_, i) => i + 1)
+        : [parseInt(pendingFilterFloor)];
+
+    // Preload all cell data
+    const flatWorkItems = getFlatWorkItems();
+    const workCategories = ensureWorkCategories((currentVenture && currentVenture.work_categories) ? currentVenture.work_categories : WORK_CATEGORIES);
+    const promises = [];
+
+    floorsToCheck.forEach(floor => {
+        const flatNumbers = [];
+        for (let i = 1; i <= flatsPerFloor; i++) {
+            flatNumbers.push((floor * 100) + i);
+        }
+        flatNumbers.forEach(flat => {
+            flatWorkItems.forEach(item => {
+                const cellId = cellKeyById(currentBlock, floor, flat, item.id);
+                promises.push(getCellData(cellId));
+            });
+            Object.entries(workCategories).forEach(([category, items]) => {
+                items.forEach(itemObj => {
+                    const cellId = workViewCellKeyById(currentBlock, floor, category, itemObj.id, flat);
+                    promises.push(getCellData(cellId));
+                });
+            });
+        });
+    });
+    await Promise.all(promises);
+
+    // Build rows
+    const rows = [];
+    floorsToCheck.forEach(floor => {
+        const flatNumbers = [];
+        for (let i = 1; i <= flatsPerFloor; i++) {
+            flatNumbers.push((floor * 100) + i);
+        }
+        const flatsToCheck = pendingFilterFlat === 'all'
+            ? flatNumbers
+            : [parseInt(pendingFilterFlat)].filter(f => flatNumbers.includes(f));
+
+        flatsToCheck.forEach(flat => {
+            // Flat view items
+            flatWorkItems.forEach(item => {
+                const cellId = cellKeyById(currentBlock, floor, flat, item.id);
+                const cellData = cellsCache[cacheKey(cellId)];
+                const color = cellData?.color || null;
+                if (color !== 'green') {
+                    rows.push({
+                        floor: floors === 1 ? 'Ground' : `${floorLabels[floor - 1] || floor + 'th'}`,
+                        flat: flat,
+                        workItem: item.label,
+                        status: color,
+                        statusLabel: color ? COLOR_LABELS[color] : 'Not started',
+                        category: 'Flat View',
+                        cellId: cellId
+                    });
+                }
+            });
+            // Work view items
+            Object.entries(workCategories).forEach(([category, items]) => {
+                items.forEach(itemObj => {
+                    const cellId = workViewCellKeyById(currentBlock, floor, category, itemObj.id, flat);
+                    const cellData = cellsCache[cacheKey(cellId)];
+                    const color = cellData?.color || null;
+                    if (color !== 'green') {
+                        rows.push({
+                            floor: floors === 1 ? 'Ground' : `${floorLabels[floor - 1] || floor + 'th'}`,
+                            flat: flat,
+                            workItem: itemObj.label,
+                            status: color,
+                            statusLabel: color ? COLOR_LABELS[color] : 'Not started',
+                            category: category,
+                            cellId: cellId
+                        });
+                    }
+                });
+            });
+        });
+    });
+
+    // Summary count
+    const summary = document.createElement('div');
+    summary.className = 'pending-summary';
+    const floorLabelText = pendingFilterFloor === 'all' ? 'All Floors' : `${floorLabels[parseInt(pendingFilterFloor) - 1] || pendingFilterFloor + 'th'} Floor`;
+    const flatLabelText = pendingFilterFlat === 'all' ? 'All Flats' : `Flat ${pendingFilterFlat}`;
+    summary.textContent = `Showing ${rows.length} pending items for ${floorLabelText} — ${flatLabelText}`;
+    container.appendChild(summary);
+
+    // Results table
+    const tableWrapper = document.createElement('div');
+    tableWrapper.className = 'grid-container';
+    const table = document.createElement('table');
+    table.className = 'tracker-table pending-table';
+
+    const thead = document.createElement('thead');
+    thead.innerHTML = '<tr><th>Floor</th><th>Flat</th><th>Work Item</th><th>Status</th><th>Category</th></tr>';
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    if (rows.length === 0) {
+        const emptyRow = document.createElement('tr');
+        emptyRow.innerHTML = '<td colspan="5" style="text-align:center;color:#999;padding:24px;">No pending items found</td>';
+        tbody.appendChild(emptyRow);
+    } else {
+        rows.forEach(row => {
+            const tr = document.createElement('tr');
+            const statusDot = row.status ? `<span class="dot ${row.status}"></span>` : '<span class="dot empty-dot"></span>';
+            tr.innerHTML = `
+                <td>${row.floor}</td>
+                <td>${row.flat}</td>
+                <td class="pending-work-cell" data-cellid="${row.cellId}" data-work="${row.workItem}" data-flat="${row.flat}">${row.workItem}</td>
+                <td>${statusDot} ${row.statusLabel}</td>
+                <td>${row.category}</td>
+            `;
+            const workCell = tr.querySelector('.pending-work-cell');
+            if (!editMode) {
+                workCell.style.cursor = 'pointer';
+                workCell.style.color = '#1a2a6c';
+                workCell.style.textDecoration = 'underline';
+                workCell.addEventListener('click', () => {
+                    openTimelineModal(row.cellId, row.workItem, row.flat);
+                });
+            }
+            tbody.appendChild(tr);
+        });
+    }
+    table.appendChild(tbody);
+    tableWrapper.appendChild(table);
+    container.appendChild(tableWrapper);
 }
