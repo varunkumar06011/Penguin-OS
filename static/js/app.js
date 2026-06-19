@@ -35,11 +35,12 @@ let selectedFlat = null;
 let venturesList = [];
 
 const DEFAULT_WORK_ITEMS = [
-    "Brick work", "Plastering", "Electrical pipe", "Pop bolster",
-    "Bathroom plumbing", "Baby sink lines", "Tiles", "Pop primer",
-    "Window fitting", "Window grills", "Door frames", "Door shutters",
-    "Grills", "Main door", "Flooring", "Wall care", "Primer", "Putty",
-    "Paint", "Dado tiles", "Final coat"
+    "BRICK WORK", "ELECTRICAL PIPES", "MESH", "PLASTERING",
+    "CEILING PAINT", "POP FRAME", "CEILING WIRING", "POP SHEETS",
+    "WALL CARE", "BATHROOM PLUMBING", "WINDOW FRAME", "BATH SWR LINES",
+    "BATH CONCEALING", "TILES", "DOORS FITTING", "PAINT PRIMER",
+    "PAINT 1st COAT", "WINDOWS PAINT", "SWITCH BOARD FITTING",
+    "PATCH WORK", "2nd COAT PAINTING"
 ];
 
 const COLOR_LABELS = {

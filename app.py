@@ -9,11 +9,12 @@ DEMO_USERNAME = 'Vgrand@123'
 DEMO_PASSWORD = 'Vgrand1234'
 
 DEFAULT_WORK_ITEMS = [
-    "Brick work", "Plastering", "Electrical pipe", "Pop bolster",
-    "Bathroom plumbing", "Baby sink lines", "Tiles", "Pop primer",
-    "Window fitting", "Window grills", "Door frames", "Door shutters",
-    "Grills", "Main door", "Flooring", "Wall care", "Primer", "Putty",
-    "Paint", "Dado tiles", "Final coat"
+    "BRICK WORK", "ELECTRICAL PIPES", "MESH", "PLASTERING",
+    "CEILING PAINT", "POP FRAME", "CEILING WIRING", "POP SHEETS",
+    "WALL CARE", "BATHROOM PLUMBING", "WINDOW FRAME", "BATH SWR LINES",
+    "BATH CONCEALING", "TILES", "DOORS FITTING", "PAINT PRIMER",
+    "PAINT 1st COAT", "WINDOWS PAINT", "SWITCH BOARD FITTING",
+    "PATCH WORK", "2nd COAT PAINTING"
 ]
 
 FLOORS = ["1st Floor", "2nd Floor", "3rd Floor", "4th Floor", "5th Floor"]
