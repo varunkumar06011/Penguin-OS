@@ -340,7 +340,7 @@ async function saveVenturesToLS() {
 }
 
 async function seedEliteBlockColors(blockId) {
-    const gateKey = `elite_${blockId}_seeded`;
+    const gateKey = `elite_${blockId}_seeded_v3`;
     if (localStorage.getItem(gateKey) === 'true') return;
 
     const elite = venturesList.find(v => v.id === 'elite');
