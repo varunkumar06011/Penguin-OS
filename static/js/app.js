@@ -103,9 +103,62 @@ const SUPER_STRUCTURE_ITEMS = [
 ];
 
 let currentView = 'flat';
+let editMode = false;
+let archivedItems = {};
 
 function cacheKey(cellId) {
     return currentVenture ? `${currentVenture.id}_${cellId}` : cellId;
+}
+
+function slugId(text) {
+    return text.toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 30);
+}
+
+function ensureItemIds(items) {
+    if (!items || !items.length) return [];
+    if (typeof items[0] === 'object' && items[0].id) return items;
+    return items.map((label, i) => ({ id: `item_${slugId(label)}_${i}`, label }));
+}
+
+function ensureWorkCategories(cats) {
+    if (!cats) return JSON.parse(JSON.stringify(WORK_CATEGORIES));
+    const result = {};
+    Object.entries(cats).forEach(([catLabel, items]) => {
+        const catId = `cat_${slugId(catLabel)}`;
+        if (typeof items[0] === 'object' && items[0].id) {
+            result[catLabel] = items;
+        } else {
+            result[catLabel] = items.map((label, i) => ({ id: `item_${slugId(catLabel)}_${slugId(label)}_${i}`, label }));
+        }
+    });
+    return result;
+}
+
+function getFlatWorkItems() {
+    if (currentVenture && currentVenture.flat_view_items) {
+        return ensureItemIds(currentVenture.flat_view_items);
+    }
+    return ensureItemIds(workItems);
+}
+
+function getSuperStructureItems() {
+    if (currentVenture && currentVenture.super_structure_items) {
+        return ensureItemIds(currentVenture.super_structure_items);
+    }
+    return ensureItemIds(SUPER_STRUCTURE_ITEMS);
+}
+
+function cellKeyById(block, floor, flat, itemId) {
+    return `${block}_floor${floor}_${flat}_${itemId}`;
+}
+
+function ssCellKeyById(block, itemId) {
+    return `superstructure_${block}_${itemId}`;
+}
+
+function workViewCellKeyById(block, floor, category, itemId, flat) {
+    const catSlug = slugId(category);
+    return `${block}_floor${floor}_${catSlug}_${itemId}_${flat}`;
 }
 
 // ========================
@@ -366,6 +419,10 @@ async function renderGrid() {
         flatNumbers.push((currentFloor * 100) + i);
     }
 
+    const items = getFlatWorkItems();
+    const archived = archivedItems['flat_view'] || [];
+    const activeItems = items.filter(it => !archived.includes(it.id));
+
     // Update flat view header
     const gridHeader = document.getElementById('gridHeader');
     gridHeader.innerHTML = '<th class="work-col">Work Item</th>';
@@ -381,25 +438,45 @@ async function renderGrid() {
 
     // Preload all cell data
     const promises = [];
-    for (let wi = 0; wi < workItems.length; wi++) {
+    activeItems.forEach(item => {
         for (const flat of flatNumbers) {
-            const cellId = getCellId(currentBlock, currentFloor, flat, wi);
+            const cellId = cellKeyById(currentBlock, currentFloor, flat, item.id);
             promises.push(getCellData(cellId));
         }
-    }
+    });
     await Promise.all(promises);
 
-    for (let wi = 0; wi < workItems.length; wi++) {
-        const workItem = workItems[wi];
+    activeItems.forEach((item, wi) => {
         const row = document.createElement('tr');
 
         const workTd = document.createElement('td');
         workTd.className = 'work-cell';
-        workTd.textContent = workItem;
+        if (editMode) {
+            workTd.innerHTML = `<span class="item-label">${item.label}</span>`;
+            const controls = document.createElement('div');
+            controls.className = 'edit-controls';
+            controls.style.marginTop = '4px';
+            controls.innerHTML = `<button class="edit-btn" title="Rename">&#9998;</button><button class="edit-btn" title="Delete">&#10006;</button>`;
+            if (wi > 0) controls.innerHTML += `<button class="edit-btn" title="Move up">&#9650;</button>`;
+            if (wi < activeItems.length - 1) controls.innerHTML += `<button class="edit-btn" title="Move down">&#9660;</button>`;
+            workTd.appendChild(controls);
+
+            const renameBtn = controls.querySelector('[title="Rename"]');
+            const deleteBtn = controls.querySelector('[title="Delete"]');
+            renameBtn.addEventListener('click', () => startInlineEdit(workTd, item.label, (newLabel) => renameFlatItem(item.id, newLabel)));
+            deleteBtn.addEventListener('click', () => showConfirm('Delete Item', `Delete '${item.label}'? Existing tracking data will be hidden but not lost.`, () => archiveFlatItem(item.id)));
+
+            const upBtn = controls.querySelector('[title="Move up"]');
+            const downBtn = controls.querySelector('[title="Move down"]');
+            if (upBtn) upBtn.addEventListener('click', () => reorderFlatItem(item.id, -1));
+            if (downBtn) downBtn.addEventListener('click', () => reorderFlatItem(item.id, 1));
+        } else {
+            workTd.textContent = item.label;
+        }
         row.appendChild(workTd);
 
         for (const flat of flatNumbers) {
-            const cellId = getCellId(currentBlock, currentFloor, flat, wi);
+            const cellId = cellKeyById(currentBlock, currentFloor, flat, item.id);
             const cellData = cellsCache[cacheKey(cellId)];
             const color = cellData?.color || null;
 
@@ -409,7 +486,8 @@ async function renderGrid() {
 
             const btn = document.createElement('button');
             btn.className = 'cell-btn ' + (color || 'empty');
-            btn.title = `${flat} - ${workItem}`;
+            btn.title = `${flat} - ${item.label}`;
+            if (editMode) btn.disabled = true;
 
             const history = document.createElement('button');
             history.className = 'history-link';
@@ -420,18 +498,20 @@ async function renderGrid() {
             td.appendChild(wrapper);
             row.appendChild(td);
 
-            btn.addEventListener('click', (e) => {
-                e.preventDefault();
-                openStatusPopup(cellId, workItem, flat, color);
-            });
+            if (!editMode) {
+                btn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    openStatusPopup(cellId, item.label, flat, color);
+                });
+            }
 
             btn.addEventListener('contextmenu', (e) => {
                 e.preventDefault();
-                openTimelineModal(cellId, workItem, flat);
+                openTimelineModal(cellId, item.label, flat);
             });
 
             history.addEventListener('click', () => {
-                openTimelineModal(cellId, workItem, flat);
+                openTimelineModal(cellId, item.label, flat);
             });
         }
 
@@ -439,7 +519,7 @@ async function renderGrid() {
         remarksTd.className = 'remarks-cell';
         const remarksParts = [];
         for (const flat of flatNumbers) {
-            const cellId = getCellId(currentBlock, currentFloor, flat, wi);
+            const cellId = cellKeyById(currentBlock, currentFloor, flat, item.id);
             const cellData = cellsCache[cacheKey(cellId)];
             if (cellData?.remarks) {
                 remarksParts.push(`${flat}: ${cellData.remarks}`);
@@ -450,6 +530,41 @@ async function renderGrid() {
         row.appendChild(remarksTd);
 
         els.gridBody.appendChild(row);
+    });
+
+    // Add item row in edit mode
+    if (editMode) {
+        const addRow = document.createElement('tr');
+        const addTd = document.createElement('td');
+        addTd.colSpan = flatNumbers.length + 2;
+        addTd.innerHTML = '<div class="add-item-row"><input type="text" id="addFlatItemInput" placeholder="New work item name"><button class="btn-secondary" id="addFlatItemBtn">Add</button></div>';
+        addRow.appendChild(addTd);
+        els.gridBody.appendChild(addRow);
+        document.getElementById('addFlatItemBtn').addEventListener('click', () => {
+            const val = document.getElementById('addFlatItemInput').value.trim();
+            if (val) addFlatItem(val);
+        });
+    }
+
+    // Archived section in edit mode
+    if (editMode && archived.length > 0) {
+        const archRow = document.createElement('tr');
+        const archTd = document.createElement('td');
+        archTd.colSpan = flatNumbers.length + 2;
+        archTd.innerHTML = '<div class="archived-section"><h4>Archived Items</h4></div>';
+        const archList = archTd.querySelector('.archived-section');
+        archived.forEach(archId => {
+            const found = items.find(it => it.id === archId);
+            if (found) {
+                const div = document.createElement('div');
+                div.className = 'archived-item';
+                div.innerHTML = `<span>${found.label}</span><button class="btn-secondary" style="padding:4px 10px;font-size:0.75rem;">Restore</button>`;
+                div.querySelector('button').addEventListener('click', () => restoreFlatItem(archId));
+                archList.appendChild(div);
+            }
+        });
+        archRow.appendChild(archTd);
+        els.gridBody.appendChild(archRow);
     }
 }
 
@@ -463,15 +578,15 @@ async function renderWorkView() {
         flatNumbers.push((currentFloor * 100) + i);
     }
 
-    const workCategories = (currentVenture && currentVenture.work_categories) ? currentVenture.work_categories : WORK_CATEGORIES;
+    const workCategories = ensureWorkCategories((currentVenture && currentVenture.work_categories) ? currentVenture.work_categories : WORK_CATEGORIES);
 
     // Preload all cell data
     const promises = [];
 
     function queueLoads(category, items, flats) {
-        items.forEach((item, wi) => {
+        items.forEach((itemObj) => {
             flats.forEach(flat => {
-                const cellId = getWorkViewCellId(currentBlock, currentFloor, category, wi, flat);
+                const cellId = workViewCellKeyById(currentBlock, currentFloor, category, itemObj.id, flat);
                 promises.push(getCellData(cellId));
             });
         });
@@ -480,8 +595,8 @@ async function renderWorkView() {
     Object.entries(workCategories).forEach(([cat, items]) => {
         queueLoads(cat, items, flatNumbers);
     });
-    queueLoads('CORRIDORS', CORRIDORS, ['P-004']);
-    queueLoads('ELEVATION WORK', ELEVATION_WORK, ['P-004']);
+    queueLoads('CORRIDORS', CORRIDORS.map((l, i) => ({ id: `corridor_${i}`, label: l })), ['P-004']);
+    queueLoads('ELEVATION WORK', ELEVATION_WORK.map((l, i) => ({ id: `elevation_${i}`, label: l })), ['P-004']);
     await Promise.all(promises);
 
     // Render 5 main category sections
@@ -490,10 +605,10 @@ async function renderWorkView() {
     });
 
     // Corridors
-    container.appendChild(createSectionTable('CORRIDORS', CORRIDORS, ['P-004']));
+    container.appendChild(createSectionTable('CORRIDORS', CORRIDORS.map((l, i) => ({ id: `corridor_${i}`, label: l })), ['P-004']));
 
     // Elevation Work
-    container.appendChild(createSectionTable('ELEVATION WORK', ELEVATION_WORK, ['P-004']));
+    container.appendChild(createSectionTable('ELEVATION WORK', ELEVATION_WORK.map((l, i) => ({ id: `elevation_${i}`, label: l })), ['P-004']));
 }
 
 function createSectionTable(category, items, flats) {
@@ -502,7 +617,16 @@ function createSectionTable(category, items, flats) {
 
     const header = document.createElement('div');
     header.className = 'section-header';
-    header.textContent = category;
+    if (editMode) {
+        header.innerHTML = `<span class="cat-label">${category}</span>`;
+        const ctrl = document.createElement('span');
+        ctrl.style.marginLeft = '12px';
+        ctrl.innerHTML = '<button class="edit-btn" title="Rename category">&#9998;</button>';
+        ctrl.querySelector('button').addEventListener('click', () => startInlineEdit(header, category, (newName) => renameWorkCategory(category, newName)));
+        header.appendChild(ctrl);
+    } else {
+        header.textContent = category;
+    }
     section.appendChild(header);
 
     const tableWrapper = document.createElement('div');
@@ -543,7 +667,7 @@ function createSectionTable(category, items, flats) {
     // Table body
     const tbody = document.createElement('tbody');
 
-    items.forEach((item, wi) => {
+    items.forEach((itemObj, wi) => {
         const row = document.createElement('tr');
 
         const tdSNo = document.createElement('td');
@@ -552,11 +676,29 @@ function createSectionTable(category, items, flats) {
 
         const tdWork = document.createElement('td');
         tdWork.className = 'work-cell';
-        tdWork.textContent = item;
+        if (editMode) {
+            tdWork.innerHTML = `<span class="item-label">${itemObj.label}</span>`;
+            const controls = document.createElement('div');
+            controls.className = 'edit-controls';
+            controls.style.marginTop = '4px';
+            controls.innerHTML = `<button class="edit-btn" title="Rename">&#9998;</button><button class="edit-btn" title="Delete">&#10006;</button>`;
+            if (wi > 0) controls.innerHTML += `<button class="edit-btn" title="Move up">&#9650;</button>`;
+            if (wi < items.length - 1) controls.innerHTML += `<button class="edit-btn" title="Move down">&#9660;</button>`;
+            tdWork.appendChild(controls);
+
+            controls.querySelector('[title="Rename"]').addEventListener('click', () => startInlineEdit(tdWork, itemObj.label, (newLabel) => renameWorkItem(category, itemObj.id, newLabel)));
+            controls.querySelector('[title="Delete"]').addEventListener('click', () => showConfirm('Delete Item', `Delete '${itemObj.label}' from ${category}?`, () => deleteWorkItem(category, itemObj.id)));
+            const upBtn = controls.querySelector('[title="Move up"]');
+            const downBtn = controls.querySelector('[title="Move down"]');
+            if (upBtn) upBtn.addEventListener('click', () => reorderWorkItem(category, itemObj.id, -1));
+            if (downBtn) downBtn.addEventListener('click', () => reorderWorkItem(category, itemObj.id, 1));
+        } else {
+            tdWork.textContent = itemObj.label;
+        }
         row.appendChild(tdWork);
 
         flats.forEach(flat => {
-            const cellId = getWorkViewCellId(currentBlock, currentFloor, category, wi, flat);
+            const cellId = workViewCellKeyById(currentBlock, currentFloor, category, itemObj.id, flat);
             const cellData = cellsCache[cacheKey(cellId)];
             const color = cellData?.color || null;
 
@@ -566,7 +708,8 @@ function createSectionTable(category, items, flats) {
 
             const btn = document.createElement('button');
             btn.className = 'cell-btn ' + (color || 'empty');
-            btn.title = `${flat} - ${item}`;
+            btn.title = `${flat} - ${itemObj.label}`;
+            if (editMode) btn.disabled = true;
 
             const history = document.createElement('button');
             history.className = 'history-link';
@@ -577,27 +720,28 @@ function createSectionTable(category, items, flats) {
             td.appendChild(wrapper);
             row.appendChild(td);
 
-            btn.addEventListener('click', (e) => {
-                e.preventDefault();
-                openStatusPopup(cellId, item, flat, color);
-            });
+            if (!editMode) {
+                btn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    openStatusPopup(cellId, itemObj.label, flat, color);
+                });
+            }
 
             btn.addEventListener('contextmenu', (e) => {
                 e.preventDefault();
-                openTimelineModal(cellId, item, flat);
+                openTimelineModal(cellId, itemObj.label, flat);
             });
 
             history.addEventListener('click', () => {
-                openTimelineModal(cellId, item, flat);
+                openTimelineModal(cellId, itemObj.label, flat);
             });
         });
 
-        // Remarks summary
         const remarksTd = document.createElement('td');
         remarksTd.className = 'remarks-cell';
         const remarksParts = [];
         flats.forEach(flat => {
-            const cellId = getWorkViewCellId(currentBlock, currentFloor, category, wi, flat);
+            const cellId = workViewCellKeyById(currentBlock, currentFloor, category, itemObj.id, flat);
             const cellData = cellsCache[cacheKey(cellId)];
             if (cellData?.remarks) {
                 remarksParts.push(`${flat}: ${cellData.remarks}`);
@@ -609,6 +753,21 @@ function createSectionTable(category, items, flats) {
 
         tbody.appendChild(row);
     });
+
+    // Add item row in edit mode
+    if (editMode) {
+        const addRow = document.createElement('tr');
+        const addTd = document.createElement('td');
+        addTd.colSpan = flats.length + 3;
+        const inpId = `addWork_${slugId(category)}`;
+        addTd.innerHTML = `<div class="add-item-row"><input type="text" id="${inpId}" placeholder="New item"><button class="btn-secondary add-work-item-btn" data-cat="${category}">Add</button></div>`;
+        addRow.appendChild(addTd);
+        tbody.appendChild(addRow);
+        addTd.querySelector('.add-work-item-btn').addEventListener('click', () => {
+            const val = document.getElementById(inpId).value.trim();
+            if (val) addWorkItem(category, val);
+        });
+    }
 
     table.appendChild(tbody);
     tableWrapper.appendChild(table);
@@ -934,14 +1093,16 @@ async function renderSuperStructure() {
     const container = document.getElementById('superStructureContainer');
     container.innerHTML = '';
 
-    const ssItems = (currentVenture && currentVenture.super_structure_items) ? currentVenture.super_structure_items : SUPER_STRUCTURE_ITEMS;
+    const ssItems = getSuperStructureItems();
+    const archived = archivedItems['super_structure'] || [];
+    const activeItems = ssItems.filter(it => !archived.includes(it.id));
     const blocks = currentVenture ? currentVenture.blocks : [{ id: 'A' }, { id: 'B' }];
 
     // Preload all cell data
     const promises = [];
     blocks.forEach(block => {
-        ssItems.forEach((_, wi) => {
-            const cellId = `superstructure_${block.id}_${wi}`;
+        activeItems.forEach(itemObj => {
+            const cellId = ssCellKeyById(block.id, itemObj.id);
             promises.push(getCellData(cellId));
         });
     });
@@ -1003,7 +1164,7 @@ async function renderSuperStructure() {
 
         const tbody = document.createElement('tbody');
 
-        ssItems.forEach((item, wi) => {
+        activeItems.forEach((itemObj, wi) => {
             const row = document.createElement('tr');
 
             const tdSNo = document.createElement('td');
@@ -1012,10 +1173,28 @@ async function renderSuperStructure() {
 
             const tdWork = document.createElement('td');
             tdWork.className = 'work-cell';
-            tdWork.textContent = item;
+            if (editMode) {
+                tdWork.innerHTML = `<span class="item-label">${itemObj.label}</span>`;
+                const controls = document.createElement('div');
+                controls.className = 'edit-controls';
+                controls.style.marginTop = '4px';
+                controls.innerHTML = `<button class="edit-btn" title="Rename">&#9998;</button><button class="edit-btn" title="Delete">&#10006;</button>`;
+                if (wi > 0) controls.innerHTML += `<button class="edit-btn" title="Move up">&#9650;</button>`;
+                if (wi < activeItems.length - 1) controls.innerHTML += `<button class="edit-btn" title="Move down">&#9660;</button>`;
+                tdWork.appendChild(controls);
+
+                controls.querySelector('[title="Rename"]').addEventListener('click', () => startInlineEdit(tdWork, itemObj.label, (newLabel) => renameSuperItem(itemObj.id, newLabel)));
+                controls.querySelector('[title="Delete"]').addEventListener('click', () => showConfirm('Delete Item', `Delete '${itemObj.label}'? Existing tracking data will be hidden but not lost.`, () => archiveSuperItem(itemObj.id)));
+                const upBtn = controls.querySelector('[title="Move up"]');
+                const downBtn = controls.querySelector('[title="Move down"]');
+                if (upBtn) upBtn.addEventListener('click', () => reorderSuperItem(itemObj.id, -1));
+                if (downBtn) downBtn.addEventListener('click', () => reorderSuperItem(itemObj.id, 1));
+            } else {
+                tdWork.textContent = itemObj.label;
+            }
             row.appendChild(tdWork);
 
-            const cellId = `superstructure_${block.id}_${wi}`;
+            const cellId = ssCellKeyById(block.id, itemObj.id);
             const cellData = cellsCache[cacheKey(cellId)];
             const activeStatus = cellData?.color || cellData?.status || null;
 
@@ -1028,7 +1207,8 @@ async function renderSuperStructure() {
                 const btn = document.createElement('button');
                 const isActive = activeStatus === col.key;
                 btn.className = 'ss-cell ' + (isActive ? 'ss-cell-active ' + col.key : 'ss-cell-inactive');
-                btn.title = `${item} — ${col.label}`;
+                btn.title = `${itemObj.label} — ${col.label}`;
+                if (editMode) btn.disabled = true;
 
                 const history = document.createElement('button');
                 history.className = 'history-link';
@@ -1040,23 +1220,60 @@ async function renderSuperStructure() {
                 td.appendChild(wrapper);
                 row.appendChild(td);
 
-                btn.addEventListener('click', async () => {
-                    if (isActive) return;
-                    await updateSuperStructureStatus(block.id, wi, col.key, item);
-                });
+                if (!editMode) {
+                    btn.addEventListener('click', async () => {
+                        if (isActive) return;
+                        await updateSuperStructureStatus(block.id, itemObj.id, col.key, itemObj.label);
+                    });
+                }
 
                 btn.addEventListener('contextmenu', (e) => {
                     e.preventDefault();
-                    openTimelineModal(cellId, item, `${block.id} Block`);
+                    openTimelineModal(cellId, itemObj.label, `${block.id} Block`);
                 });
 
                 history.addEventListener('click', () => {
-                    openTimelineModal(cellId, item, `${block.id} Block`);
+                    openTimelineModal(cellId, itemObj.label, `${block.id} Block`);
                 });
             });
 
             tbody.appendChild(row);
         });
+
+        // Add item row in edit mode
+        if (editMode) {
+            const addRow = document.createElement('tr');
+            const addTd = document.createElement('td');
+            addTd.colSpan = 6;
+            addTd.innerHTML = '<div class="add-item-row"><input type="text" id="addSuperItemInput" placeholder="New super structure item"><button class="btn-secondary" id="addSuperItemBtn">Add</button></div>';
+            addRow.appendChild(addTd);
+            tbody.appendChild(addRow);
+            document.getElementById('addSuperItemBtn').addEventListener('click', () => {
+                const val = document.getElementById('addSuperItemInput').value.trim();
+                if (val) addSuperItem(val);
+            });
+        }
+
+        // Archived section in edit mode
+        if (editMode && archived.length > 0) {
+            const archRow = document.createElement('tr');
+            const archTd = document.createElement('td');
+            archTd.colSpan = 6;
+            archTd.innerHTML = '<div class="archived-section"><h4>Archived Items</h4></div>';
+            const archList = archTd.querySelector('.archived-section');
+            archived.forEach(archId => {
+                const found = ssItems.find(it => it.id === archId);
+                if (found) {
+                    const div = document.createElement('div');
+                    div.className = 'archived-item';
+                    div.innerHTML = `<span>${found.label}</span><button class="btn-secondary" style="padding:4px 10px;font-size:0.75rem;">Restore</button>`;
+                    div.querySelector('button').addEventListener('click', () => restoreSuperItem(archId));
+                    archList.appendChild(div);
+                }
+            });
+            archRow.appendChild(archTd);
+            tbody.appendChild(archRow);
+        }
 
         table.appendChild(tbody);
         tableWrapper.appendChild(table);
@@ -1067,12 +1284,12 @@ async function renderSuperStructure() {
     container.appendChild(ssWrapper);
 }
 
-async function updateSuperStructureStatus(block, workIndex, status, workItem) {
+async function updateSuperStructureStatus(block, itemId, status, workItem) {
     if (!db) {
         showToast('Firebase not configured. Changes not saved.', true);
         return;
     }
-    const cellId = `superstructure_${block}_${workIndex}`;
+    const cellId = ssCellKeyById(block, itemId);
     const cellRef = getSuperstructureRef(cellId);
     const today = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
     const statusLabel = COLOR_LABELS[status];
@@ -1169,7 +1386,8 @@ function createDefaultVentures() {
             ],
             flat_view_items: [...DEFAULT_WORK_ITEMS],
             work_categories: JSON.parse(JSON.stringify(WORK_CATEGORIES)),
-            super_structure_items: [...SUPER_STRUCTURE_ITEMS]
+            super_structure_items: [...SUPER_STRUCTURE_ITEMS],
+            archived: {}
         },
         {
             id: 'tripura',
@@ -1180,7 +1398,8 @@ function createDefaultVentures() {
             ],
             flat_view_items: [...DEFAULT_WORK_ITEMS],
             work_categories: JSON.parse(JSON.stringify(WORK_CATEGORIES)),
-            super_structure_items: [...SUPER_STRUCTURE_ITEMS]
+            super_structure_items: [...SUPER_STRUCTURE_ITEMS],
+            archived: {}
         }
     ];
 }
@@ -1198,7 +1417,8 @@ async function seedDefaultVentures() {
             blocks: v.blocks,
             flat_view_items: v.flat_view_items,
             work_categories: v.work_categories,
-            super_structure_items: v.super_structure_items
+            super_structure_items: v.super_structure_items,
+            archived: {}
         });
     });
     await batch.commit();
@@ -1215,6 +1435,7 @@ function renderVentureDashboard() {
     venturesList.forEach(venture => {
         const card = document.createElement('div');
         card.className = 'venture-card';
+        card.style.position = 'relative';
 
         const title = document.createElement('h3');
         title.textContent = venture.name;
@@ -1225,6 +1446,23 @@ function renderVentureDashboard() {
         const blockNames = venture.blocks.map(b => b.name || b.id).join(', ');
         blocksList.textContent = blockNames;
         card.appendChild(blocksList);
+
+        const cardEdit = document.createElement('div');
+        cardEdit.className = 'edit-controls';
+        cardEdit.style.position = 'absolute';
+        cardEdit.style.top = '12px';
+        cardEdit.style.right = '12px';
+        cardEdit.innerHTML = '<button class="edit-btn" title="Rename">&#9998;</button><button class="edit-btn" title="Delete">&#10006;</button>';
+        card.appendChild(cardEdit);
+
+        cardEdit.querySelector('[title="Rename"]').addEventListener('click', (e) => {
+            e.stopPropagation();
+            startInlineEdit(card, venture.name, (newName) => renameVenture(venture.id, newName));
+        });
+        cardEdit.querySelector('[title="Delete"]').addEventListener('click', (e) => {
+            e.stopPropagation();
+            showConfirm('Delete Venture', `This will delete ALL data for ${venture.name}. Type venture name to confirm.`, () => deleteVenture(venture.id), venture.name);
+        });
 
         card.addEventListener('click', () => openVenture(venture));
         grid.appendChild(card);
@@ -1243,7 +1481,9 @@ async function openVenture(venture) {
     currentBlock = currentBlockObj.id;
     currentFloor = 1;
     currentView = 'flat';
+    editMode = false;
     cellsCache = {};
+    archivedItems = venture.archived || {};
 
     workItems = venture.flat_view_items ? [...venture.flat_view_items] : [...DEFAULT_WORK_ITEMS];
 
@@ -1251,8 +1491,13 @@ async function openVenture(venture) {
     document.getElementById('trackerView').style.display = '';
     document.getElementById('breadcrumbBar').style.display = 'flex';
     document.getElementById('bcVenture').textContent = venture.name;
-
     document.getElementById('ventureTitle').textContent = venture.name.toUpperCase();
+
+    const editBtn = document.getElementById('editModeBtn');
+    editBtn.style.display = '';
+    editBtn.textContent = 'Edit Structure';
+    document.getElementById('editModeBanner').style.display = 'none';
+    document.body.classList.remove('edit-mode-active');
 
     // Reset view tabs
     document.querySelectorAll('.view-tab').forEach(b => b.classList.remove('active'));
@@ -1267,23 +1512,21 @@ async function openVenture(venture) {
     await renderGrid();
 }
 
-document.getElementById('backToVentures').addEventListener('click', () => {
+function exitToDashboard() {
     currentVenture = null;
     currentBlockObj = null;
     currentBlock = 'A';
     currentFloor = 1;
+    editMode = false;
     cellsCache = {};
+    document.getElementById('editModeBtn').style.display = 'none';
+    document.getElementById('editModeBanner').style.display = 'none';
+    document.body.classList.remove('edit-mode-active');
     renderVentureDashboard();
-});
+}
 
-document.getElementById('bcHome').addEventListener('click', () => {
-    currentVenture = null;
-    currentBlockObj = null;
-    currentBlock = 'A';
-    currentFloor = 1;
-    cellsCache = {};
-    renderVentureDashboard();
-});
+document.getElementById('backToVentures').addEventListener('click', exitToDashboard);
+document.getElementById('bcHome').addEventListener('click', exitToDashboard);
 
 // ========================
 // Setup Wizard
@@ -1502,7 +1745,8 @@ async function createVentureFromWizard() {
             blocks: wizardData.blocks,
             flat_view_items: [...DEFAULT_WORK_ITEMS],
             work_categories: wizardData.workCategories,
-            super_structure_items: wizardData.superItems
+            super_structure_items: wizardData.superItems,
+            archived: {}
         });
         showToast('Venture created successfully');
         closeWizard();
@@ -1511,4 +1755,352 @@ async function createVentureFromWizard() {
         console.error('Error creating venture:', e);
         showToast('Failed to create venture', true);
     }
+}
+
+// ========================
+// Edit Mode & Inline Editing
+// ========================
+document.getElementById('editModeBtn').addEventListener('click', () => {
+    editMode = !editMode;
+    const btn = document.getElementById('editModeBtn');
+    const banner = document.getElementById('editModeBanner');
+    if (editMode) {
+        btn.textContent = 'Done Editing';
+        banner.style.display = '';
+        document.body.classList.add('edit-mode-active');
+    } else {
+        btn.textContent = 'Edit Structure';
+        banner.style.display = 'none';
+        document.body.classList.remove('edit-mode-active');
+    }
+    cellsCache = {};
+    if (currentView === 'flat') renderGrid();
+    else if (currentView === 'work') renderWorkView();
+    else renderSuperStructure();
+});
+
+let confirmCallback = null;
+function showConfirm(title, message, onConfirm, requireType) {
+    confirmCallback = onConfirm;
+    document.getElementById('confirmTitle').textContent = title;
+    document.getElementById('confirmMessage').textContent = message;
+    const input = document.getElementById('confirmInput');
+    if (requireType) {
+        input.style.display = '';
+        input.value = '';
+        input.placeholder = `Type "${requireType}" to confirm`;
+    } else {
+        input.style.display = 'none';
+    }
+    document.getElementById('confirmOverlay').classList.add('show');
+}
+
+document.getElementById('confirmCancel').addEventListener('click', () => {
+    document.getElementById('confirmOverlay').classList.remove('show');
+    confirmCallback = null;
+});
+
+document.getElementById('confirmAction').addEventListener('click', () => {
+    const input = document.getElementById('confirmInput');
+    const required = input.placeholder.replace(/Type "(.+)" to confirm/, '$1');
+    if (input.style.display !== 'none' && input.value.trim() !== required) {
+        showToast('Confirmation text does not match', true);
+        return;
+    }
+    if (confirmCallback) confirmCallback();
+    document.getElementById('confirmOverlay').classList.remove('show');
+    confirmCallback = null;
+});
+
+function startInlineEdit(container, currentValue, onSave) {
+    const labelSpan = container.querySelector('.item-label, .cat-label');
+    const controls = container.querySelector('.edit-controls');
+    if (labelSpan) labelSpan.style.display = 'none';
+    if (controls) controls.style.display = 'none';
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'item-edit-input';
+    input.value = currentValue;
+    input.style.width = '140px';
+    container.appendChild(input);
+    input.focus();
+
+    const actionRow = document.createElement('div');
+    actionRow.style.display = 'flex';
+    actionRow.style.gap = '4px';
+    actionRow.style.marginTop = '4px';
+    actionRow.innerHTML = '<button class="btn-secondary" style="padding:4px 10px;font-size:0.8rem;">Save</button><button class="btn-text" style="padding:4px 10px;font-size:0.8rem;">Cancel</button>';
+    container.appendChild(actionRow);
+
+    actionRow.querySelector('.btn-secondary').addEventListener('click', () => {
+        const newVal = input.value.trim();
+        if (newVal && newVal !== currentValue) onSave(newVal);
+        cleanup();
+    });
+
+    actionRow.querySelector('.btn-text').addEventListener('click', cleanup);
+
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            const newVal = input.value.trim();
+            if (newVal && newVal !== currentValue) onSave(newVal);
+            cleanup();
+        } else if (e.key === 'Escape') {
+            cleanup();
+        }
+    });
+
+    function cleanup() {
+        input.remove();
+        actionRow.remove();
+        if (labelSpan) labelSpan.style.display = '';
+        if (controls) controls.style.display = '';
+    }
+}
+
+async function saveVentureConfig() {
+    if (!currentVenture) return;
+    if (!db) {
+        showToast('Changes saved locally (Firebase not configured)');
+        return;
+    }
+    try {
+        await getVentureRef(currentVenture.id).update({
+            flat_view_items: currentVenture.flat_view_items,
+            work_categories: currentVenture.work_categories,
+            super_structure_items: currentVenture.super_structure_items,
+            archived: archivedItems,
+            updated_at: firebase.firestore.FieldValue.serverTimestamp(),
+            updated_by: currentUser
+        });
+        showToast('Changes saved');
+    } catch (e) {
+        console.error('Error saving venture config:', e);
+        showToast('Failed to save changes', true);
+    }
+}
+
+function logEdit(action, section, itemId, oldVal, newVal) {
+    if (!db || !currentVenture) return;
+    const logEntry = {
+        action, section, item_id: itemId,
+        old_value: oldVal, new_value: newVal,
+        changed_by: currentUser,
+        changed_at: firebase.firestore.FieldValue.serverTimestamp()
+    };
+    db.collection('ventures').doc(currentVenture.id).collection('config').doc('edit_log')
+        .set({ entries: firebase.firestore.FieldValue.arrayUnion(logEntry) }, { merge: true }).catch(() => {});
+}
+
+// Flat View Editing
+async function renameFlatItem(itemId, newLabel) {
+    const items = ensureItemIds(currentVenture.flat_view_items || workItems);
+    const item = items.find(i => i.id === itemId);
+    if (!item) return;
+    const old = item.label;
+    item.label = newLabel;
+    currentVenture.flat_view_items = items;
+    logEdit('rename', 'flat_view', itemId, old, newLabel);
+    await saveVentureConfig();
+    cellsCache = {};
+    renderGrid();
+}
+
+async function addFlatItem(label) {
+    const items = ensureItemIds(currentVenture.flat_view_items || workItems);
+    const newId = `item_${slugId(label)}_${Date.now()}`;
+    items.push({ id: newId, label });
+    currentVenture.flat_view_items = items;
+    logEdit('add', 'flat_view', newId, null, label);
+    await saveVentureConfig();
+    cellsCache = {};
+    renderGrid();
+}
+
+async function archiveFlatItem(itemId) {
+    if (!archivedItems['flat_view']) archivedItems['flat_view'] = [];
+    archivedItems['flat_view'].push(itemId);
+    currentVenture.archived = archivedItems;
+    logEdit('delete', 'flat_view', itemId, null, null);
+    await saveVentureConfig();
+    cellsCache = {};
+    renderGrid();
+}
+
+async function restoreFlatItem(itemId) {
+    archivedItems['flat_view'] = (archivedItems['flat_view'] || []).filter(id => id !== itemId);
+    currentVenture.archived = archivedItems;
+    logEdit('restore', 'flat_view', itemId, null, null);
+    await saveVentureConfig();
+    cellsCache = {};
+    renderGrid();
+}
+
+async function reorderFlatItem(itemId, direction) {
+    const items = ensureItemIds(currentVenture.flat_view_items || workItems);
+    const idx = items.findIndex(i => i.id === itemId);
+    if (idx < 0) return;
+    const newIdx = idx + direction;
+    if (newIdx < 0 || newIdx >= items.length) return;
+    [items[idx], items[newIdx]] = [items[newIdx], items[idx]];
+    currentVenture.flat_view_items = items;
+    logEdit('reorder', 'flat_view', itemId, idx, newIdx);
+    await saveVentureConfig();
+    cellsCache = {};
+    renderGrid();
+}
+
+// Work View Editing
+async function renameWorkCategory(oldName, newName) {
+    const cats = ensureWorkCategories(currentVenture.work_categories || WORK_CATEGORIES);
+    if (cats[newName]) {
+        showToast('Category name already exists', true);
+        return;
+    }
+    cats[newName] = cats[oldName];
+    delete cats[oldName];
+    currentVenture.work_categories = cats;
+    logEdit('rename', 'work_category', oldName, oldName, newName);
+    await saveVentureConfig();
+    cellsCache = {};
+    renderWorkView();
+}
+
+async function renameWorkItem(category, itemId, newLabel) {
+    const cats = ensureWorkCategories(currentVenture.work_categories || WORK_CATEGORIES);
+    const item = cats[category].find(i => i.id === itemId);
+    if (!item) return;
+    const old = item.label;
+    item.label = newLabel;
+    currentVenture.work_categories = cats;
+    logEdit('rename', 'work_item', itemId, old, newLabel);
+    await saveVentureConfig();
+    cellsCache = {};
+    renderWorkView();
+}
+
+async function addWorkItem(category, label) {
+    const cats = ensureWorkCategories(currentVenture.work_categories || WORK_CATEGORIES);
+    const newId = `item_${slugId(category)}_${slugId(label)}_${Date.now()}`;
+    cats[category].push({ id: newId, label });
+    currentVenture.work_categories = cats;
+    logEdit('add', 'work_item', newId, null, label);
+    await saveVentureConfig();
+    cellsCache = {};
+    renderWorkView();
+}
+
+async function deleteWorkItem(category, itemId) {
+    const cats = ensureWorkCategories(currentVenture.work_categories || WORK_CATEGORIES);
+    cats[category] = cats[category].filter(i => i.id !== itemId);
+    currentVenture.work_categories = cats;
+    logEdit('delete', 'work_item', itemId, null, null);
+    await saveVentureConfig();
+    cellsCache = {};
+    renderWorkView();
+}
+
+async function reorderWorkItem(category, itemId, direction) {
+    const cats = ensureWorkCategories(currentVenture.work_categories || WORK_CATEGORIES);
+    const items = cats[category];
+    const idx = items.findIndex(i => i.id === itemId);
+    if (idx < 0) return;
+    const newIdx = idx + direction;
+    if (newIdx < 0 || newIdx >= items.length) return;
+    [items[idx], items[newIdx]] = [items[newIdx], items[idx]];
+    currentVenture.work_categories = cats;
+    logEdit('reorder', 'work_item', itemId, idx, newIdx);
+    await saveVentureConfig();
+    cellsCache = {};
+    renderWorkView();
+}
+
+// Super Structure Editing
+async function renameSuperItem(itemId, newLabel) {
+    const items = ensureItemIds(currentVenture.super_structure_items || SUPER_STRUCTURE_ITEMS);
+    const item = items.find(i => i.id === itemId);
+    if (!item) return;
+    const old = item.label;
+    item.label = newLabel;
+    currentVenture.super_structure_items = items;
+    logEdit('rename', 'super_structure', itemId, old, newLabel);
+    await saveVentureConfig();
+    cellsCache = {};
+    renderSuperStructure();
+}
+
+async function addSuperItem(label) {
+    const items = ensureItemIds(currentVenture.super_structure_items || SUPER_STRUCTURE_ITEMS);
+    const newId = `ss_item_${slugId(label)}_${Date.now()}`;
+    items.push({ id: newId, label });
+    currentVenture.super_structure_items = items;
+    logEdit('add', 'super_structure', newId, null, label);
+    await saveVentureConfig();
+    cellsCache = {};
+    renderSuperStructure();
+}
+
+async function archiveSuperItem(itemId) {
+    if (!archivedItems['super_structure']) archivedItems['super_structure'] = [];
+    archivedItems['super_structure'].push(itemId);
+    currentVenture.archived = archivedItems;
+    logEdit('delete', 'super_structure', itemId, null, null);
+    await saveVentureConfig();
+    cellsCache = {};
+    renderSuperStructure();
+}
+
+async function restoreSuperItem(itemId) {
+    archivedItems['super_structure'] = (archivedItems['super_structure'] || []).filter(id => id !== itemId);
+    currentVenture.archived = archivedItems;
+    logEdit('restore', 'super_structure', itemId, null, null);
+    await saveVentureConfig();
+    cellsCache = {};
+    renderSuperStructure();
+}
+
+async function reorderSuperItem(itemId, direction) {
+    const items = ensureItemIds(currentVenture.super_structure_items || SUPER_STRUCTURE_ITEMS);
+    const idx = items.findIndex(i => i.id === itemId);
+    if (idx < 0) return;
+    const newIdx = idx + direction;
+    if (newIdx < 0 || newIdx >= items.length) return;
+    [items[idx], items[newIdx]] = [items[newIdx], items[idx]];
+    currentVenture.super_structure_items = items;
+    logEdit('reorder', 'super_structure', itemId, idx, newIdx);
+    await saveVentureConfig();
+    cellsCache = {};
+    renderSuperStructure();
+}
+
+// Venture Dashboard Editing
+async function renameVenture(ventureId, newName) {
+    const venture = venturesList.find(v => v.id === ventureId);
+    if (!venture) return;
+    venture.name = newName;
+    if (db) {
+        try {
+            await getVentureRef(ventureId).update({ name: newName });
+            showToast('Venture renamed');
+        } catch (e) {
+            showToast('Failed to rename venture', true);
+        }
+    }
+    renderVentureDashboard();
+}
+
+async function deleteVenture(ventureId) {
+    const venture = venturesList.find(v => v.id === ventureId);
+    if (!venture) return;
+    venturesList = venturesList.filter(v => v.id !== ventureId);
+    if (db) {
+        try {
+            await getVentureRef(ventureId).delete();
+            showToast('Venture deleted');
+        } catch (e) {
+            showToast('Failed to delete venture', true);
+        }
+    }
+    renderVentureDashboard();
 }

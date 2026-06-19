@@ -14,11 +14,17 @@
         <header class="top-bar">
             <div class="logo">VGrand Infra Tracking</div>
             <div class="user-info">
+                <button id="editModeBtn" class="btn-secondary" style="display:none;">Edit Structure</button>
                 <span id="userEmail"></span>
                 <button id="settingsBtn" class="btn-icon" title="Work Items Settings">&#9881;</button>
                 <button id="signOutBtn" class="btn-secondary">Sign Out</button>
             </div>
         </header>
+
+        <!-- Edit Mode Banner -->
+        <div id="editModeBanner" class="edit-mode-banner" style="display:none;">
+            Edit mode active — structural changes apply to this venture only
+        </div>
 
         <!-- Breadcrumb -->
         <div id="breadcrumbBar" class="breadcrumb" style="display:none;">
@@ -154,6 +160,19 @@
             <div class="wizard-actions">
                 <button id="wizardBack" class="btn-secondary" style="display:none;">Back</button>
                 <button id="wizardNext" class="btn-primary">Next</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirm Dialog -->
+    <div id="confirmOverlay" class="confirm-overlay">
+        <div class="confirm-box">
+            <h4 id="confirmTitle">Confirm</h4>
+            <p id="confirmMessage">Are you sure?</p>
+            <input type="text" id="confirmInput" class="confirm-input" style="display:none;" placeholder="Type to confirm">
+            <div class="confirm-actions">
+                <button id="confirmCancel" class="btn-secondary">Cancel</button>
+                <button id="confirmAction" class="btn-primary" style="background:#c0392b;">Delete</button>
             </div>
         </div>
     </div>
