@@ -340,11 +340,17 @@ async function saveVenturesToLS() {
 }
 
 async function seedEliteBlockColors(blockId) {
-    const gateKey = `elite_${blockId}_seeded_v3`;
-    if (localStorage.getItem(gateKey) === 'true') return;
+    const gateKey = `elite_${blockId}_seeded_v4`;
+    if (localStorage.getItem(gateKey) === 'true') {
+        console.log(`Seed ${blockId} already done`);
+        return;
+    }
 
     const elite = venturesList.find(v => v.id === 'elite');
-    if (!elite) return;
+    if (!elite) {
+        console.log('Elite venture not found, skipping seed');
+        return;
+    }
 
     // Generate item IDs exactly like ensureItemIds does for DEFAULT_WORK_ITEMS
     const items = DEFAULT_WORK_ITEMS.map((label, i) => ({ id: `item_${slugId(label)}_${i}`, label }));
@@ -427,10 +433,28 @@ async function seedEliteBlockColors(blockId) {
         }
     }
 
-    if (batch.length > 0) {
-        await apiPost('/api/cells/batch', { cells: batch });
+    console.log(`Seeding ${batch.length} cells for block ${blockId}`);
+
+    // Chunk into batches of 50 to avoid Supabase limits
+    const chunkSize = 50;
+    let success = true;
+    for (let i = 0; i < batch.length; i += chunkSize) {
+        const chunk = batch.slice(i, i + chunkSize);
+        try {
+            const resp = await apiPost('/api/cells/batch', { cells: chunk });
+            console.log(`Batch ${i/chunkSize + 1} sent: ${chunk.length} cells`, resp);
+        } catch (err) {
+            console.error(`Batch ${i/chunkSize + 1} failed:`, err);
+            success = false;
+        }
     }
-    localStorage.setItem(gateKey, 'true');
+
+    if (success) {
+        localStorage.setItem(gateKey, 'true');
+        console.log(`Seed ${blockId} complete`);
+    } else {
+        console.error(`Seed ${blockId} had failures — will retry on next load`);
+    }
 }
 
 async function loadVenturesFromLS() {
