@@ -998,7 +998,6 @@ document.querySelectorAll('.view-tab').forEach(btn => {
         document.querySelectorAll('.view-tab').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         currentView = btn.dataset.view;
-        cellsCache = {};
         document.getElementById('flatViewContainer').style.display = 'none';
         document.getElementById('workViewContainer').style.display = 'none';
         document.getElementById('superStructureContainer').style.display = 'none';
@@ -1058,7 +1057,7 @@ init();
 // ========================
 // Super Structure View
 // ========================
-async function renderSuperStructure() {
+function renderSuperStructure() {
     const container = document.getElementById('superStructureContainer');
     container.innerHTML = '';
 
@@ -1066,16 +1065,6 @@ async function renderSuperStructure() {
     const archived = archivedItems['super_structure'] || [];
     const activeItems = ssItems.filter(it => !archived.includes(it.id));
     const blocks = currentVenture ? currentVenture.blocks : [{ id: 'A' }, { id: 'B' }];
-
-    // Preload all cell data
-    const promises = [];
-    blocks.forEach(block => {
-        activeItems.forEach(itemObj => {
-            const cellId = ssCellKeyById(block.id, itemObj.id);
-            promises.push(getSsCellData(cellId));
-        });
-    });
-    await Promise.all(promises);
 
     const ssWrapper = document.createElement('div');
     ssWrapper.className = 'ss-wrapper';
