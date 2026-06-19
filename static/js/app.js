@@ -39,6 +39,7 @@ let currentBlock = 'A';
 let currentFloor = 1;
 let workItems = [];
 let cellsCache = {};
+const pendingSaves = new Map(); // cellKey -> debounce timeout
 let selectedCellId = null;
 let selectedWorkItem = null;
 let selectedFlat = null;
@@ -293,39 +294,36 @@ async function updateCellColor(cellId, color, workItem, flat) {
     }
     let data;
     if (existing) {
-        const timeline = existing.timeline || [];
-        timeline.push(timelineEntry);
+        const timeline = [...(existing.timeline || []), timelineEntry];
         let remarks = existing.remarks || '';
-        if (autoRemark) {
-            remarks = remarks ? remarks + '\n' + autoRemark : autoRemark;
-        }
-        data = {
-            ...existing,
-            color: color || null,
-            remarks: remarks,
-            timeline: timeline,
-            updated_at: new Date().toISOString(),
-            updated_by: currentUser
-        };
+        if (autoRemark) remarks = remarks ? remarks + '\n' + autoRemark : autoRemark;
+        data = { ...existing, color: color || null, remarks, timeline,
+            updated_at: new Date().toISOString(), updated_by: currentUser };
     } else {
-        data = {
-            color: color || null,
-            remarks: autoRemark,
-            timeline: [timelineEntry],
-            updated_at: new Date().toISOString(),
-            updated_by: currentUser
-        };
+        data = { color: color || null, remarks: autoRemark, timeline: [timelineEntry],
+            updated_at: new Date().toISOString(), updated_by: currentUser };
     }
-    try {
-        await apiPost('/api/cell/' + encodeURIComponent(ck), data);
-        cellsCache[ck] = data;
-        if (currentView === 'flat') await renderGrid();
-        else if (currentView === 'work') await renderWorkView();
-        showToast('Status updated');
-    } catch (err) {
-        console.error('Failed to save cell:', err);
-        showToast('Failed to save — please retry', true);
+
+    // --- Optimistic instant update: cache + DOM, no full re-render ---
+    cellsCache[ck] = data;
+    const cellBtn = document.querySelector(`[data-cell-id="${ck}"]`);
+    if (cellBtn) {
+        cellBtn.className = 'cell-btn ' + (color || 'empty');
     }
+    showToast('Status updated');
+
+    // --- Background save with debounce (deduplicate rapid taps on same cell) ---
+    if (pendingSaves.has(ck)) clearTimeout(pendingSaves.get(ck));
+    const timer = setTimeout(async () => {
+        pendingSaves.delete(ck);
+        try {
+            await apiPost('/api/cell/' + encodeURIComponent(ck), data);
+        } catch (err) {
+            console.error('Failed to save cell:', err);
+            showToast('Save failed — please retry', true);
+        }
+    }, 300);
+    pendingSaves.set(ck, timer);
 }
 
 async function saveCellRemarks(cellId, remarks) {
@@ -460,6 +458,7 @@ async function renderGrid() {
             const btn = document.createElement('button');
             btn.className = 'cell-btn ' + (color || 'empty');
             btn.title = `${flat} - ${item.label}`;
+            btn.dataset.cellId = cacheKey(cellId);
             if (editMode) btn.disabled = true;
 
             const history = document.createElement('button');
@@ -1209,7 +1208,8 @@ async function pollData() {
         }
     } catch (e) {}
 
-    // Cells (merge into cache)
+    // Cells (merge into cache) — skip if saves still pending to avoid overwriting optimistic state
+    if (pendingSaves.size > 0) return;
     try {
         const fresh = await apiGet('/api/cells');
         if (fresh) {
