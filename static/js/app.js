@@ -295,7 +295,14 @@ async function updateCellColor(cellId, color, workItem, flat) {
     let data;
     if (existing) {
         const timeline = [...(existing.timeline || []), timelineEntry];
+        // Strip any previous auto-remarks, keep only user-typed remarks
+        const autoRemarkPatterns = [
+            /^Patch work started on .+$/m,
+            /^Completed on .+$/m,
+            /^Work started on .+$/m
+        ];
         let remarks = existing.remarks || '';
+        autoRemarkPatterns.forEach(p => { remarks = remarks.replace(p, '').trim(); });
         if (autoRemark) remarks = remarks ? remarks + '\n' + autoRemark : autoRemark;
         data = { ...existing, color: color || null, remarks, timeline,
             updated_at: new Date().toISOString(), updated_by: currentUser };
