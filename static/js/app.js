@@ -2584,6 +2584,25 @@ document.getElementById('invoiceViewModal').addEventListener('click', (e) => {
     document.getElementById(id).addEventListener('change', renderInvoiceCards);
 });
 
+document.getElementById('invoiceAddCategoryBtn').addEventListener('click', () => {
+    const input = document.getElementById('invoiceAddCategoryInput');
+    const val = input.value.trim();
+    if (!val) return;
+    saveInvoiceCategory(val);
+    populateInvoiceFilterCategories();
+    const dl = document.getElementById('invoiceCategoryList');
+    if (dl) {
+        dl.innerHTML = '';
+        loadInvoiceCategories().forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = c;
+            dl.appendChild(opt);
+        });
+    }
+    input.value = '';
+    showToast('Category "' + val + '" added');
+});
+
 document.getElementById('invoiceClearFilters').addEventListener('click', () => {
     document.getElementById('invoiceFilterVenture').value = 'all';
     document.getElementById('invoiceFilterCategory').value = 'all';
