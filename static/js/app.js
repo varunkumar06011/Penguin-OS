@@ -83,6 +83,22 @@ const WORK_CATEGORIES = {
 const CORRIDORS = ["Plaster", "Mesh", "Lanter", "Wiring", "Stains & Cleaning", "Flooring"];
 const ELEVATION_WORK = ["Marka", "Elevation", "Electrics", "Wall Care", "Texture"];
 
+const SUPER_STRUCTURE_ITEMS = [
+    "Site Preparation", "Excavation", "Marking", "Piles", "Piles Concrete",
+    "Pile Caps", "Plinth Beam", "Plinth Wall", "Filling", "40mm Bed",
+    "Sunken Tank", "Columns for 1st Slab", "Slab Shuttering for 1st Slab", "Bar Bending for 1st Slab", "Electrical Pipes",
+    "1st Slab Casting", "Columns for 2nd Slab", "Shuttering for 2nd Slab", "Bar Bending for 2nd Slab", "Electrical Pipes",
+    "2nd Slab Casting", "Columns for 3rd Slab", "Slab Shuttering for 3rd Slab", "Bar Bending for 3rd Slab", "Electrical Pipes",
+    "3rd Slab Casting", "Columns for 4th Slab", "Slab Shuttering for 4th Slab", "Bar Bending for 4th Slab", "Electrical Pipes",
+    "4th Slab Casting", "Columns for 5th Slab", "Slab Shuttering for 5th Slab", "Bar Bending for 5th Slab", "Electrical Pipes",
+    "5th Slab Casting", "Columns for 6th Slab", "Slab Shuttering for 6th Slab", "Bar Bending for 6th Slab", "Electrical Pipes",
+    "6th Slab Casting", "Columns for Lift Tank & Stairs", "Shuttering for Above", "Slab Casting", "Water Tank Bar Bending",
+    "Water Tank NCC", "Elevation Scaffolding", "Elevation Mess & Packing", "Elevation Brick Work", "Elevation (Plastering)",
+    "Electrical SWM & Plumbing Outside Lines", "1M CH Work", "Scaffolding Removal", "Patch Work", "Elevation Texture",
+    "Elevation Primer", "Elevation Paint 1st Coat", "Compound Wall Columns & Beam", "Compound Wall Brick & Plastering",
+    "Compound Wall Paint", "Final Coat"
+];
+
 let currentView = 'flat';
 
 // ========================
@@ -611,8 +627,9 @@ async function openTimelineModal(cellId, workItem, flat) {
             const item = document.createElement('div');
             item.className = 'timeline-item';
             const dot = document.createElement('span');
-            dot.className = 'dot ' + (entry.color || 'empty');
-            if (!entry.color) dot.style.background = '#ccc';
+            const statusColor = entry.color || entry.status || 'empty';
+            dot.className = 'dot ' + statusColor;
+            if (!statusColor || statusColor === 'empty') dot.style.background = '#ccc';
             const info = document.createElement('div');
             info.innerHTML = `<strong>${entry.status_label || 'Cleared'}</strong><br><span class="timeline-meta">${entry.date || ''} — changed by: ${entry.changed_by || 'Unknown'}</span>`;
             item.appendChild(dot);
@@ -738,8 +755,10 @@ els.saveSettingsBtn.addEventListener('click', async () => {
     closeSettingsModal();
     if (currentView === 'flat') {
         renderGrid();
-    } else {
+    } else if (currentView === 'work') {
         renderWorkView();
+    } else {
+        renderSuperStructure();
     }
 });
 
@@ -781,14 +800,18 @@ document.querySelectorAll('.view-tab').forEach(btn => {
         btn.classList.add('active');
         currentView = btn.dataset.view;
         cellsCache = {};
+        document.getElementById('flatViewContainer').style.display = 'none';
+        document.getElementById('workViewContainer').style.display = 'none';
+        document.getElementById('superStructureContainer').style.display = 'none';
         if (currentView === 'flat') {
             document.getElementById('flatViewContainer').style.display = '';
-            document.getElementById('workViewContainer').style.display = 'none';
             renderGrid();
-        } else {
-            document.getElementById('flatViewContainer').style.display = 'none';
+        } else if (currentView === 'work') {
             document.getElementById('workViewContainer').style.display = '';
             renderWorkView();
+        } else {
+            document.getElementById('superStructureContainer').style.display = '';
+            renderSuperStructure();
         }
     });
 });
@@ -818,3 +841,202 @@ async function init() {
 }
 
 init();
+
+// ========================
+// Super Structure View
+// ========================
+async function renderSuperStructure() {
+    const container = document.getElementById('superStructureContainer');
+    container.innerHTML = '';
+
+    const blocks = ['A', 'B'];
+
+    // Preload all cell data
+    const promises = [];
+    blocks.forEach(block => {
+        SUPER_STRUCTURE_ITEMS.forEach((_, wi) => {
+            const cellId = `superstructure_${block}_${wi}`;
+            promises.push(getCellData(cellId));
+        });
+    });
+    await Promise.all(promises);
+
+    const ssWrapper = document.createElement('div');
+    ssWrapper.className = 'ss-wrapper';
+
+    blocks.forEach(block => {
+        const section = document.createElement('div');
+        section.className = 'ss-section';
+
+        const header = document.createElement('div');
+        header.className = 'section-header';
+        header.textContent = `${block} BLOCK`;
+        section.appendChild(header);
+
+        const subHeader = document.createElement('div');
+        subHeader.className = 'ss-subheader';
+        subHeader.textContent = 'PROGRESS';
+        section.appendChild(subHeader);
+
+        const tableWrapper = document.createElement('div');
+        tableWrapper.className = 'grid-container';
+        tableWrapper.style.padding = '0';
+
+        const table = document.createElement('table');
+        table.className = 'tracker-table ss-table';
+
+        const thead = document.createElement('thead');
+        const headerRow = document.createElement('tr');
+
+        const thSNo = document.createElement('th');
+        thSNo.textContent = 'S.No';
+        thSNo.style.width = '40px';
+        headerRow.appendChild(thSNo);
+
+        const thWork = document.createElement('th');
+        thWork.textContent = 'Work Description';
+        thWork.className = 'work-col';
+        headerRow.appendChild(thWork);
+
+        const statusCols = [
+            { key: 'red', label: 'Yet to Start', cls: 'ss-header-red' },
+            { key: 'yellow', label: 'In Progress', cls: 'ss-header-yellow' },
+            { key: 'blue', label: 'Pending', cls: 'ss-header-blue' },
+            { key: 'green', label: 'Completed', cls: 'ss-header-green' }
+        ];
+
+        statusCols.forEach(col => {
+            const th = document.createElement('th');
+            th.textContent = col.label;
+            th.className = col.cls;
+            headerRow.appendChild(th);
+        });
+
+        thead.appendChild(headerRow);
+        table.appendChild(thead);
+
+        const tbody = document.createElement('tbody');
+
+        SUPER_STRUCTURE_ITEMS.forEach((item, wi) => {
+            const row = document.createElement('tr');
+
+            const tdSNo = document.createElement('td');
+            tdSNo.textContent = wi + 1;
+            row.appendChild(tdSNo);
+
+            const tdWork = document.createElement('td');
+            tdWork.className = 'work-cell';
+            tdWork.textContent = item;
+            row.appendChild(tdWork);
+
+            const cellId = `superstructure_${block}_${wi}`;
+            const cellData = cellsCache[cellId];
+            const activeStatus = cellData?.color || cellData?.status || null;
+
+            statusCols.forEach(col => {
+                const td = document.createElement('td');
+                td.className = 'ss-cell-col';
+                const wrapper = document.createElement('div');
+                wrapper.className = 'cell-wrapper';
+
+                const btn = document.createElement('button');
+                const isActive = activeStatus === col.key;
+                btn.className = 'ss-cell ' + (isActive ? 'ss-cell-active ' + col.key : 'ss-cell-inactive');
+                btn.title = `${item} — ${col.label}`;
+
+                const history = document.createElement('button');
+                history.className = 'history-link';
+                history.textContent = 'history';
+                history.style.fontSize = '0.6rem';
+
+                wrapper.appendChild(btn);
+                wrapper.appendChild(history);
+                td.appendChild(wrapper);
+                row.appendChild(td);
+
+                // Single click sets this status directly
+                btn.addEventListener('click', async () => {
+                    if (isActive) return; // no-op if already active
+                    await updateSuperStructureStatus(block, wi, col.key, item);
+                });
+
+                // Right-click timeline
+                btn.addEventListener('contextmenu', (e) => {
+                    e.preventDefault();
+                    openTimelineModal(cellId, item, `${block} Block`);
+                });
+
+                history.addEventListener('click', () => {
+                    openTimelineModal(cellId, item, `${block} Block`);
+                });
+            });
+
+            tbody.appendChild(row);
+        });
+
+        table.appendChild(tbody);
+        tableWrapper.appendChild(table);
+        section.appendChild(tableWrapper);
+        ssWrapper.appendChild(section);
+    });
+
+    container.appendChild(ssWrapper);
+}
+
+async function updateSuperStructureStatus(block, workIndex, status, workItem) {
+    if (!db) {
+        showToast('Firebase not configured. Changes not saved.', true);
+        return;
+    }
+    const cellId = `superstructure_${block}_${workIndex}`;
+    const cellRef = getCellRef(cellId);
+    const today = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+    const statusLabel = COLOR_LABELS[status];
+
+    let autoRemark = '';
+    if (status === 'blue') autoRemark = `Patch work started on ${today}`;
+    else if (status === 'green') autoRemark = `Completed on ${today}`;
+    else if (status === 'yellow') autoRemark = `Work started on ${today}`;
+
+    const timelineEntry = {
+        color: status,
+        status_label: statusLabel,
+        date: today,
+        changed_by: currentUser
+    };
+
+    try {
+        const doc = await cellRef.get();
+        if (doc.exists) {
+            const existing = doc.data();
+            const timeline = existing.timeline || [];
+            timeline.push(timelineEntry);
+            let remarks = existing.remarks || '';
+            if (autoRemark) {
+                remarks = remarks ? remarks + '\n' + autoRemark : autoRemark;
+            }
+            await cellRef.update({
+                color: status,
+                remarks: remarks,
+                timeline: timeline,
+                updated_at: firebase.firestore.FieldValue.serverTimestamp(),
+                updated_by: currentUser
+            });
+        } else {
+            await cellRef.set({
+                color: status,
+                remarks: autoRemark,
+                timeline: [timelineEntry],
+                updated_at: firebase.firestore.FieldValue.serverTimestamp(),
+                updated_by: currentUser
+            });
+        }
+        cellsCache[cellId] = null;
+        await getCellData(cellId);
+        renderSuperStructure();
+        showToast('Status updated');
+    } catch (e) {
+        console.error('Error updating superstructure cell:', e);
+        showToast('Failed to update status', true);
+    }
+}
