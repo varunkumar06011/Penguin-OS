@@ -316,11 +316,16 @@ async function updateCellColor(cellId, color, workItem, flat) {
             updated_by: currentUser
         };
     }
-    await apiPost('/api/cell/' + encodeURIComponent(ck), data);
-    cellsCache[ck] = data;
-    if (currentView === 'flat') renderGrid();
-    else if (currentView === 'work') renderWorkView();
-    showToast('Status updated');
+    try {
+        await apiPost('/api/cell/' + encodeURIComponent(ck), data);
+        cellsCache[ck] = data;
+        if (currentView === 'flat') await renderGrid();
+        else if (currentView === 'work') await renderWorkView();
+        showToast('Status updated');
+    } catch (err) {
+        console.error('Failed to save cell:', err);
+        showToast('Failed to save — please retry', true);
+    }
 }
 
 async function saveCellRemarks(cellId, remarks) {
@@ -332,11 +337,16 @@ async function saveCellRemarks(cellId, remarks) {
         updated_at: new Date().toISOString(),
         updated_by: currentUser
     };
-    await apiPost('/api/cell/' + encodeURIComponent(ck), data);
-    cellsCache[ck] = data;
-    if (currentView === 'flat') renderGrid();
-    else if (currentView === 'work') renderWorkView();
-    showToast('Remarks saved');
+    try {
+        await apiPost('/api/cell/' + encodeURIComponent(ck), data);
+        cellsCache[ck] = data;
+        if (currentView === 'flat') await renderGrid();
+        else if (currentView === 'work') await renderWorkView();
+        showToast('Remarks saved');
+    } catch (err) {
+        console.error('Failed to save remarks:', err);
+        showToast('Failed to save \u2014 please retry', true);
+    }
 }
 
 // Venture persistence
@@ -1141,7 +1151,7 @@ let pollInterval = null;
 
 function startPolling() {
     if (pollInterval) clearInterval(pollInterval);
-    pollInterval = setInterval(pollData, 5000);
+    pollInterval = setInterval(pollData, 2000);
 }
 
 async function pollData() {
@@ -1205,7 +1215,7 @@ async function pollData() {
         if (fresh) {
             let cellsChanged = false;
             for (const key in fresh) {
-                if (cellsCache[key] !== fresh[key]) {
+                if (JSON.stringify(cellsCache[key]) !== JSON.stringify(fresh[key])) {
                     cellsCache[key] = fresh[key];
                     cellsChanged = true;
                 }
