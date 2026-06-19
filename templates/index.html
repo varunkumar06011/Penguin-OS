@@ -177,6 +177,7 @@
                 <button class="view-tab active" data-view="flat">Flat View</button>
                 <button class="view-tab" data-view="work">Work View</button>
                 <button class="view-tab" data-view="super">Super Structure</button>
+                <button id="bulkSelectBtn" class="btn-bulk-select">&#9635; Bulk Select</button>
             </div>
 
             <!-- Legend -->
@@ -185,6 +186,19 @@
                 <span class="legend-item"><span class="dot yellow"></span> In progress</span>
                 <span class="legend-item"><span class="dot blue"></span> Patch work</span>
                 <span class="legend-item"><span class="dot green"></span> Completed</span>
+            </div>
+
+            <!-- Bulk Action Bar -->
+            <div id="bulkActionBar" class="bulk-action-bar" style="display:none;">
+                <span id="bulkCount">0 cells selected</span>
+                <div class="bulk-colors">
+                    <button class="bulk-color-btn" data-color="red" title="Yet to start"></button>
+                    <button class="bulk-color-btn" data-color="yellow" title="In progress"></button>
+                    <button class="bulk-color-btn" data-color="blue" title="Patch work"></button>
+                    <button class="bulk-color-btn" data-color="green" title="Completed"></button>
+                    <button class="bulk-color-btn empty" data-color="" title="Clear">&#10005;</button>
+                </div>
+                <button id="bulkCancelBtn" class="btn-bulk-cancel">Cancel</button>
             </div>
 
             <!-- Flat View -->

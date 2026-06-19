@@ -40,6 +40,8 @@ let currentFloor = 1;
 let workItems = [];
 let cellsCache = {};
 const pendingSaves = new Map(); // cellKey -> debounce timeout
+let bulkMode = false;
+const bulkSelected = new Set(); // set of cacheKeys selected in bulk mode
 let selectedCellId = null;
 let selectedWorkItem = null;
 let selectedFlat = null;
@@ -480,7 +482,20 @@ async function renderGrid() {
             if (!editMode) {
                 btn.addEventListener('click', (e) => {
                     e.preventDefault();
-                    openStatusPopup(cellId, item.label, flat, color);
+                    if (bulkMode) {
+                        const ck = cacheKey(cellId);
+                        if (bulkSelected.has(ck)) {
+                            bulkSelected.delete(ck);
+                            btn.classList.remove('bulk-selected');
+                        } else {
+                            bulkSelected.add(ck);
+                            btn.classList.add('bulk-selected');
+                        }
+                        document.getElementById('bulkCount').textContent =
+                            `${bulkSelected.size} cell${bulkSelected.size !== 1 ? 's' : ''} selected`;
+                    } else {
+                        openStatusPopup(cellId, item.label, flat, color);
+                    }
                 });
             }
 
@@ -792,6 +807,87 @@ els.clearStatusBtn.addEventListener('click', async () => {
 els.cancelStatusBtn.addEventListener('click', closeStatusPopup);
 els.statusPopup.addEventListener('click', (e) => {
     if (e.target === els.statusPopup) closeStatusPopup();
+});
+
+// ========================
+// Bulk Select
+// ========================
+function exitBulkMode() {
+    bulkMode = false;
+    bulkSelected.clear();
+    document.getElementById('bulkSelectBtn').classList.remove('active');
+    document.getElementById('bulkActionBar').style.display = 'none';
+    // Remove all bulk-selected highlights
+    document.querySelectorAll('.cell-btn.bulk-selected').forEach(b => b.classList.remove('bulk-selected'));
+}
+
+document.getElementById('bulkSelectBtn').addEventListener('click', () => {
+    bulkMode = !bulkMode;
+    bulkSelected.clear();
+    const btn = document.getElementById('bulkSelectBtn');
+    const bar = document.getElementById('bulkActionBar');
+    if (bulkMode) {
+        btn.classList.add('active');
+        bar.style.display = 'flex';
+        document.getElementById('bulkCount').textContent = '0 cells selected';
+    } else {
+        exitBulkMode();
+    }
+});
+
+document.getElementById('bulkCancelBtn').addEventListener('click', exitBulkMode);
+
+document.querySelectorAll('.bulk-color-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        if (bulkSelected.size === 0) { showToast('No cells selected', true); return; }
+        const color = btn.dataset.color || null;
+        const today = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+        const statusLabel = color ? COLOR_LABELS[color] : 'Cleared';
+        let autoRemark = '';
+        if (color === 'blue') autoRemark = `Patch work started on ${today}`;
+        else if (color === 'green') autoRemark = `Completed on ${today}`;
+        else if (color === 'yellow') autoRemark = `Work started on ${today}`;
+
+        const autoRemarkPatterns = [/^Patch work started on .+$/m, /^Completed on .+$/m, /^Work started on .+$/m];
+        const timelineEntry = { color: color || null, status_label: statusLabel, date: today, changed_by: currentUser };
+
+        const batch = [];
+        bulkSelected.forEach(ck => {
+            const existing = cellsCache[ck] || null;
+            let data;
+            if (existing) {
+                const timeline = [...(existing.timeline || []), timelineEntry];
+                let remarks = existing.remarks || '';
+                autoRemarkPatterns.forEach(p => { remarks = remarks.replace(p, '').trim(); });
+                if (autoRemark) remarks = remarks ? remarks + '\n' + autoRemark : autoRemark;
+                data = { ...existing, color: color || null, remarks, timeline,
+                    updated_at: new Date().toISOString(), updated_by: currentUser };
+            } else {
+                data = { color: color || null, remarks: autoRemark, timeline: [timelineEntry],
+                    updated_at: new Date().toISOString(), updated_by: currentUser };
+            }
+            cellsCache[ck] = data;
+            // Update DOM instantly
+            const cellBtn = document.querySelector(`[data-cell-id="${ck}"]`);
+            if (cellBtn) cellBtn.className = 'cell-btn ' + (color || 'empty');
+            batch.push({ id: ck, data });
+        });
+
+        const count = batch.length;
+        exitBulkMode();
+        showToast(`Updating ${count} cells…`);
+
+        // Send in chunks of 50
+        try {
+            for (let i = 0; i < batch.length; i += 50) {
+                await apiPost('/api/cells/batch', { cells: batch.slice(i, i + 50) });
+            }
+            showToast(`${count} cells updated`);
+        } catch (err) {
+            console.error('Bulk save failed:', err);
+            showToast('Bulk save failed — please retry', true);
+        }
+    });
 });
 
 // ========================
