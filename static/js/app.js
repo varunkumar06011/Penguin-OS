@@ -1035,15 +1035,15 @@ function showToast(message, isError = false) {
 async function init() {
     const ok = await checkSession();
     if (!ok) return;
-    await preloadCells();
-    await loadVentures();
-    allInvoices = await apiGet('/api/invoices') || [];
-    allCategories = await apiGet('/api/settings/invoice_categories') || [
+    try { await preloadCells(); } catch (e) { cellsCache = {}; }
+    try { await loadVentures(); } catch (e) { venturesList = createDefaultVentures(); renderVentureDashboard(); }
+    try { allInvoices = await apiGet('/api/invoices') || []; } catch (e) { allInvoices = []; }
+    try { allCategories = await apiGet('/api/settings/invoice_categories') || [
         'Brick', 'Sand', 'Steel', 'Cement', 'Tiles',
         'Electrical', 'Plumbing', 'Labour', 'Paint', 'Wood'
-    ];
-    allPOs = await apiGet('/api/pos') || [];
-    allVendors = await apiGet('/api/vendors') || [];
+    ]; } catch (e) { allCategories = ['Brick', 'Sand', 'Steel', 'Cement', 'Tiles', 'Electrical', 'Plumbing', 'Labour', 'Paint', 'Wood']; }
+    try { allPOs = await apiGet('/api/pos') || []; } catch (e) { allPOs = []; }
+    try { allVendors = await apiGet('/api/vendors') || []; } catch (e) { allVendors = []; }
 }
 
 async function preloadCells() {
@@ -1307,7 +1307,7 @@ async function updateSuperStructureStatus(block, itemId, status, workItem) {
 // Venture Management
 // ========================
 async function loadVentures() {
-    loadVenturesFromLS();
+    await loadVenturesFromLS();
     renderVentureDashboard();
 }
 
