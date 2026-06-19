@@ -431,6 +431,15 @@ body {
 .color-btn.yellow { background: #f1c40f; color: #333; }
 .color-btn.blue { background: #3498db; }
 .color-btn.green { background: #2ecc71; }
+.color-btn.empty {
+    background: #f0f2f5;
+    color: #555;
+    border: 2px dashed #ccc;
+}
+.color-btn.empty:hover {
+    background: #e8eaf0;
+    border-color: #999;
+}
 
 .popup-actions {
     display: flex;

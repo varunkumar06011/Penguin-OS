@@ -743,7 +743,7 @@ function closeStatusPopup() {
 document.querySelectorAll('.color-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
         if (!selectedCellId) return;
-        const color = btn.dataset.color;
+        const color = btn.dataset.color || null;
         await updateCellColor(selectedCellId, color, selectedWorkItem, selectedFlat);
         closeStatusPopup();
     });
