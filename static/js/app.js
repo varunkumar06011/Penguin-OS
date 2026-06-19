@@ -1152,7 +1152,6 @@ function renderBlockTabs() {
             currentBlock = block.id;
             currentBlockObj = block;
             currentFloor = 1;
-            cellsCache = {};
             renderFloorTabs();
             if (currentView === 'flat') {
                 renderGrid();
@@ -1185,7 +1184,6 @@ function renderFloorTabs() {
             document.querySelectorAll('.floor-tab').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             currentFloor = f;
-            cellsCache = {};
             if (currentView === 'flat') {
                 renderGrid();
             } else if (currentView === 'work') {
@@ -1724,7 +1722,6 @@ function exitToDashboard() {
     currentBlock = 'A';
     currentFloor = 1;
     editMode = false;
-    cellsCache = {};
     document.getElementById('editModeBtn').style.display = 'none';
     document.getElementById('editModeBanner').style.display = 'none';
     document.body.classList.remove('edit-mode-active');
@@ -1736,7 +1733,6 @@ document.getElementById('backToVentures').addEventListener('click', exitToDashbo
 document.getElementById('pendingWorkBtn').addEventListener('click', () => {
     document.querySelectorAll('.view-tab').forEach(b => b.classList.remove('active'));
     currentView = 'pending';
-    cellsCache = {};
     document.getElementById('flatViewContainer').style.display = 'none';
     document.getElementById('workViewContainer').style.display = 'none';
     document.getElementById('superStructureContainer').style.display = 'none';
@@ -1983,7 +1979,6 @@ document.getElementById('editModeBtn').addEventListener('click', () => {
         banner.style.display = 'none';
         document.body.classList.remove('edit-mode-active');
     }
-    cellsCache = {};
     if (currentView === 'flat') renderGrid();
     else if (currentView === 'work') renderWorkView();
     else renderSuperStructure();
@@ -2103,7 +2098,6 @@ async function renameFlatItem(itemId, newLabel) {
     currentVenture.flat_view_items = items;
     await logEdit('rename', 'flat_view', itemId, old, newLabel);
     await saveVentureConfig();
-    cellsCache = {};
     renderGrid();
 }
 
@@ -2114,7 +2108,6 @@ async function addFlatItem(label) {
     currentVenture.flat_view_items = items;
     await logEdit('add', 'flat_view', newId, null, label);
     await saveVentureConfig();
-    cellsCache = {};
     renderGrid();
 }
 
@@ -2124,7 +2117,6 @@ async function archiveFlatItem(itemId) {
     currentVenture.archived = archivedItems;
     await logEdit('delete', 'flat_view', itemId, null, null);
     await saveVentureConfig();
-    cellsCache = {};
     renderGrid();
 }
 
@@ -2133,7 +2125,6 @@ async function restoreFlatItem(itemId) {
     currentVenture.archived = archivedItems;
     await logEdit('restore', 'flat_view', itemId, null, null);
     await saveVentureConfig();
-    cellsCache = {};
     renderGrid();
 }
 
@@ -2147,7 +2138,6 @@ async function reorderFlatItem(itemId, direction) {
     currentVenture.flat_view_items = items;
     await logEdit('reorder', 'flat_view', itemId, idx, newIdx);
     await saveVentureConfig();
-    cellsCache = {};
     renderGrid();
 }
 
@@ -2163,7 +2153,6 @@ async function renameWorkCategory(oldName, newName) {
     currentVenture.work_categories = cats;
     await logEdit('rename', 'work_category', oldName, oldName, newName);
     await saveVentureConfig();
-    cellsCache = {};
     renderWorkView();
 }
 
@@ -2176,7 +2165,6 @@ async function renameWorkItem(category, itemId, newLabel) {
     currentVenture.work_categories = cats;
     await logEdit('rename', 'work_item', itemId, old, newLabel);
     await saveVentureConfig();
-    cellsCache = {};
     renderWorkView();
 }
 
@@ -2187,7 +2175,6 @@ async function addWorkItem(category, label) {
     currentVenture.work_categories = cats;
     await logEdit('add', 'work_item', newId, null, label);
     await saveVentureConfig();
-    cellsCache = {};
     renderWorkView();
 }
 
@@ -2197,7 +2184,6 @@ async function deleteWorkItem(category, itemId) {
     currentVenture.work_categories = cats;
     await logEdit('delete', 'work_item', itemId, null, null);
     await saveVentureConfig();
-    cellsCache = {};
     renderWorkView();
 }
 
@@ -2212,7 +2198,6 @@ async function reorderWorkItem(category, itemId, direction) {
     currentVenture.work_categories = cats;
     await logEdit('reorder', 'work_item', itemId, idx, newIdx);
     await saveVentureConfig();
-    cellsCache = {};
     renderWorkView();
 }
 
@@ -2226,7 +2211,6 @@ async function renameSuperItem(itemId, newLabel) {
     currentVenture.super_structure_items = items;
     await logEdit('rename', 'super_structure', itemId, old, newLabel);
     await saveVentureConfig();
-    cellsCache = {};
     renderSuperStructure();
 }
 
@@ -2237,7 +2221,6 @@ async function addSuperItem(label) {
     currentVenture.super_structure_items = items;
     await logEdit('add', 'super_structure', newId, null, label);
     await saveVentureConfig();
-    cellsCache = {};
     renderSuperStructure();
 }
 
@@ -2247,7 +2230,6 @@ async function archiveSuperItem(itemId) {
     currentVenture.archived = archivedItems;
     await logEdit('delete', 'super_structure', itemId, null, null);
     await saveVentureConfig();
-    cellsCache = {};
     renderSuperStructure();
 }
 
@@ -2256,7 +2238,6 @@ async function restoreSuperItem(itemId) {
     currentVenture.archived = archivedItems;
     await logEdit('restore', 'super_structure', itemId, null, null);
     await saveVentureConfig();
-    cellsCache = {};
     renderSuperStructure();
 }
 
@@ -2270,7 +2251,6 @@ async function reorderSuperItem(itemId, direction) {
     currentVenture.super_structure_items = items;
     await logEdit('reorder', 'super_structure', itemId, idx, newIdx);
     await saveVentureConfig();
-    cellsCache = {};
     renderSuperStructure();
 }
 
