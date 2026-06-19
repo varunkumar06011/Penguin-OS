@@ -9,11 +9,16 @@ async function apiGet(path) {
 }
 
 async function apiPost(path, data) {
-    await fetch(path, {
+    const res = await fetch(path, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
     });
+    if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(`HTTP ${res.status}: ${text}`);
+    }
+    return res.json();
 }
 
 async function apiDelete(path) {
@@ -340,7 +345,7 @@ async function saveVenturesToLS() {
 }
 
 async function seedEliteBlockColors(blockId) {
-    const gateKey = `elite_${blockId}_seeded_v4`;
+    const gateKey = `elite_${blockId}_seeded_v5`;
     if (localStorage.getItem(gateKey) === 'true') {
         console.log(`Seed ${blockId} already done`);
         return;
@@ -351,6 +356,8 @@ async function seedEliteBlockColors(blockId) {
         console.log('Elite venture not found, skipping seed');
         return;
     }
+
+    showToast(`Seeding ${blockId} Block colors...`);
 
     // Generate item IDs exactly like ensureItemIds does for DEFAULT_WORK_ITEMS
     const items = DEFAULT_WORK_ITEMS.map((label, i) => ({ id: `item_${slugId(label)}_${i}`, label }));
@@ -1681,7 +1688,6 @@ async function openVenture(venture) {
     currentFloor = 1;
     currentView = 'flat';
     editMode = false;
-    cellsCache = {};
     archivedItems = venture.archived || {};
 
     workItems = venture.flat_view_items ? [...venture.flat_view_items] : [...DEFAULT_WORK_ITEMS];
