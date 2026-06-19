@@ -1164,3 +1164,408 @@ body {
 ::-webkit-scrollbar-thumb:hover {
     background: #a0a4ac;
 }
+
+/* ========================
+   Responsive - Tablet & Mobile
+   ======================== */
+
+/* Tablet (768px - 1024px) */
+@media (max-width: 1024px) {
+    .top-bar {
+        padding: 10px 16px;
+    }
+    .logo {
+        font-size: 1rem;
+    }
+    .venture-dashboard {
+        padding: 24px 16px;
+    }
+    .grid-container {
+        padding: 16px;
+    }
+    .work-view-container {
+        padding: 16px;
+    }
+    .ss-container {
+        padding: 16px;
+    }
+    .floor-tabs,
+    .view-toggle,
+    .legend {
+        padding: 10px 16px;
+    }
+    .venture-header {
+        padding: 10px 16px;
+    }
+    .breadcrumb {
+        padding: 6px 16px;
+    }
+    .cell-btn {
+        width: 36px;
+        height: 36px;
+    }
+    .ss-cell {
+        width: 32px;
+        height: 32px;
+    }
+}
+
+/* Mobile (< 768px) */
+@media (max-width: 768px) {
+    /* Top bar */
+    .top-bar {
+        padding: 8px 12px;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    .logo {
+        font-size: 0.95rem;
+        order: 1;
+    }
+    .user-info {
+        order: 3;
+        width: 100%;
+        justify-content: flex-end;
+        gap: 8px;
+    }
+    .user-info span {
+        font-size: 0.8rem;
+        max-width: 120px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .btn-secondary {
+        padding: 6px 12px;
+        font-size: 0.8rem;
+    }
+    .btn-icon {
+        width: 30px;
+        height: 30px;
+        font-size: 1rem;
+    }
+
+    /* Venture header */
+    .venture-header {
+        padding: 8px 12px;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    .back-btn {
+        padding: 5px 10px;
+        font-size: 0.8rem;
+    }
+    .venture-title {
+        font-size: 1rem;
+    }
+
+    /* Block tabs */
+    .block-tabs {
+        gap: 4px;
+        overflow-x: auto;
+        padding: 2px;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+    }
+    .block-tabs::-webkit-scrollbar {
+        display: none;
+    }
+    .block-tab {
+        padding: 6px 14px;
+        font-size: 0.85rem;
+        white-space: nowrap;
+        flex-shrink: 0;
+    }
+
+    /* Floor tabs */
+    .floor-tabs {
+        gap: 4px;
+        padding: 8px 12px;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+    }
+    .floor-tabs::-webkit-scrollbar {
+        display: none;
+    }
+    .floor-tab {
+        padding: 6px 14px;
+        font-size: 0.8rem;
+        white-space: nowrap;
+        flex-shrink: 0;
+    }
+
+    /* View toggle */
+    .view-toggle {
+        gap: 4px;
+        padding: 8px 12px;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+    }
+    .view-toggle::-webkit-scrollbar {
+        display: none;
+    }
+    .view-tab {
+        padding: 6px 14px;
+        font-size: 0.8rem;
+        white-space: nowrap;
+        flex-shrink: 0;
+    }
+
+    /* Legend */
+    .legend {
+        gap: 10px;
+        padding: 8px 12px;
+    }
+    .legend-item {
+        font-size: 0.75rem;
+    }
+    .dot {
+        width: 12px;
+        height: 12px;
+    }
+
+    /* Grid / Table */
+    .grid-container {
+        padding: 8px;
+    }
+    .tracker-table {
+        min-width: 600px;
+    }
+    .tracker-table th,
+    .tracker-table td {
+        padding: 4px;
+        font-size: 0.75rem;
+    }
+    .work-col {
+        min-width: 120px;
+        padding-left: 8px !important;
+    }
+    .remarks-col {
+        min-width: 140px;
+        padding-left: 8px !important;
+    }
+    .cell-btn {
+        width: 28px;
+        height: 28px;
+        border-radius: 4px;
+    }
+    .cell-wrapper {
+        gap: 2px;
+    }
+    .history-link {
+        font-size: 0.6rem;
+    }
+    .work-cell {
+        font-size: 0.75rem;
+        padding-left: 8px !important;
+    }
+    .remarks-cell {
+        font-size: 0.7rem;
+        max-width: 140px;
+    }
+
+    /* Work view */
+    .work-view-container {
+        padding: 8px;
+    }
+    .work-view-section {
+        margin-bottom: 16px;
+    }
+    .section-header {
+        padding: 8px 12px;
+        font-size: 0.85rem;
+    }
+
+    /* Super structure */
+    .ss-container {
+        padding: 8px;
+    }
+    .ss-wrapper {
+        gap: 16px;
+    }
+    .ss-section {
+        min-width: 0;
+    }
+    .ss-subheader {
+        padding: 6px 12px;
+        font-size: 0.75rem;
+    }
+    .ss-table th,
+    .ss-table td {
+        padding: 4px 2px;
+        font-size: 0.7rem;
+    }
+    .ss-cell {
+        width: 26px;
+        height: 26px;
+        border-radius: 4px;
+    }
+
+    /* Venture dashboard */
+    .venture-dashboard {
+        padding: 16px 12px;
+    }
+    .dashboard-header h2 {
+        font-size: 1.2rem;
+    }
+    .venture-grid {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+    .venture-card {
+        padding: 16px;
+    }
+    .venture-card h3 {
+        font-size: 1.05rem;
+    }
+    .add-venture-card {
+        min-height: 100px;
+    }
+
+    /* Modals */
+    .modal {
+        padding: 10px;
+        align-items: flex-end;
+    }
+    .modal-content {
+        padding: 16px;
+        max-height: 90vh;
+        border-radius: 12px 12px 0 0;
+    }
+    .modal.show {
+        align-items: flex-end;
+    }
+    .popup-small,
+    .popup-large {
+        max-width: 100%;
+    }
+
+    /* Wizard */
+    .wizard-body {
+        padding: 4px 0 12px;
+    }
+    .wizard-actions {
+        flex-direction: column;
+        gap: 8px;
+    }
+    .wizard-actions .btn-secondary,
+    .wizard-actions .btn-primary {
+        width: 100%;
+    }
+    .wizard-block-row {
+        flex-direction: column;
+        gap: 8px;
+    }
+    .wizard-block-row .wizard-field {
+        width: 100%;
+    }
+
+    /* Edit controls */
+    .edit-controls {
+        gap: 6px;
+    }
+    .edit-btn {
+        font-size: 1rem;
+        padding: 4px 8px;
+        min-width: 32px;
+        min-height: 32px;
+    }
+    .add-item-row {
+        flex-direction: column;
+        gap: 8px;
+    }
+    .add-item-row input,
+    .add-item-row button {
+        width: 100%;
+    }
+    .item-edit-input {
+        width: 100%;
+        font-size: 1rem;
+        padding: 8px;
+    }
+
+    /* Confirm dialog */
+    .confirm-overlay {
+        padding: 10px;
+        align-items: flex-end;
+    }
+    .confirm-box {
+        padding: 16px;
+        border-radius: 12px 12px 0 0;
+        max-width: 100%;
+    }
+    .confirm-actions {
+        flex-direction: column;
+        gap: 8px;
+    }
+    .confirm-actions .btn-secondary,
+    .confirm-actions .btn-primary {
+        width: 100%;
+    }
+
+    /* Breadcrumb */
+    .breadcrumb {
+        padding: 6px 12px;
+        font-size: 0.8rem;
+        flex-wrap: wrap;
+    }
+
+    /* Edit mode banner */
+    .edit-mode-banner {
+        padding: 6px 12px;
+        font-size: 0.75rem;
+    }
+
+    /* Toast */
+    .toast {
+        left: 12px;
+        right: 12px;
+        bottom: 12px;
+        text-align: center;
+        padding: 10px 16px;
+        font-size: 0.85rem;
+    }
+}
+
+/* Small mobile (< 480px) */
+@media (max-width: 480px) {
+    .top-bar {
+        padding: 6px 10px;
+    }
+    .logo {
+        font-size: 0.85rem;
+    }
+    .block-tab,
+    .floor-tab,
+    .view-tab {
+        padding: 5px 10px;
+        font-size: 0.75rem;
+    }
+    .cell-btn {
+        width: 24px;
+        height: 24px;
+    }
+    .ss-cell {
+        width: 22px;
+        height: 22px;
+    }
+    .tracker-table th,
+    .tracker-table td {
+        padding: 2px;
+        font-size: 0.7rem;
+    }
+    .work-col {
+        min-width: 100px;
+    }
+    .venture-card {
+        padding: 12px;
+    }
+    .venture-card h3 {
+        font-size: 1rem;
+    }
+    .venture-card .blocks-list {
+        font-size: 0.8rem;
+    }
+}
