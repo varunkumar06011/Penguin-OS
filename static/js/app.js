@@ -2794,3 +2794,787 @@ document.addEventListener('keydown', (e) => {
         closeLightbox();
     }
 });
+
+// ========================
+// Purchase Orders Module
+// ========================
+
+if (typeof escapeHtml !== 'function') {
+    function escapeHtml(s) {
+        return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+}
+
+let poEditingId = null;
+let poDocBuffer = {};
+let poPaymentAttBuffer = null;
+let poPaymentTargetId = null;
+let vendorEditingId = null;
+let _vendorFromPOForm = false;
+
+const PO_STATUS_LABELS = {
+    draft: 'Draft',
+    sent: 'Sent to Vendor',
+    quoted: 'Vendor Quoted',
+    approved: 'Approved',
+    partial_delivered: 'Partially Delivered',
+    delivered: 'Delivered',
+    closed: 'Closed'
+};
+
+const PO_STATUS_COLORS = {
+    draft: '#888',
+    sent: '#3498db',
+    quoted: '#9b59b6',
+    approved: '#2980b9',
+    partial_delivered: '#e67e22',
+    delivered: '#27ae60',
+    closed: '#1a2a6c'
+};
+
+function loadPOs() { return lsGet('purchase_orders') || []; }
+function savePOs(pos) { lsSet('purchase_orders', pos); }
+function loadVendors() { return lsGet('vendors') || []; }
+function saveVendors(vendors) { lsSet('vendors', vendors); }
+
+function poAutoNumber() {
+    const pos = loadPOs();
+    const year = new Date().getFullYear().toString().slice(-2);
+    const num = (pos.length + 1).toString().padStart(3, '0');
+    return `PO-${year}-${num}`;
+}
+
+function getPOBalance(po) {
+    const billed = parseFloat(po.billAmount) || 0;
+    const quoted = parseFloat(po.quotedAmount) || 0;
+    const base = billed || quoted;
+    const paid = (po.payments || []).reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
+    return { base, paid, outstanding: Math.max(0, base - paid) };
+}
+
+function isPOFlaggedUnpaid(po) {
+    const { outstanding } = getPOBalance(po);
+    return outstanding > 0 && (po.status === 'delivered' || po.status === 'closed' || po.status === 'partial_delivered');
+}
+
+function openPOPanel() {
+    document.getElementById('venturesDashboard').style.display = 'none';
+    ['invoicesPanel', 'attendancePanel'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+    });
+    document.getElementById('poPanel').style.display = '';
+    document.getElementById('breadcrumbBar').style.display = 'none';
+    populatePOFilters();
+    renderPOCards();
+}
+
+function closePOPanel() {
+    document.getElementById('poPanel').style.display = 'none';
+    document.getElementById('venturesDashboard').style.display = '';
+}
+
+document.getElementById('openPOBtn').addEventListener('click', openPOPanel);
+document.getElementById('backFromPO').addEventListener('click', closePOPanel);
+
+function populatePOFilters() {
+    const ventureSel = document.getElementById('poFilterVenture');
+    ventureSel.innerHTML = '<option value="all">All Ventures</option>';
+    venturesList.forEach(v => {
+        const o = document.createElement('option');
+        o.value = v.id; o.textContent = v.name;
+        ventureSel.appendChild(o);
+    });
+
+    const vendorSel = document.getElementById('poFilterVendor');
+    vendorSel.innerHTML = '<option value="all">All Vendors</option>';
+    loadVendors().forEach(v => {
+        const o = document.createElement('option');
+        o.value = v.id; o.textContent = v.name;
+        vendorSel.appendChild(o);
+    });
+}
+
+['poFilterStatus','poFilterVenture','poFilterVendor','poFilterType','poFilterFrom','poFilterTo'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('change', renderPOCards);
+});
+
+document.getElementById('poClearFilters').addEventListener('click', () => {
+    ['poFilterStatus','poFilterVenture','poFilterVendor','poFilterType'].forEach(id => {
+        document.getElementById(id).value = 'all';
+    });
+    document.getElementById('poFilterFrom').value = '';
+    document.getElementById('poFilterTo').value = '';
+    renderPOCards();
+});
+
+function renderPOCards() {
+    const grid = document.getElementById('poCardsGrid');
+    const banner = document.getElementById('poOutstandingBanner');
+    grid.innerHTML = '';
+
+    let pos = loadPOs().slice().sort((a, b) => (b.orderDate || '').localeCompare(a.orderDate || ''));
+
+    const totalOutstanding = pos.reduce((s, po) => s + getPOBalance(po).outstanding, 0);
+    const flaggedCount = pos.filter(isPOFlaggedUnpaid).length;
+
+    if (totalOutstanding > 0) {
+        banner.innerHTML = `
+            <span class="po-banner-alert">&#9888; Total outstanding across all POs:</span>
+            <span class="po-banner-amt">&#8377;${totalOutstanding.toLocaleString('en-IN', {maximumFractionDigits:0})}</span>
+            ${flaggedCount > 0 ? `<span class="po-banner-flag">${flaggedCount} delivered but unpaid</span>` : ''}
+        `;
+        banner.style.display = 'flex';
+    } else {
+        banner.style.display = 'none';
+    }
+
+    const fStatus = document.getElementById('poFilterStatus').value;
+    const fVenture = document.getElementById('poFilterVenture').value;
+    const fVendor = document.getElementById('poFilterVendor').value;
+    const fType = document.getElementById('poFilterType').value;
+    const fFrom = document.getElementById('poFilterFrom').value;
+    const fTo = document.getElementById('poFilterTo').value;
+
+    if (fStatus !== 'all') pos = pos.filter(p => p.status === fStatus);
+    if (fVenture !== 'all') pos = pos.filter(p => p.ventureId === fVenture);
+    if (fVendor !== 'all') pos = pos.filter(p => p.vendorId === fVendor);
+    if (fType !== 'all') pos = pos.filter(p => p.orderType === fType);
+    if (fFrom) pos = pos.filter(p => (p.orderDate || '') >= fFrom);
+    if (fTo) pos = pos.filter(p => (p.orderDate || '') <= fTo);
+
+    if (pos.length === 0) {
+        grid.innerHTML = '<div class="invoice-empty-state">No purchase orders found. Click "+ New PO" to create one.</div>';
+        return;
+    }
+
+    pos.forEach(po => {
+        const vendor = loadVendors().find(v => v.id === po.vendorId);
+        const venture = venturesList.find(v => v.id === po.ventureId);
+        const { base, paid, outstanding } = getPOBalance(po);
+        const flagged = isPOFlaggedUnpaid(po);
+        const dateDisplay = po.orderDate ? new Date(po.orderDate + 'T00:00:00').toLocaleDateString('en-IN', {day:'numeric',month:'short',year:'numeric'}) : '&#8212;';
+        const statusColor = PO_STATUS_COLORS[po.status] || '#888';
+
+        const card = document.createElement('div');
+        card.className = 'po-card' + (flagged ? ' po-card-flagged' : '');
+        card.innerHTML = `
+            <div class="po-card-top">
+                <span class="po-card-number">${escapeHtml(po.poNumber || '&#8212;')}</span>
+                <span class="po-card-status" style="background:${statusColor};">${PO_STATUS_LABELS[po.status] || po.status}</span>
+            </div>
+            <div class="po-card-vendor">${escapeHtml(vendor ? vendor.name : '&#8212;')}</div>
+            <div class="po-card-desc">${escapeHtml((po.description || '').substring(0, 80))}${(po.description||'').length > 80 ? '&#8230;' : ''}</div>
+            <div class="po-card-meta">
+                <span>&#128197; ${dateDisplay}</span>
+                ${po.orderType ? `<span>&#127991; ${escapeHtml(po.orderType)}</span>` : ''}
+                ${venture ? `<span>&#127959; ${escapeHtml(venture.name)}</span>` : ''}
+            </div>
+            <div class="po-card-financials">
+                <div class="po-fin-row">
+                    <span class="po-fin-label">Billed</span>
+                    <span class="po-fin-value">${base ? '&#8377;' + base.toLocaleString('en-IN', {maximumFractionDigits:0}) : '&#8212;'}</span>
+                </div>
+                <div class="po-fin-row">
+                    <span class="po-fin-label">Paid</span>
+                    <span class="po-fin-value po-fin-paid">${paid ? '&#8377;' + paid.toLocaleString('en-IN', {maximumFractionDigits:0}) : '&#8212;'}</span>
+                </div>
+                <div class="po-fin-row">
+                    <span class="po-fin-label">Outstanding</span>
+                    <span class="po-fin-value ${outstanding > 0 ? 'po-fin-outstanding' : 'po-fin-clear'}">${outstanding > 0 ? '&#8377;' + outstanding.toLocaleString('en-IN', {maximumFractionDigits:0}) : '&#10003; Clear'}</span>
+                </div>
+            </div>
+            ${flagged ? '<div class="po-card-unpaid-flag">&#9888; Delivered &#8212; payment pending</div>' : ''}
+        `;
+        card.addEventListener('click', () => openPOView(po.id));
+        grid.appendChild(card);
+    });
+}
+
+const PO_DOC_SLOTS = [
+    { key: 'orderSheet', label: 'Our Order Sheet / Requirement List', icon: '&#128203;' },
+    { key: 'vendorProforma', label: 'Vendor Proforma / Quotation', icon: '&#128233;' },
+    { key: 'finalBill', label: 'Vendor Final Bill / Tax Invoice', icon: '&#129534;' }
+];
+
+function renderPODocSlots(existingDocs) {
+    const container = document.getElementById('poDocSlots');
+    container.innerHTML = '';
+    poDocBuffer = {};
+
+    PO_DOC_SLOTS.forEach(slot => {
+        const existing = existingDocs[slot.key];
+        if (existing) poDocBuffer[slot.key] = existing;
+
+        const div = document.createElement('div');
+        div.className = 'po-doc-slot';
+        div.innerHTML = `
+            <div class="po-doc-slot-label">${slot.icon} ${slot.label}</div>
+            <div class="po-doc-slot-body" id="poDocSlot_${slot.key}">
+                ${existing
+                    ? `<div class="po-doc-existing">
+                           <span class="po-doc-filename">${escapeHtml(existing.name)}</span>
+                           <button class="btn-text po-doc-view-btn" data-key="${slot.key}">View</button>
+                           <button class="btn-text po-doc-remove-btn" data-key="${slot.key}" style="color:#c0392b;">Remove</button>
+                       </div>`
+                    : `<div class="invoice-file-drop po-doc-drop" data-key="${slot.key}">
+                           <span>Click to upload</span>
+                           <input type="file" class="po-doc-file-input" data-key="${slot.key}" accept="image/jpeg,image/png,image/webp,application/pdf" style="display:none;">
+                       </div>`
+                }
+            </div>
+        `;
+        container.appendChild(div);
+    });
+
+    container.querySelectorAll('.po-doc-drop').forEach(drop => {
+        const input = drop.querySelector('.po-doc-file-input');
+        drop.addEventListener('click', () => input.click());
+        input.addEventListener('change', () => {
+            const file = input.files[0];
+            if (!file) return;
+            if (file.size > 5 * 1024 * 1024) { showToast('File too large (max 5MB)', true); return; }
+            const key = drop.dataset.key;
+            const reader = new FileReader();
+            reader.onload = e => {
+                poDocBuffer[key] = { name: file.name, type: file.type, dataUrl: e.target.result };
+                const slotBody = document.getElementById('poDocSlot_' + key);
+                slotBody.innerHTML = `<div class="po-doc-existing">
+                    <span class="po-doc-filename">${escapeHtml(file.name)}</span>
+                    <button class="btn-text po-doc-remove-btn" data-key="${key}" style="color:#c0392b;">Remove</button>
+                </div>`;
+                wireDocSlotActions(slotBody, key);
+            };
+            reader.readAsDataURL(file);
+            input.value = '';
+        });
+    });
+
+    container.querySelectorAll('.po-doc-view-btn, .po-doc-remove-btn').forEach(btn => {
+        const slotBody = document.getElementById('poDocSlot_' + btn.dataset.key);
+        wireDocSlotActions(slotBody, btn.dataset.key);
+    });
+}
+
+function wireDocSlotActions(slotBody, key) {
+    const viewBtn = slotBody.querySelector('.po-doc-view-btn');
+    const removeBtn = slotBody.querySelector('.po-doc-remove-btn');
+    if (viewBtn) {
+        viewBtn.addEventListener('click', () => {
+            if (poDocBuffer[key]) openLightboxFromData(poDocBuffer[key]);
+        });
+    }
+    if (removeBtn) {
+        removeBtn.removeEventListener('click', removeBtn._handler);
+        removeBtn._handler = () => {
+            delete poDocBuffer[key];
+            slotBody.innerHTML = `<div class="invoice-file-drop po-doc-drop" data-key="${key}">
+                <span>Click to upload</span>
+                <input type="file" class="po-doc-file-input" data-key="${key}" accept="image/jpeg,image/png,image/webp,application/pdf" style="display:none;">
+            </div>`;
+            const drop = slotBody.querySelector('.po-doc-drop');
+            const input = slotBody.querySelector('.po-doc-file-input');
+            drop.addEventListener('click', () => input.click());
+            input.addEventListener('change', () => {
+                const file = input.files[0];
+                if (!file) return;
+                if (file.size > 5 * 1024 * 1024) { showToast('File too large (max 5MB)', true); return; }
+                const reader = new FileReader();
+                reader.onload = e => {
+                    poDocBuffer[key] = { name: file.name, type: file.type, dataUrl: e.target.result };
+                    slotBody.innerHTML = `<div class="po-doc-existing">
+                        <span class="po-doc-filename">${escapeHtml(file.name)}</span>
+                        <button class="btn-text po-doc-view-btn" data-key="${key}">View</button>
+                        <button class="btn-text po-doc-remove-btn" data-key="${key}" style="color:#c0392b;">Remove</button>
+                    </div>`;
+                    wireDocSlotActions(slotBody, key);
+                };
+                reader.readAsDataURL(file);
+                input.value = '';
+            });
+        };
+        removeBtn.addEventListener('click', removeBtn._handler);
+    }
+}
+
+function openLightboxFromData(att) {
+    if (typeof openLightbox === 'function') {
+        openLightbox(att);
+        return;
+    }
+    const win = window.open();
+    if (att.type && att.type.startsWith('image/')) {
+        win.document.write(`<img src="${att.dataUrl}" style="max-width:100%;">`);
+    } else {
+        win.document.write(`<embed src="${att.dataUrl}" type="application/pdf" width="100%" height="100%" style="height:100vh;">`);
+    }
+}
+
+function openPOForm(poId) {
+    poEditingId = poId;
+    poDocBuffer = {};
+    document.getElementById('poFormTitle').textContent = poId ? 'Edit Purchase Order' : 'New Purchase Order';
+
+    const ventureSel = document.getElementById('poVentureSelect');
+    ventureSel.innerHTML = '<option value="">General / Company-level</option>';
+    venturesList.forEach(v => {
+        const o = document.createElement('option');
+        o.value = v.id; o.textContent = v.name;
+        ventureSel.appendChild(o);
+    });
+
+    populatePOVendorSelect();
+
+    document.getElementById('poDateInput').value = new Date().toISOString().split('T')[0];
+    document.getElementById('poNumberInput').value = poId ? '' : poAutoNumber();
+    document.getElementById('poTypeInput').value = '';
+    document.getElementById('poVendorSelect').value = '';
+    document.getElementById('poVentureSelect').value = '';
+    document.getElementById('poLocationInput').value = '';
+    document.getElementById('poDescInput').value = '';
+    document.getElementById('poQuotedAmtInput').value = '';
+    document.getElementById('poBillAmtInput').value = '';
+    document.getElementById('poStatusInput').value = 'draft';
+    document.getElementById('poDeliveryDateInput').value = '';
+    document.getElementById('poNotesInput').value = '';
+
+    let existingDocs = {};
+
+    if (poId) {
+        const po = loadPOs().find(p => p.id === poId);
+        if (po) {
+            document.getElementById('poNumberInput').value = po.poNumber || '';
+            document.getElementById('poDateInput').value = po.orderDate || '';
+            document.getElementById('poTypeInput').value = po.orderType || '';
+            document.getElementById('poVendorSelect').value = po.vendorId || '';
+            document.getElementById('poVentureSelect').value = po.ventureId || '';
+            document.getElementById('poLocationInput').value = po.location || '';
+            document.getElementById('poDescInput').value = po.description || '';
+            document.getElementById('poQuotedAmtInput').value = po.quotedAmount || '';
+            document.getElementById('poBillAmtInput').value = po.billAmount || '';
+            document.getElementById('poStatusInput').value = po.status || 'draft';
+            document.getElementById('poDeliveryDateInput').value = po.deliveryDate || '';
+            document.getElementById('poNotesInput').value = po.notes || '';
+            existingDocs = po.documents || {};
+        }
+    }
+
+    renderPODocSlots(existingDocs);
+    document.getElementById('poFormModal').classList.add('show');
+}
+
+function populatePOVendorSelect(selectedId) {
+    const sel = document.getElementById('poVendorSelect');
+    const current = selectedId || sel.value;
+    sel.innerHTML = '<option value="">-- Select Vendor --</option>';
+    loadVendors().forEach(v => {
+        const o = document.createElement('option');
+        o.value = v.id; o.textContent = v.name;
+        sel.appendChild(o);
+    });
+    if (current) sel.value = current;
+}
+
+function closePOForm() {
+    document.getElementById('poFormModal').classList.remove('show');
+    poEditingId = null;
+    poDocBuffer = {};
+}
+
+document.getElementById('addPOBtn').addEventListener('click', () => openPOForm(null));
+document.getElementById('closePOForm').addEventListener('click', closePOForm);
+document.getElementById('cancelPOForm').addEventListener('click', closePOForm);
+document.getElementById('poFormModal').addEventListener('click', e => {
+    if (e.target === document.getElementById('poFormModal')) closePOForm();
+});
+
+document.getElementById('poAddVendorInlineBtn').addEventListener('click', () => {
+    openVendorForm(null, true);
+});
+
+document.getElementById('savePOBtn').addEventListener('click', () => {
+    const vendorId = document.getElementById('poVendorSelect').value;
+    const desc = document.getElementById('poDescInput').value.trim();
+    const orderDate = document.getElementById('poDateInput').value;
+    const status = document.getElementById('poStatusInput').value;
+
+    if (!vendorId) { showToast('Please select a vendor', true); return; }
+    if (!desc) { showToast('Please enter items / description', true); return; }
+    if (!orderDate) { showToast('Please select an order date', true); return; }
+
+    const pos = loadPOs();
+    const existing = poEditingId ? pos.find(p => p.id === poEditingId) : null;
+
+    const poData = {
+        id: poEditingId || generateId(),
+        poNumber: document.getElementById('poNumberInput').value.trim() || poAutoNumber(),
+        orderDate,
+        orderType: document.getElementById('poTypeInput').value,
+        vendorId,
+        ventureId: document.getElementById('poVentureSelect').value || null,
+        location: document.getElementById('poLocationInput').value.trim(),
+        description: desc,
+        quotedAmount: parseFloat(document.getElementById('poQuotedAmtInput').value) || null,
+        billAmount: parseFloat(document.getElementById('poBillAmtInput').value) || null,
+        status,
+        deliveryDate: document.getElementById('poDeliveryDateInput').value || null,
+        notes: document.getElementById('poNotesInput').value.trim(),
+        documents: { ...poDocBuffer },
+        payments: existing ? (existing.payments || []) : [],
+        createdAt: existing ? existing.createdAt : new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        createdBy: currentUser
+    };
+
+    if (poEditingId) {
+        const idx = pos.findIndex(p => p.id === poEditingId);
+        if (idx >= 0) pos[idx] = poData; else pos.push(poData);
+    } else {
+        pos.push(poData);
+    }
+
+    savePOs(pos);
+    showToast(poEditingId ? 'PO updated' : 'PO created');
+    closePOForm();
+    renderPOCards();
+});
+
+function openPOView(poId) {
+    const po = loadPOs().find(p => p.id === poId);
+    if (!po) return;
+
+    const vendor = loadVendors().find(v => v.id === po.vendorId);
+    const venture = venturesList.find(v => v.id === po.ventureId);
+    const { base, paid, outstanding } = getPOBalance(po);
+    const dateDisplay = po.orderDate ? new Date(po.orderDate + 'T00:00:00').toLocaleDateString('en-IN', {day:'numeric',month:'short',year:'numeric'}) : '&#8212;';
+    const statusColor = PO_STATUS_COLORS[po.status] || '#888';
+
+    document.getElementById('poViewTitle').textContent = `${po.poNumber || 'PO'} &#8212; ${escapeHtml(vendor ? vendor.name : '&#8212;')}`;
+
+    const body = document.getElementById('poViewBody');
+    const docsHtml = PO_DOC_SLOTS.map(slot => {
+        const doc = po.documents?.[slot.key];
+        return `<div class="po-view-doc-row">
+            <span class="po-view-doc-label">${slot.icon} ${slot.label}</span>
+            ${doc
+                ? `<button class="btn-text po-view-doc-btn" data-key="${slot.key}">View (${escapeHtml(doc.name)})</button>`
+                : `<span class="po-view-doc-none">Not uploaded</span>`
+            }
+        </div>`;
+    }).join('');
+
+    const paymentsHtml = (po.payments && po.payments.length > 0)
+        ? po.payments.map((p, i) => {
+            const pd = p.date ? new Date(p.date + 'T00:00:00').toLocaleDateString('en-IN', {day:'numeric',month:'short',year:'numeric'}) : '&#8212;';
+            return `<div class="po-pay-row">
+                <span class="po-pay-date">${pd}</span>
+                <span class="po-pay-mode">${escapeHtml(p.mode || '')}</span>
+                <span class="po-pay-note">${escapeHtml(p.note || '')}</span>
+                <span class="po-pay-amt">&#8377;${parseFloat(p.amount).toLocaleString('en-IN', {maximumFractionDigits:0})}</span>
+                ${p.proof ? `<button class="btn-text po-pay-proof-btn" data-idx="${i}">Receipt</button>` : ''}
+            </div>`;
+        }).join('')
+        : '<div class="po-view-doc-none">No payments recorded yet.</div>';
+
+    body.innerHTML = `
+        <div class="po-view-status-bar">
+            <span class="po-view-status-badge" style="background:${statusColor};">${PO_STATUS_LABELS[po.status] || po.status}</span>
+            ${isPOFlaggedUnpaid(po) ? '<span class="po-view-unpaid-flag">&#9888; Delivered &#8212; payment pending</span>' : ''}
+        </div>
+
+        <div class="inv-view-grid" style="margin-bottom:12px;">
+            <div class="inv-view-field"><span class="inv-view-label">PO Number</span><span class="inv-view-value">${escapeHtml(po.poNumber || '&#8212;')}</span></div>
+            <div class="inv-view-field"><span class="inv-view-label">Order Date</span><span class="inv-view-value">${dateDisplay}</span></div>
+            <div class="inv-view-field"><span class="inv-view-label">Vendor</span><span class="inv-view-value">${escapeHtml(vendor ? vendor.name : '&#8212;')}</span></div>
+            <div class="inv-view-field"><span class="inv-view-label">Type</span><span class="inv-view-value">${escapeHtml(po.orderType || '&#8212;')}</span></div>
+            ${venture ? `<div class="inv-view-field"><span class="inv-view-label">Venture</span><span class="inv-view-value">${escapeHtml(venture.name)}</span></div>` : ''}
+            ${po.location ? `<div class="inv-view-field"><span class="inv-view-label">Location</span><span class="inv-view-value">${escapeHtml(po.location)}</span></div>` : ''}
+            ${po.deliveryDate ? `<div class="inv-view-field"><span class="inv-view-label">Expected Delivery</span><span class="inv-view-value">${po.deliveryDate}</span></div>` : ''}
+        </div>
+
+        <div class="inv-view-reason"><span class="inv-view-label">Description</span><p>${escapeHtml(po.description)}</p></div>
+
+        <div class="po-view-financials">
+            <div class="po-fin-card"><div class="att-rc-label">Quoted / PO Value</div><div class="att-rc-value">${po.quotedAmount ? '&#8377;' + parseFloat(po.quotedAmount).toLocaleString('en-IN', {maximumFractionDigits:0}) : '&#8212;'}</div></div>
+            <div class="po-fin-card"><div class="att-rc-label">Final Billed</div><div class="att-rc-value">${base ? '&#8377;' + base.toLocaleString('en-IN', {maximumFractionDigits:0}) : '&#8212;'}</div></div>
+            <div class="po-fin-card"><div class="att-rc-label">Total Paid</div><div class="att-rc-value att-rc-green">&#8377;${paid.toLocaleString('en-IN', {maximumFractionDigits:0})}</div></div>
+            <div class="po-fin-card ${outstanding > 0 ? 'po-fin-card-danger' : ''}"><div class="att-rc-label">Outstanding</div><div class="att-rc-value ${outstanding > 0 ? 'po-outstanding-val' : 'att-rc-green'}">${outstanding > 0 ? '&#8377;' + outstanding.toLocaleString('en-IN', {maximumFractionDigits:0}) : '&#10003; Fully paid'}</div></div>
+        </div>
+
+        <div class="po-view-section-label">Documents</div>
+        <div class="po-view-docs">${docsHtml}</div>
+
+        <div class="po-view-section-label">Payment History</div>
+        <div class="po-view-payments">${paymentsHtml}</div>
+
+        ${po.notes ? `<div class="inv-view-reason" style="margin-top:8px;"><span class="inv-view-label">Notes</span><p>${escapeHtml(po.notes)}</p></div>` : ''}
+        <div class="inv-view-meta">Created by ${escapeHtml(po.createdBy || '&#8212;')} &#183; ${po.createdAt ? new Date(po.createdAt).toLocaleDateString('en-IN') : ''}</div>
+    `;
+
+    body.querySelectorAll('.po-view-doc-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const doc = po.documents?.[btn.dataset.key];
+            if (doc) openLightboxFromData(doc);
+        });
+    });
+
+    body.querySelectorAll('.po-pay-proof-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const pay = po.payments[parseInt(btn.dataset.idx)];
+            if (pay && pay.proof) openLightboxFromData(pay.proof);
+        });
+    });
+
+    document.getElementById('editPOBtn').onclick = () => { closePOView(); openPOForm(poId); };
+    document.getElementById('addPaymentBtn').onclick = () => openPaymentModal(poId);
+    document.getElementById('deletePOBtn').onclick = () => {
+        showConfirm('Delete PO', 'Delete PO ' + (po.poNumber || '') + '? This cannot be undone.', () => {
+            savePOs(loadPOs().filter(p => p.id !== poId));
+            closePOView();
+            renderPOCards();
+            showToast('PO deleted');
+        });
+    };
+
+    document.getElementById('poViewModal').classList.add('show');
+}
+
+function closePOView() {
+    document.getElementById('poViewModal').classList.remove('show');
+}
+
+document.getElementById('closePOView').addEventListener('click', closePOView);
+document.getElementById('poViewModal').addEventListener('click', e => {
+    if (e.target === document.getElementById('poViewModal')) closePOView();
+});
+
+function openPaymentModal(poId) {
+    poPaymentTargetId = poId;
+    poPaymentAttBuffer = null;
+
+    const po = loadPOs().find(p => p.id === poId);
+    const { outstanding } = getPOBalance(po);
+
+    document.getElementById('payDateInput').value = new Date().toISOString().split('T')[0];
+    document.getElementById('payAmountInput').value = outstanding > 0 ? outstanding : '';
+    document.getElementById('payModeInput').value = '';
+    document.getElementById('payRefInput').value = '';
+    document.getElementById('payNoteInput').value = '';
+    document.getElementById('payFileLabel').textContent = 'Click to attach proof';
+    document.getElementById('payFilePreview').innerHTML = '';
+
+    document.getElementById('paymentModal').classList.add('show');
+}
+
+function closePaymentModal() {
+    document.getElementById('paymentModal').classList.remove('show');
+    poPaymentTargetId = null;
+    poPaymentAttBuffer = null;
+}
+
+document.getElementById('closePaymentModal').addEventListener('click', closePaymentModal);
+document.getElementById('cancelPayment').addEventListener('click', closePaymentModal);
+document.getElementById('paymentModal').addEventListener('click', e => {
+    if (e.target === document.getElementById('paymentModal')) closePaymentModal();
+});
+
+const payFileDrop = document.getElementById('payFileDrop');
+const payFileInput = document.getElementById('payFileInput');
+payFileDrop.addEventListener('click', () => payFileInput.click());
+payFileInput.addEventListener('change', () => {
+    const file = payFileInput.files[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { showToast('File too large (max 5MB)', true); return; }
+    const reader = new FileReader();
+    reader.onload = e => {
+        poPaymentAttBuffer = { name: file.name, type: file.type, dataUrl: e.target.result };
+        document.getElementById('payFileLabel').textContent = file.name;
+        document.getElementById('payFilePreview').innerHTML = file.type.startsWith('image/')
+            ? `<img src="${e.target.result}" style="max-height:60px;border-radius:4px;margin-top:4px;">`
+            : `<span style="font-size:0.78rem;color:#555;">PDF attached: ${escapeHtml(file.name)}</span>`;
+    };
+    reader.readAsDataURL(file);
+    payFileInput.value = '';
+});
+
+document.getElementById('savePaymentBtn').addEventListener('click', () => {
+    const amount = parseFloat(document.getElementById('payAmountInput').value);
+    const date = document.getElementById('payDateInput').value;
+    if (!date) { showToast('Please select a payment date', true); return; }
+    if (!amount || amount <= 0) { showToast('Please enter a valid amount', true); return; }
+
+    const pos = loadPOs();
+    const po = pos.find(p => p.id === poPaymentTargetId);
+    if (!po) return;
+
+    if (!po.payments) po.payments = [];
+    po.payments.push({
+        id: generateId(),
+        date,
+        amount,
+        mode: document.getElementById('payModeInput').value,
+        ref: document.getElementById('payRefInput').value.trim(),
+        note: document.getElementById('payNoteInput').value.trim(),
+        proof: poPaymentAttBuffer || null,
+        recordedBy: currentUser,
+        recordedAt: new Date().toISOString()
+    });
+
+    po.updatedAt = new Date().toISOString();
+
+    const { outstanding } = getPOBalance(po);
+    if (outstanding <= 0 && po.status !== 'closed') {
+        po.status = 'closed';
+        showToast('Payment saved &#8212; PO marked as Closed (fully paid)');
+    } else {
+        showToast(`Payment of &#8377;${amount.toLocaleString('en-IN')} recorded. Outstanding: &#8377;${outstanding.toLocaleString('en-IN', {maximumFractionDigits:0})}`);
+    }
+
+    savePOs(pos);
+    closePaymentModal();
+    renderPOCards();
+    openPOView(poPaymentTargetId);
+});
+
+function openVendorDirectory() {
+    renderVendorDirList();
+    document.getElementById('vendorDirModal').classList.add('show');
+}
+
+function closeVendorDirectory() {
+    document.getElementById('vendorDirModal').classList.remove('show');
+}
+
+function renderVendorDirList() {
+    const list = document.getElementById('vendorDirList');
+    list.innerHTML = '';
+    const vendors = loadVendors();
+
+    if (vendors.length === 0) {
+        list.innerHTML = '<div class="att-empty" style="padding:24px 0;">No vendors yet. Click "+ Add Vendor" to get started.</div>';
+        return;
+    }
+
+    vendors.forEach(v => {
+        const div = document.createElement('div');
+        div.className = 'att-roster-row';
+        div.innerHTML = `
+            <div class="att-roster-info">
+                <div class="att-roster-name">${escapeHtml(v.name)}</div>
+                <div class="att-roster-meta">
+                    ${v.type ? escapeHtml(v.type) + ' &#183; ' : ''}
+                    ${v.phone ? '&#128222; ' + escapeHtml(v.phone) : ''}
+                    ${v.gstin ? ' &#183; GSTIN: ' + escapeHtml(v.gstin) : ''}
+                </div>
+            </div>
+            <div class="att-roster-actions">
+                <button class="btn-text edit-vendor-btn" data-id="${v.id}">Edit</button>
+                <button class="btn-text del-vendor-btn" data-id="${v.id}" style="color:#c0392b;">Delete</button>
+            </div>
+        `;
+        div.querySelector('.edit-vendor-btn').addEventListener('click', () => openVendorForm(v.id));
+        div.querySelector('.del-vendor-btn').addEventListener('click', () => {
+            showConfirm('Delete Vendor', 'Delete ' + v.name + '? POs referencing this vendor will still exist.', () => {
+                saveVendors(loadVendors().filter(x => x.id !== v.id));
+                renderVendorDirList();
+                populatePOFilters();
+                showToast('Vendor deleted');
+            });
+        });
+        list.appendChild(div);
+    });
+}
+
+document.getElementById('openVendorDirectoryBtn').addEventListener('click', openVendorDirectory);
+document.getElementById('closeVendorDir').addEventListener('click', closeVendorDirectory);
+document.getElementById('vendorDirModal').addEventListener('click', e => {
+    if (e.target === document.getElementById('vendorDirModal')) closeVendorDirectory();
+});
+document.getElementById('addVendorBtn').addEventListener('click', () => openVendorForm(null));
+
+function openVendorForm(vendorId, fromPOForm) {
+    vendorEditingId = vendorId;
+    _vendorFromPOForm = fromPOForm || false;
+    document.getElementById('vendorFormTitle').textContent = vendorId ? 'Edit Vendor' : 'Add Vendor';
+
+    ['vendorNameInput','vendorContactInput','vendorPhoneInput','vendorEmailInput',
+     'vendorGSTInput','vendorAddressInput','vendorBankNameInput','vendorAccNoInput',
+     'vendorIFSCInput','vendorAccHolderInput','vendorNotesInput'].forEach(id => {
+        document.getElementById(id).value = '';
+    });
+    document.getElementById('vendorTypeInput').value = '';
+
+    if (vendorId) {
+        const v = loadVendors().find(x => x.id === vendorId);
+        if (v) {
+            document.getElementById('vendorNameInput').value = v.name || '';
+            document.getElementById('vendorContactInput').value = v.contact || '';
+            document.getElementById('vendorPhoneInput').value = v.phone || '';
+            document.getElementById('vendorEmailInput').value = v.email || '';
+            document.getElementById('vendorGSTInput').value = v.gstin || '';
+            document.getElementById('vendorTypeInput').value = v.type || '';
+            document.getElementById('vendorAddressInput').value = v.address || '';
+            document.getElementById('vendorBankNameInput').value = v.bankName || '';
+            document.getElementById('vendorAccNoInput').value = v.accountNo || '';
+            document.getElementById('vendorIFSCInput').value = v.ifsc || '';
+            document.getElementById('vendorAccHolderInput').value = v.accountHolder || '';
+            document.getElementById('vendorNotesInput').value = v.notes || '';
+        }
+    }
+
+    document.getElementById('vendorFormModal').classList.add('show');
+}
+
+function closeVendorForm() {
+    document.getElementById('vendorFormModal').classList.remove('show');
+    vendorEditingId = null;
+}
+
+document.getElementById('closeVendorForm').addEventListener('click', closeVendorForm);
+document.getElementById('cancelVendorForm').addEventListener('click', closeVendorForm);
+document.getElementById('vendorFormModal').addEventListener('click', e => {
+    if (e.target === document.getElementById('vendorFormModal')) closeVendorForm();
+});
+
+document.getElementById('saveVendorBtn').addEventListener('click', () => {
+    const name = document.getElementById('vendorNameInput').value.trim();
+    const phone = document.getElementById('vendorPhoneInput').value.trim();
+    if (!name) { showToast('Please enter a vendor name', true); return; }
+    if (!phone) { showToast('Please enter a phone number', true); return; }
+
+    const vendors = loadVendors();
+    const vendorData = {
+        id: vendorEditingId || generateId(),
+        name,
+        contact: document.getElementById('vendorContactInput').value.trim(),
+        phone,
+        email: document.getElementById('vendorEmailInput').value.trim(),
+        gstin: document.getElementById('vendorGSTInput').value.trim(),
+        type: document.getElementById('vendorTypeInput').value,
+        address: document.getElementById('vendorAddressInput').value.trim(),
+        bankName: document.getElementById('vendorBankNameInput').value.trim(),
+        accountNo: document.getElementById('vendorAccNoInput').value.trim(),
+        ifsc: document.getElementById('vendorIFSCInput').value.trim(),
+        accountHolder: document.getElementById('vendorAccHolderInput').value.trim(),
+        notes: document.getElementById('vendorNotesInput').value.trim(),
+        createdAt: vendorEditingId ? (vendors.find(v => v.id === vendorEditingId)?.createdAt || new Date().toISOString()) : new Date().toISOString()
+    };
+
+    if (vendorEditingId) {
+        const idx = vendors.findIndex(v => v.id === vendorEditingId);
+        if (idx >= 0) vendors[idx] = vendorData; else vendors.push(vendorData);
+    } else {
+        vendors.push(vendorData);
+    }
+
+    saveVendors(vendors);
+    showToast(vendorEditingId ? 'Vendor updated' : 'Vendor added');
+    closeVendorForm();
+    renderVendorDirList();
+    populatePOFilters();
+
+    if (_vendorFromPOForm) {
+        populatePOVendorSelect(vendorData.id);
+    }
+});

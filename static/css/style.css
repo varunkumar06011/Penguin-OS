@@ -2265,3 +2265,395 @@ body {
         max-width: 100%;
     }
 }
+
+/* ========================
+   Purchase Orders Module
+   ======================== */
+
+#poPanel {
+    padding: 0 24px 40px 24px;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.po-panel-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 0;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+}
+
+.po-panel-title {
+    font-size: 1.4rem;
+    color: #1a2a6c;
+    font-weight: 700;
+    flex: 1;
+}
+
+.po-header-actions {
+    display: flex;
+    gap: 10px;
+}
+
+/* Outstanding banner */
+.po-outstanding-banner {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    background: #fff8e1;
+    border: 1px solid #ffe082;
+    border-radius: 8px;
+    padding: 12px 18px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+}
+
+.po-banner-alert {
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: #7b5800;
+}
+
+.po-banner-amt {
+    font-size: 1.1rem;
+    font-weight: 800;
+    color: #c0392b;
+}
+
+.po-banner-flag {
+    font-size: 0.8rem;
+    background: #fdecea;
+    color: #c0392b;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-weight: 600;
+}
+
+/* Filter bar */
+.po-filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: flex-end;
+    background: #fff;
+    border: 1px solid #e0e4ed;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 16px;
+}
+
+/* PO Cards grid */
+.po-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 16px;
+}
+
+.po-card {
+    background: #fff;
+    border: 1px solid #e0e4ed;
+    border-radius: 10px;
+    padding: 18px;
+    cursor: pointer;
+    transition: box-shadow 0.2s, transform 0.15s;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.po-card:hover {
+    box-shadow: 0 4px 18px rgba(26,42,108,0.12);
+    transform: translateY(-2px);
+}
+
+.po-card-flagged {
+    border-color: #f5c6cb;
+    background: #fffafa;
+}
+
+.po-card-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+}
+
+.po-card-number {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #1a2a6c;
+    font-family: monospace;
+}
+
+.po-card-status {
+    font-size: 0.72rem;
+    color: #fff;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.po-card-vendor {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #222;
+}
+
+.po-card-desc {
+    font-size: 0.82rem;
+    color: #555;
+}
+
+.po-card-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    font-size: 0.75rem;
+    color: #888;
+}
+
+.po-card-financials {
+    display: flex;
+    gap: 0;
+    border: 1px solid #f0f0f0;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.po-fin-row {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 8px 10px;
+    border-right: 1px solid #f0f0f0;
+}
+
+.po-fin-row:last-child { border-right: none; }
+
+.po-fin-label {
+    font-size: 0.68rem;
+    color: #aaa;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.po-fin-value {
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: #333;
+    margin-top: 2px;
+}
+
+.po-fin-paid { color: #27ae60; }
+.po-fin-outstanding { color: #c0392b; }
+.po-fin-clear { color: #27ae60; }
+
+.po-card-unpaid-flag {
+    font-size: 0.75rem;
+    color: #c0392b;
+    font-weight: 600;
+    background: #fdecea;
+    padding: 4px 8px;
+    border-radius: 4px;
+}
+
+/* PO Form & View Modals */
+.po-form-modal {
+    max-width: 700px;
+    width: 100%;
+}
+
+.po-view-modal {
+    max-width: 760px;
+    width: 100%;
+}
+
+.po-form-body {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    max-height: 65vh;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+.po-section-label {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #aaa;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    border-bottom: 1px solid #f0f0f0;
+    padding-bottom: 4px;
+    margin-top: 4px;
+}
+
+/* Document slots */
+.po-doc-slots {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.po-doc-slot {
+    background: #f9fafb;
+    border: 1px solid #e0e4ed;
+    border-radius: 6px;
+    padding: 10px 14px;
+}
+
+.po-doc-slot-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #555;
+    margin-bottom: 6px;
+}
+
+.po-doc-slot-body {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.po-doc-existing {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.po-doc-filename {
+    font-size: 0.8rem;
+    color: #1a2a6c;
+    font-weight: 500;
+}
+
+.po-doc-drop {
+    padding: 8px 14px;
+    font-size: 0.8rem;
+}
+
+/* PO View body */
+.po-view-body {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    max-height: 70vh;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+.po-view-status-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 4px;
+}
+
+.po-view-status-badge {
+    font-size: 0.82rem;
+    color: #fff;
+    padding: 4px 14px;
+    border-radius: 14px;
+    font-weight: 600;
+}
+
+.po-view-unpaid-flag {
+    font-size: 0.8rem;
+    color: #c0392b;
+    font-weight: 700;
+    background: #fdecea;
+    padding: 4px 12px;
+    border-radius: 12px;
+}
+
+.po-view-financials {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+}
+
+.po-fin-card {
+    background: #f5f7fa;
+    border-radius: 8px;
+    padding: 12px 14px;
+}
+
+.po-fin-card-danger {
+    background: #fdecea;
+}
+
+.po-outstanding-val {
+    color: #c0392b;
+    font-size: 1.15rem;
+    font-weight: 800;
+}
+
+.po-view-section-label {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #aaa;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    border-bottom: 1px solid #f0f0f0;
+    padding-bottom: 4px;
+}
+
+.po-view-docs {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.po-view-doc-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 0;
+    border-bottom: 1px solid #f9f9f9;
+}
+
+.po-view-doc-label {
+    font-size: 0.82rem;
+    color: #555;
+}
+
+.po-view-doc-none {
+    font-size: 0.78rem;
+    color: #ccc;
+    font-style: italic;
+}
+
+/* Payment history */
+.po-view-payments {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.po-pay-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 8px 10px;
+    background: #f0fdf4;
+    border-radius: 6px;
+    flex-wrap: wrap;
+}
+
+.po-pay-date { font-size: 0.8rem; color: #555; white-space: nowrap; }
+.po-pay-mode { font-size: 0.78rem; color: #888; }
+.po-pay-note { font-size: 0.8rem; color: #555; flex: 1; }
+.po-pay-amt { font-size: 0.95rem; font-weight: 700; color: #27ae60; white-space: nowrap; }
+
+/* Responsive */
+@media (max-width: 768px) {
+    #poPanel { padding: 0 12px 40px 12px; }
+    .po-view-financials { grid-template-columns: 1fr 1fr; }
+    .po-form-modal, .po-view-modal { max-width: 100%; }
+    .po-panel-header { flex-direction: column; align-items: flex-start; }
+    .po-filter-bar { flex-direction: column; }
+}

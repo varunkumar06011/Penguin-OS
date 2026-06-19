@@ -38,6 +38,7 @@
             </div>
             <div class="invoice-dashboard-bar">
                 <button id="openInvoicesBtn" class="btn-primary">&#128196; Invoices</button>
+                <button id="openPOBtn" class="btn-secondary">&#128230; Purchase Orders</button>
             </div>
             <div class="venture-grid" id="ventureCards"></div>
         </div>
@@ -86,6 +87,74 @@
 
             <!-- Invoice Cards Grid -->
             <div class="invoice-cards-grid" id="invoiceCardsGrid"></div>
+        </div>
+
+        <!-- Purchase Orders Panel -->
+        <div id="poPanel" style="display:none;">
+            <div class="po-panel-header">
+                <button id="backFromPO" class="back-btn">&larr; Back to Ventures</button>
+                <h2 class="po-panel-title">&#128230; Purchase Orders</h2>
+                <div class="po-header-actions">
+                    <button id="openVendorDirectoryBtn" class="btn-secondary">&#127978; Vendors</button>
+                    <button id="addPOBtn" class="btn-primary">+ New PO</button>
+                </div>
+            </div>
+
+            <!-- Outstanding summary banner -->
+            <div class="po-outstanding-banner" id="poOutstandingBanner"></div>
+
+            <!-- Filters -->
+            <div class="po-filter-bar">
+                <div class="invoice-filter-group">
+                    <label>Status</label>
+                    <select id="poFilterStatus">
+                        <option value="all">All Statuses</option>
+                        <option value="draft">Draft</option>
+                        <option value="sent">Sent to Vendor</option>
+                        <option value="quoted">Vendor Quoted</option>
+                        <option value="approved">Approved</option>
+                        <option value="partial_delivered">Partially Delivered</option>
+                        <option value="delivered">Delivered</option>
+                        <option value="closed">Closed</option>
+                    </select>
+                </div>
+                <div class="invoice-filter-group">
+                    <label>Venture</label>
+                    <select id="poFilterVenture">
+                        <option value="all">All Ventures</option>
+                    </select>
+                </div>
+                <div class="invoice-filter-group">
+                    <label>Vendor</label>
+                    <select id="poFilterVendor">
+                        <option value="all">All Vendors</option>
+                    </select>
+                </div>
+                <div class="invoice-filter-group">
+                    <label>Type</label>
+                    <select id="poFilterType">
+                        <option value="all">All Types</option>
+                        <option value="Material">Material</option>
+                        <option value="Labour">Labour / Contract</option>
+                        <option value="Equipment">Equipment / Machinery</option>
+                        <option value="Service">Service / Transport</option>
+                    </select>
+                </div>
+                <div class="invoice-filter-group">
+                    <label>From Date</label>
+                    <input type="date" id="poFilterFrom">
+                </div>
+                <div class="invoice-filter-group">
+                    <label>To Date</label>
+                    <input type="date" id="poFilterTo">
+                </div>
+                <div class="invoice-filter-group" style="align-self:flex-end;">
+                    <button id="poClearFilters" class="btn-secondary">Clear</button>
+                </div>
+            </div>
+
+            <!-- PO Cards -->
+            <div class="po-cards-grid" id="poCardsGrid"></div>
         </div>
 
         <!-- Tracker View -->
@@ -326,6 +395,272 @@
             </div>
         </div>
         <div class="lightbox-content" id="lightboxContent"></div>
+    </div>
+
+    <!-- PO Form Modal -->
+    <div id="poFormModal" class="modal">
+        <div class="modal-content po-form-modal">
+            <div class="modal-header">
+                <h3 id="poFormTitle">New Purchase Order</h3>
+                <button class="close-btn" id="closePOForm">&times;</button>
+            </div>
+            <div class="po-form-body">
+                <div class="invoice-form-row">
+                    <div class="invoice-form-field" style="max-width:160px;">
+                        <label>PO Number</label>
+                        <input type="text" id="poNumberInput" placeholder="Auto or manual">
+                    </div>
+                    <div class="invoice-form-field" style="max-width:160px;">
+                        <label>Order Date <span class="req">*</span></label>
+                        <input type="date" id="poDateInput">
+                    </div>
+                    <div class="invoice-form-field">
+                        <label>Order Type <span class="req">*</span></label>
+                        <select id="poTypeInput">
+                            <option value="">-- Select --</option>
+                            <option value="Material">Material</option>
+                            <option value="Labour">Labour / Contract</option>
+                            <option value="Equipment">Equipment / Machinery</option>
+                            <option value="Service">Service / Transport</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="invoice-form-row">
+                    <div class="invoice-form-field">
+                        <label>Vendor <span class="req">*</span></label>
+                        <select id="poVendorSelect">
+                            <option value="">-- Select Vendor --</option>
+                        </select>
+                    </div>
+                    <div class="invoice-form-field" style="align-self:flex-end;">
+                        <button id="poAddVendorInlineBtn" class="btn-text" style="padding:9px 0;">+ Add new vendor</button>
+                    </div>
+                </div>
+                <div class="invoice-form-row">
+                    <div class="invoice-form-field">
+                        <label>Venture</label>
+                        <select id="poVentureSelect">
+                            <option value="">General / Company-level</option>
+                        </select>
+                    </div>
+                    <div class="invoice-form-field">
+                        <label>Block / Floor (optional)</label>
+                        <input type="text" id="poLocationInput" placeholder="e.g. A Block, 3rd Floor">
+                    </div>
+                </div>
+                <div class="invoice-form-row">
+                    <div class="invoice-form-field">
+                        <label>Items / Description <span class="req">*</span></label>
+                        <textarea id="poDescInput" rows="3" placeholder="e.g. 1000 bricks @ ₹8 each, delivery to A Block 3rd Floor"></textarea>
+                    </div>
+                </div>
+                <div class="invoice-form-row">
+                    <div class="invoice-form-field">
+                        <label>Quoted / PO Value (&#8377;)</label>
+                        <input type="number" id="poQuotedAmtInput" placeholder="Our estimated order value" min="0" step="0.01">
+                    </div>
+                    <div class="invoice-form-field">
+                        <label>Final Bill Amount (&#8377;)</label>
+                        <input type="number" id="poBillAmtInput" placeholder="Vendor's final billed amount" min="0" step="0.01">
+                    </div>
+                </div>
+                <div class="invoice-form-row">
+                    <div class="invoice-form-field">
+                        <label>Status <span class="req">*</span></label>
+                        <select id="poStatusInput">
+                            <option value="draft">Draft &#8212; created, not sent yet</option>
+                            <option value="sent">Sent to Vendor</option>
+                            <option value="quoted">Vendor Quoted &#8212; proforma received</option>
+                            <option value="approved">Approved &#8212; quote accepted</option>
+                            <option value="partial_delivered">Partially Delivered</option>
+                            <option value="delivered">Delivered &#8212; fully received</option>
+                            <option value="closed">Closed &#8212; fully paid</option>
+                        </select>
+                    </div>
+                    <div class="invoice-form-field">
+                        <label>Expected Delivery Date</label>
+                        <input type="date" id="poDeliveryDateInput">
+                    </div>
+                </div>
+                <div class="invoice-form-row">
+                    <div class="invoice-form-field">
+                        <label>Internal Notes</label>
+                        <textarea id="poNotesInput" rows="2" placeholder="Any internal remarks..."></textarea>
+                    </div>
+                </div>
+                <div class="po-section-label">Documents</div>
+                <div class="po-doc-slots" id="poDocSlots"></div>
+            </div>
+            <div class="invoice-form-actions">
+                <button id="cancelPOForm" class="btn-secondary">Cancel</button>
+                <button id="savePOBtn" class="btn-primary">Save PO</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- PO View Modal -->
+    <div id="poViewModal" class="modal">
+        <div class="modal-content po-view-modal">
+            <div class="modal-header">
+                <h3 id="poViewTitle">PO Details</h3>
+                <button class="close-btn" id="closePOView">&times;</button>
+            </div>
+            <div id="poViewBody" class="po-view-body"></div>
+            <div class="invoice-form-actions">
+                <button id="editPOBtn" class="btn-secondary">Edit PO</button>
+                <button id="addPaymentBtn" class="btn-primary">+ Record Payment</button>
+                <button id="deletePOBtn" class="btn-secondary" style="color:#c0392b;border-color:#c0392b;">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Payment Modal -->
+    <div id="paymentModal" class="modal">
+        <div class="modal-content popup-small">
+            <div class="modal-header">
+                <h3>Record Payment</h3>
+                <button class="close-btn" id="closePaymentModal">&times;</button>
+            </div>
+            <div class="att-worker-form">
+                <div class="invoice-form-field">
+                    <label>Payment Date <span class="req">*</span></label>
+                    <input type="date" id="payDateInput">
+                </div>
+                <div class="invoice-form-field">
+                    <label>Amount Paid (&#8377;) <span class="req">*</span></label>
+                    <input type="number" id="payAmountInput" placeholder="e.g. 25000" min="0" step="0.01">
+                </div>
+                <div class="invoice-form-field">
+                    <label>Payment Mode</label>
+                    <select id="payModeInput">
+                        <option value="">-- Select --</option>
+                        <option value="Cash">Cash</option>
+                        <option value="UPI">UPI</option>
+                        <option value="Bank Transfer">Bank Transfer</option>
+                        <option value="Cheque">Cheque</option>
+                    </select>
+                </div>
+                <div class="invoice-form-field">
+                    <label>Reference / UTR / Cheque No.</label>
+                    <input type="text" id="payRefInput" placeholder="Transaction reference">
+                </div>
+                <div class="invoice-form-field">
+                    <label>Note</label>
+                    <input type="text" id="payNoteInput" placeholder="e.g. Advance payment, Balance payment">
+                </div>
+                <div class="invoice-form-field">
+                    <label>Payment Proof (image or PDF)</label>
+                    <div class="invoice-file-drop" id="payFileDrop" style="padding:10px;">
+                        <span id="payFileLabel">Click to attach proof</span>
+                        <input type="file" id="payFileInput" accept="image/jpeg,image/png,image/webp,application/pdf" style="display:none;">
+                    </div>
+                    <div id="payFilePreview" style="margin-top:6px;"></div>
+                </div>
+            </div>
+            <div class="invoice-form-actions">
+                <button id="cancelPayment" class="btn-secondary">Cancel</button>
+                <button id="savePaymentBtn" class="btn-primary">Save Payment</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Vendor Directory Modal -->
+    <div id="vendorDirModal" class="modal">
+        <div class="modal-content att-modal-content">
+            <div class="modal-header">
+                <h3>Vendor Directory</h3>
+                <button class="close-btn" id="closeVendorDir">&times;</button>
+            </div>
+            <div class="att-roster-bar">
+                <button id="addVendorBtn" class="btn-primary">+ Add Vendor</button>
+            </div>
+            <div id="vendorDirList" class="att-roster-list"></div>
+        </div>
+    </div>
+
+    <!-- Vendor Form Modal -->
+    <div id="vendorFormModal" class="modal">
+        <div class="modal-content po-form-modal">
+            <div class="modal-header">
+                <h3 id="vendorFormTitle">Add Vendor</h3>
+                <button class="close-btn" id="closeVendorForm">&times;</button>
+            </div>
+            <div class="po-form-body">
+                <div class="invoice-form-row">
+                    <div class="invoice-form-field">
+                        <label>Vendor / Company Name <span class="req">*</span></label>
+                        <input type="text" id="vendorNameInput" placeholder="e.g. Ravi Brick Works">
+                    </div>
+                    <div class="invoice-form-field">
+                        <label>Contact Person</label>
+                        <input type="text" id="vendorContactInput" placeholder="e.g. Ravi Kumar">
+                    </div>
+                </div>
+                <div class="invoice-form-row">
+                    <div class="invoice-form-field">
+                        <label>Phone <span class="req">*</span></label>
+                        <input type="text" id="vendorPhoneInput" placeholder="e.g. 9876543210">
+                    </div>
+                    <div class="invoice-form-field">
+                        <label>Email</label>
+                        <input type="email" id="vendorEmailInput" placeholder="vendor@example.com">
+                    </div>
+                </div>
+                <div class="invoice-form-row">
+                    <div class="invoice-form-field">
+                        <label>GSTIN</label>
+                        <input type="text" id="vendorGSTInput" placeholder="e.g. 29ABCDE1234F1Z5" maxlength="15">
+                    </div>
+                    <div class="invoice-form-field">
+                        <label>Vendor Type</label>
+                        <select id="vendorTypeInput">
+                            <option value="">-- Select --</option>
+                            <option value="Material">Material Supplier</option>
+                            <option value="Labour">Labour / Contractor</option>
+                            <option value="Equipment">Equipment / Machinery</option>
+                            <option value="Service">Service Provider</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="invoice-form-row">
+                    <div class="invoice-form-field">
+                        <label>Address</label>
+                        <textarea id="vendorAddressInput" rows="2" placeholder="Full address"></textarea>
+                    </div>
+                </div>
+                <div class="po-section-label">Bank Details</div>
+                <div class="invoice-form-row">
+                    <div class="invoice-form-field">
+                        <label>Bank Name</label>
+                        <input type="text" id="vendorBankNameInput" placeholder="e.g. SBI">
+                    </div>
+                    <div class="invoice-form-field">
+                        <label>Account Number</label>
+                        <input type="text" id="vendorAccNoInput" placeholder="Account number">
+                    </div>
+                </div>
+                <div class="invoice-form-row">
+                    <div class="invoice-form-field">
+                        <label>IFSC Code</label>
+                        <input type="text" id="vendorIFSCInput" placeholder="e.g. SBIN0001234" maxlength="11">
+                    </div>
+                    <div class="invoice-form-field">
+                        <label>Account Holder Name</label>
+                        <input type="text" id="vendorAccHolderInput" placeholder="Name on account">
+                    </div>
+                </div>
+                <div class="invoice-form-row">
+                    <div class="invoice-form-field">
+                        <label>Notes</label>
+                        <textarea id="vendorNotesInput" rows="2" placeholder="Any notes about this vendor"></textarea>
+                    </div>
+                </div>
+            </div>
+            <div class="invoice-form-actions">
+                <button id="cancelVendorForm" class="btn-secondary">Cancel</button>
+                <button id="saveVendorBtn" class="btn-primary">Save Vendor</button>
+            </div>
+        </div>
     </div>
 
     <script src="/static/js/app.js"></script>
