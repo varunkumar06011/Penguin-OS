@@ -115,11 +115,15 @@ def api_cell_post(cell_id):
     if not supabase:
         return jsonify({'error': 'Supabase not connected'}), 500
     body = request.get_json() or {}
-    supabase.table('cell_data').upsert({
-        'id': cell_id,
-        'data': body
-    }).execute()
-    return jsonify({'success': True})
+    try:
+        supabase.table('cell_data').upsert({
+            'id': cell_id,
+            'data': body
+        }).execute()
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f'Error saving cell {cell_id}: {e}')
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/cells/batch', methods=['POST'])
@@ -132,8 +136,12 @@ def api_cells_batch():
     if not cells:
         return jsonify({'success': True})
     rows = [{'id': c['id'], 'data': c.get('data', {})} for c in cells]
-    supabase.table('cell_data').upsert(rows).execute()
-    return jsonify({'success': True, 'count': len(rows)})
+    try:
+        supabase.table('cell_data').upsert(rows).execute()
+        return jsonify({'success': True, 'count': len(rows)})
+    except Exception as e:
+        print(f'Error in batch upsert: {e}')
+        return jsonify({'error': str(e)}), 500
 
 
 # ========================
