@@ -304,7 +304,9 @@ async function updateCellColor(cellId, color, workItem, flat) {
     }
     lsSet(lsCellKey(cellId), data);
     cellsCache[cacheKey(cellId)] = data;
-    renderGrid();
+    if (currentView === 'flat') renderGrid();
+    else if (currentView === 'work') renderWorkView();
+    else if (currentView === 'pending') renderPendingView();
     showToast('Status updated');
 }
 
@@ -318,7 +320,9 @@ async function saveCellRemarks(cellId, remarks) {
     };
     lsSet(lsCellKey(cellId), data);
     cellsCache[cacheKey(cellId)] = data;
-    renderGrid();
+    if (currentView === 'flat') renderGrid();
+    else if (currentView === 'work') renderWorkView();
+    else if (currentView === 'pending') renderPendingView();
     showToast('Remarks saved');
 }
 
