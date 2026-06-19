@@ -837,6 +837,24 @@ body {
     border-bottom: 1px solid #e0e4e8;
 }
 
+.btn-pending-filter {
+    margin-left: auto;
+    background: #fff;
+    color: #1a2a6c;
+    border: 1px solid #1a2a6c;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-weight: 600;
+}
+
+.btn-pending-filter:hover {
+    background: #1a2a6c;
+    color: #fff;
+}
+
 .back-btn {
     background: none;
     border: 1px solid #1a2a6c;
@@ -1259,6 +1277,12 @@ body {
         padding: 8px 12px;
         flex-wrap: wrap;
         gap: 8px;
+    }
+    .btn-pending-filter {
+        margin-left: 0;
+        padding: 6px 12px;
+        font-size: 0.8rem;
+        width: 100%;
     }
     .back-btn {
         padding: 5px 10px;

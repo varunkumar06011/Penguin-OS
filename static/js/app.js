@@ -916,8 +916,6 @@ els.saveSettingsBtn.addEventListener('click', async () => {
         renderGrid();
     } else if (currentView === 'work') {
         renderWorkView();
-    } else if (currentView === 'pending') {
-        renderPendingView();
     } else {
         renderSuperStructure();
     }
@@ -947,8 +945,6 @@ function renderBlockTabs() {
                 renderGrid();
             } else if (currentView === 'work') {
                 renderWorkView();
-            } else if (currentView === 'pending') {
-                renderPendingView();
             } else {
                 renderSuperStructure();
             }
@@ -981,8 +977,6 @@ function renderFloorTabs() {
                 renderGrid();
             } else if (currentView === 'work') {
                 renderWorkView();
-            } else if (currentView === 'pending') {
-                renderPendingView();
             } else {
                 renderSuperStructure();
             }
@@ -1009,9 +1003,6 @@ document.querySelectorAll('.view-tab').forEach(btn => {
         } else if (currentView === 'work') {
             document.getElementById('workViewContainer').style.display = '';
             renderWorkView();
-        } else if (currentView === 'pending') {
-            document.getElementById('pendingViewContainer').style.display = '';
-            renderPendingView();
         } else {
             document.getElementById('superStructureContainer').style.display = '';
             renderSuperStructure();
@@ -1436,6 +1427,17 @@ function exitToDashboard() {
 }
 
 document.getElementById('backToVentures').addEventListener('click', exitToDashboard);
+
+document.getElementById('pendingWorkBtn').addEventListener('click', () => {
+    document.querySelectorAll('.view-tab').forEach(b => b.classList.remove('active'));
+    currentView = 'pending';
+    cellsCache = {};
+    document.getElementById('flatViewContainer').style.display = 'none';
+    document.getElementById('workViewContainer').style.display = 'none';
+    document.getElementById('superStructureContainer').style.display = 'none';
+    document.getElementById('pendingViewContainer').style.display = '';
+    renderPendingView();
+});
 document.getElementById('bcHome').addEventListener('click', exitToDashboard);
 
 // ========================
@@ -1678,7 +1680,6 @@ document.getElementById('editModeBtn').addEventListener('click', () => {
     cellsCache = {};
     if (currentView === 'flat') renderGrid();
     else if (currentView === 'work') renderWorkView();
-    else if (currentView === 'pending') renderPendingView();
     else renderSuperStructure();
 });
 
