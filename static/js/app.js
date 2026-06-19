@@ -104,6 +104,7 @@ let editMode = false;
 let archivedItems = {};
 let pendingFilterFloor = 'all';
 let pendingFilterFlat = 'all';
+let lastPendingRows = [];
 
 function cacheKey(cellId) {
     return currentVenture ? `${currentVenture.id}_${cellId}` : cellId;
@@ -2037,6 +2038,15 @@ async function renderPendingView() {
     container.appendChild(filterBar);
 
     // Event listeners for filters
+    // Export PDF button
+    const exportBtnGroup = document.createElement('div');
+    exportBtnGroup.className = 'pending-filter-group';
+    exportBtnGroup.style.alignSelf = 'flex-end';
+    exportBtnGroup.innerHTML = `<button id="exportPendingPDF" class="btn-secondary" style="padding:8px 16px;">📄 Export PDF</button>`;
+    filterBar.appendChild(exportBtnGroup);
+
+    filterBar.querySelector('#exportPendingPDF').addEventListener('click', exportPendingWorkPDF);
+
     filterBar.querySelector('#pendingFloorSelect').addEventListener('change', (e) => {
         pendingFilterFloor = e.target.value;
         if (pendingFilterFloor === 'all') pendingFilterFlat = 'all';
@@ -2131,6 +2141,9 @@ async function renderPendingView() {
         });
     });
 
+    // Store for export
+    lastPendingRows = rows;
+
     // Summary count
     const summary = document.createElement('div');
     summary.className = 'pending-summary';
@@ -2180,6 +2193,91 @@ async function renderPendingView() {
     table.appendChild(tbody);
     tableWrapper.appendChild(table);
     container.appendChild(tableWrapper);
+}
+
+function exportPendingWorkPDF() {
+    if (!lastPendingRows.length) {
+        showToast('No pending items to export', true);
+        return;
+    }
+    const ventureName = currentVenture ? currentVenture.name : 'Venture';
+    const blockName = currentBlockObj ? (currentBlockObj.name || currentBlockObj.id) : '';
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+    const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+
+    const floorLabelText = pendingFilterFloor === 'all' ? 'All Floors' : `${['1st','2nd','3rd','4th','5th','6th','7th','8th','9th','10th'][parseInt(pendingFilterFloor)-1] || pendingFilterFloor+'th'} Floor`;
+    const flatLabelText = pendingFilterFlat === 'all' ? 'All Flats' : `Flat ${pendingFilterFlat}`;
+
+    let rowsHtml = '';
+    lastPendingRows.forEach(row => {
+        const statusDot = row.status ? `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${getColorHex(row.status)};margin-right:6px;"></span>` : '';
+        rowsHtml += `
+            <tr>
+                <td style="padding:10px 12px;border:1px solid #ddd;">${row.floor}</td>
+                <td style="padding:10px 12px;border:1px solid #ddd;">${row.flat}</td>
+                <td style="padding:10px 12px;border:1px solid #ddd;">${row.workItem}</td>
+                <td style="padding:10px 12px;border:1px solid #ddd;">${statusDot}${row.statusLabel}</td>
+                <td style="padding:10px 12px;border:1px solid #ddd;">${row.category}</td>
+            </tr>`;
+    });
+
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>VGrand Infra - Pending Work Report</title>
+    <style>
+        @media print { body { margin: 0; } .no-print { display: none !important; } }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 40px; color: #333; }
+        .report-header { text-align: center; margin-bottom: 30px; border-bottom: 3px solid #1a2a6c; padding-bottom: 20px; }
+        .report-header h1 { color: #1a2a6c; font-size: 1.6rem; margin: 0 0 6px 0; }
+        .report-header p { margin: 2px 0; color: #555; font-size: 0.9rem; }
+        .report-meta { display: flex; justify-content: space-between; margin-bottom: 20px; font-size: 0.85rem; color: #777; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+        th { background: #1a2a6c; color: #fff; padding: 12px; text-align: left; border: 1px solid #1a2a6c; }
+        .no-print { text-align: center; margin-top: 30px; }
+        .no-print button { background: #1a2a6c; color: #fff; border: none; padding: 10px 24px; border-radius: 6px; font-size: 1rem; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <div class="report-header">
+        <h1>VGrand Infra Tracking</h1>
+        <p><strong>Pending Work Report</strong></p>
+        <p>Venture: ${ventureName}${blockName ? ' | Block: ' + blockName : ''} | ${floorLabelText} — ${flatLabelText}</p>
+    </div>
+    <div class="report-meta">
+        <span>Generated on: ${dateStr} at ${timeStr}</span>
+        <span>Total Pending Items: ${lastPendingRows.length}</span>
+    </div>
+    <table>
+        <thead>
+            <tr>
+                <th>Floor</th>
+                <th>Flat</th>
+                <th>Work Item</th>
+                <th>Status</th>
+                <th>Category</th>
+            </tr>
+        </thead>
+        <tbody>
+            ${rowsHtml}
+        </tbody>
+    </table>
+    <div class="no-print">
+        <button onclick="window.print()">Print / Save as PDF</button>
+    </div>
+</body>
+</html>`;
+
+    const win = window.open('', '_blank');
+    win.document.write(html);
+    win.document.close();
+}
+
+function getColorHex(color) {
+    const map = { red: '#e74c3c', yellow: '#f1c40f', blue: '#3498db', green: '#2ecc71' };
+    return map[color] || '#ccc';
 }
 
 // ========================
