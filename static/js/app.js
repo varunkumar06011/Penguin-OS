@@ -1043,6 +1043,7 @@ async function init() {
     ]; } catch (e) { allCategories = ['Brick', 'Sand', 'Steel', 'Cement', 'Tiles', 'Electrical', 'Plumbing', 'Labour', 'Paint', 'Wood']; }
     try { allPOs = await apiGet('/api/pos') || []; } catch (e) { allPOs = []; }
     try { allVendors = await apiGet('/api/vendors') || []; } catch (e) { allVendors = []; }
+    startPolling();
 }
 
 async function preloadCells() {
@@ -1050,6 +1051,93 @@ async function preloadCells() {
     if (allCells) {
         cellsCache = allCells;
     }
+}
+
+let pollInterval = null;
+
+function startPolling() {
+    if (pollInterval) clearInterval(pollInterval);
+    pollInterval = setInterval(pollData, 5000);
+}
+
+async function pollData() {
+    // Skip polling while user is actively editing (any modal open)
+    if (document.querySelector('.modal.show')) return;
+
+    let changed = false;
+
+    // Ventures
+    try {
+        const fresh = await apiGet('/api/ventures');
+        if (fresh && JSON.stringify(fresh) !== JSON.stringify(venturesList)) {
+            venturesList = fresh;
+            changed = true;
+            if (document.getElementById('venturesDashboard').style.display !== 'none') {
+                renderVentureDashboard();
+            }
+        }
+    } catch (e) {}
+
+    // Invoices
+    try {
+        const fresh = await apiGet('/api/invoices') || [];
+        if (JSON.stringify(fresh) !== JSON.stringify(allInvoices)) {
+            allInvoices = fresh;
+            changed = true;
+            if (document.getElementById('invoicesPanel').style.display !== 'none') {
+                renderInvoiceCards();
+            }
+        }
+    } catch (e) {}
+
+    // POs
+    try {
+        const fresh = await apiGet('/api/pos') || [];
+        if (JSON.stringify(fresh) !== JSON.stringify(allPOs)) {
+            allPOs = fresh;
+            changed = true;
+            if (document.getElementById('poPanel').style.display !== 'none') {
+                renderPOCards();
+            }
+        }
+    } catch (e) {}
+
+    // Vendors
+    try {
+        const fresh = await apiGet('/api/vendors') || [];
+        if (JSON.stringify(fresh) !== JSON.stringify(allVendors)) {
+            allVendors = fresh;
+            changed = true;
+            const dirModal = document.getElementById('vendorDirModal');
+            if (dirModal && dirModal.classList.contains('show')) {
+                renderVendorDirList();
+            }
+        }
+    } catch (e) {}
+
+    // Cells (merge into cache)
+    try {
+        const fresh = await apiGet('/api/cells');
+        if (fresh) {
+            let cellsChanged = false;
+            for (const key in fresh) {
+                if (cellsCache[key] !== fresh[key]) {
+                    cellsCache[key] = fresh[key];
+                    cellsChanged = true;
+                }
+            }
+            if (cellsChanged) {
+                changed = true;
+                const tracker = document.getElementById('trackerView');
+                if (tracker && tracker.style.display !== 'none') {
+                    if (currentView === 'flat') renderGrid();
+                    else if (currentView === 'work') renderWorkView();
+                    else if (currentView === 'super_structure') renderSuperStructure();
+                    else if (currentView === 'pending') await renderPendingView();
+                }
+            }
+        }
+    } catch (e) {}
 }
 
 init();
