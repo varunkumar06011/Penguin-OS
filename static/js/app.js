@@ -1239,7 +1239,10 @@ function showToast(message, isError = false) {
 async function init() {
     const ok = await checkSession();
     if (!ok) return;
-    try { await preloadCells(); } catch (e) { cellsCache = {}; }
+
+    // Load cells in background — don't block UI rendering
+    preloadCells().catch(() => {});
+
     try { await loadVentures(); } catch (e) { venturesList = createDefaultVentures(); renderVentureDashboard(); }
     try { allInvoices = await apiGet('/api/invoices') || []; } catch (e) { allInvoices = []; }
     try { allCategories = await apiGet('/api/settings/invoice_categories') || [
