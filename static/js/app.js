@@ -1,26 +1,22 @@
 // ========================
-// Firebase Config (USER MUST FILL THIS)
+// LocalStorage Persistence
 // ========================
-const firebaseConfig = {
-    apiKey: "YOUR_API_KEY",
-    authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-    projectId: "YOUR_PROJECT_ID",
-    storageBucket: "YOUR_PROJECT_ID.appspot.com",
-    messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-    appId: "YOUR_APP_ID"
-};
+const LS_PREFIX = 'vgrand_';
 
-// Initialize Firebase if config is provided
-let db = null;
-let firebaseInitialized = false;
-try {
-    if (firebaseConfig.apiKey && firebaseConfig.apiKey !== 'YOUR_API_KEY') {
-        firebase.initializeApp(firebaseConfig);
-        db = firebase.firestore();
-        firebaseInitialized = true;
-    }
-} catch (e) {
-    console.warn('Firebase not initialized:', e);
+function lsGet(key) {
+    try { return JSON.parse(localStorage.getItem(LS_PREFIX + key)); } catch { return null; }
+}
+
+function lsSet(key, value) {
+    localStorage.setItem(LS_PREFIX + key, JSON.stringify(value));
+}
+
+function lsDelete(key) {
+    localStorage.removeItem(LS_PREFIX + key);
+}
+
+function generateId() {
+    return 'id_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
 }
 
 // ========================
@@ -210,37 +206,14 @@ els.signOutBtn.addEventListener('click', async () => {
 });
 
 // ========================
-// Firestore Helpers
+// LocalStorage Persistence Helpers
 // ========================
-function getProjectRef() {
-    if (!db) return null;
-    return db.collection('projects').doc('vgrand-infra');
+function lsCellKey(cellId) {
+    return 'cell_' + cacheKey(cellId);
 }
 
-function getCellRef(cellId) {
-    if (!db) return null;
-    if (currentVenture) {
-        return db.collection('ventures').doc(currentVenture.id).collection('cells').doc(cellId);
-    }
-    return getProjectRef().collection('cells').doc(cellId);
-}
-
-function getSuperstructureRef(cellId) {
-    if (!db) return null;
-    if (currentVenture) {
-        return db.collection('ventures').doc(currentVenture.id).collection('superstructure').doc(cellId);
-    }
-    return getProjectRef().collection('superstructure').doc(cellId);
-}
-
-function getSettingsRef() {
-    if (!db) return null;
-    return getProjectRef().collection('settings').doc('workItems');
-}
-
-function getVentureRef(ventureId) {
-    if (!db) return null;
-    return db.collection('ventures').doc(ventureId);
+function lsSsKey(cellId) {
+    return 'ss_' + cacheKey(cellId);
 }
 
 async function loadWorkItems() {
@@ -248,75 +221,28 @@ async function loadWorkItems() {
         workItems = [...currentVenture.flat_view_items];
         return;
     }
-    if (!db) {
-        workItems = [...DEFAULT_WORK_ITEMS];
-        return;
-    }
-    try {
-        const doc = await getSettingsRef().get();
-        if (doc.exists) {
-            const data = doc.data();
-            workItems = data.items || [...DEFAULT_WORK_ITEMS];
-        } else {
-            workItems = [...DEFAULT_WORK_ITEMS];
-            await getSettingsRef().set({ items: workItems });
-        }
-    } catch (e) {
-        console.error('Error loading work items:', e);
-        workItems = [...DEFAULT_WORK_ITEMS];
-    }
+    workItems = [...DEFAULT_WORK_ITEMS];
 }
 
 async function saveWorkItems(items) {
     if (currentVenture) {
         currentVenture.flat_view_items = items;
-        if (!db) {
-            showToast('Firebase not configured. Changes saved locally only.', true);
-            return;
-        }
-        try {
-            await getVentureRef(currentVenture.id).update({ flat_view_items: items });
-            showToast('Work items saved successfully');
-        } catch (e) {
-            console.error('Error saving work items:', e);
-            showToast('Failed to save work items', true);
-        }
-        return;
-    }
-    if (!db) {
-        showToast('Firebase not configured. Changes saved locally only.', true);
-        return;
-    }
-    try {
-        await getSettingsRef().set({ items: items });
+        saveVenturesToLS();
         showToast('Work items saved successfully');
-    } catch (e) {
-        console.error('Error saving work items:', e);
-        showToast('Failed to save work items', true);
+        return;
     }
+    showToast('Work items saved locally');
 }
 
 async function getCellData(cellId) {
-    if (!db) return null;
-    const cacheKey = currentVenture ? `${currentVenture.id}_${cellId}` : cellId;
-    if (cellsCache[cacheKey] !== undefined) return cellsCache[cacheKey];
-    try {
-        const doc = await getCellRef(cellId).get();
-        const data = doc.exists ? doc.data() : null;
-        cellsCache[cacheKey] = data;
-        return data;
-    } catch (e) {
-        console.error('Error loading cell:', e);
-        return null;
-    }
+    const ck = cacheKey(cellId);
+    if (cellsCache[ck] !== undefined) return cellsCache[ck];
+    const data = lsGet(lsCellKey(cellId));
+    cellsCache[ck] = data;
+    return data;
 }
 
 async function updateCellColor(cellId, color, workItem, flat) {
-    if (!db) {
-        showToast('Firebase not configured. Changes not saved.', true);
-        return;
-    }
-    const cellRef = getCellRef(cellId);
     const today = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
     const statusLabel = color ? COLOR_LABELS[color] : 'Cleared';
 
@@ -332,62 +258,64 @@ async function updateCellColor(cellId, color, workItem, flat) {
         changed_by: currentUser
     };
 
-    try {
-        const doc = await cellRef.get();
-        if (doc.exists) {
-            const existing = doc.data();
-            const timeline = existing.timeline || [];
-            timeline.push(timelineEntry);
-            let remarks = existing.remarks || '';
-            if (autoRemark) {
-                remarks = remarks ? remarks + '\n' + autoRemark : autoRemark;
-            }
-            await cellRef.update({
-                color: color || null,
-                remarks: remarks,
-                timeline: timeline,
-                updated_at: firebase.firestore.FieldValue.serverTimestamp(),
-                updated_by: currentUser
-            });
-        } else {
-            await cellRef.set({
-                color: color || null,
-                remarks: autoRemark,
-                timeline: [timelineEntry],
-                updated_at: firebase.firestore.FieldValue.serverTimestamp(),
-                updated_by: currentUser
-            });
+    const existing = lsGet(lsCellKey(cellId)) || null;
+    let data;
+    if (existing) {
+        const timeline = existing.timeline || [];
+        timeline.push(timelineEntry);
+        let remarks = existing.remarks || '';
+        if (autoRemark) {
+            remarks = remarks ? remarks + '\n' + autoRemark : autoRemark;
         }
-        const cacheKey = currentVenture ? `${currentVenture.id}_${cellId}` : cellId;
-        cellsCache[cacheKey] = null;
-        await getCellData(cellId);
-        renderGrid();
-        showToast('Status updated');
-    } catch (e) {
-        console.error('Error updating cell:', e);
-        showToast('Failed to update status', true);
+        data = {
+            ...existing,
+            color: color || null,
+            remarks: remarks,
+            timeline: timeline,
+            updated_at: new Date().toISOString(),
+            updated_by: currentUser
+        };
+    } else {
+        data = {
+            color: color || null,
+            remarks: autoRemark,
+            timeline: [timelineEntry],
+            updated_at: new Date().toISOString(),
+            updated_by: currentUser
+        };
     }
+    lsSet(lsCellKey(cellId), data);
+    cellsCache[cacheKey(cellId)] = data;
+    renderGrid();
+    showToast('Status updated');
 }
 
 async function saveCellRemarks(cellId, remarks) {
-    if (!db) {
-        showToast('Firebase not configured. Changes not saved.', true);
-        return;
-    }
-    try {
-        await getCellRef(cellId).update({
-            remarks: remarks,
-            updated_at: firebase.firestore.FieldValue.serverTimestamp(),
-            updated_by: currentUser
-        });
-        const cacheKey = currentVenture ? `${currentVenture.id}_${cellId}` : cellId;
-        cellsCache[cacheKey] = null;
-        await getCellData(cellId);
-        renderGrid();
-        showToast('Remarks saved');
-    } catch (e) {
-        console.error('Error saving remarks:', e);
-        showToast('Failed to save remarks', true);
+    const existing = lsGet(lsCellKey(cellId)) || {};
+    const data = {
+        ...existing,
+        remarks: remarks,
+        updated_at: new Date().toISOString(),
+        updated_by: currentUser
+    };
+    lsSet(lsCellKey(cellId), data);
+    cellsCache[cacheKey(cellId)] = data;
+    renderGrid();
+    showToast('Remarks saved');
+}
+
+// Venture persistence
+function saveVenturesToLS() {
+    lsSet('ventures', venturesList);
+}
+
+function loadVenturesFromLS() {
+    const saved = lsGet('ventures');
+    if (saved && saved.length > 0) {
+        venturesList = saved;
+    } else {
+        venturesList = createDefaultVentures();
+        saveVenturesToLS();
     }
 }
 
@@ -1078,9 +1006,6 @@ function showToast(message, isError = false) {
 async function init() {
     const ok = await checkSession();
     if (!ok) return;
-    if (!db) {
-        showToast('Firebase not configured. Showing local demo data.', true);
-    }
     await loadVentures();
 }
 
@@ -1285,12 +1210,7 @@ async function renderSuperStructure() {
 }
 
 async function updateSuperStructureStatus(block, itemId, status, workItem) {
-    if (!db) {
-        showToast('Firebase not configured. Changes not saved.', true);
-        return;
-    }
     const cellId = ssCellKeyById(block, itemId);
-    const cellRef = getSuperstructureRef(cellId);
     const today = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
     const statusLabel = COLOR_LABELS[status];
 
@@ -1306,72 +1226,44 @@ async function updateSuperStructureStatus(block, itemId, status, workItem) {
         changed_by: currentUser
     };
 
-    try {
-        const doc = await cellRef.get();
-        if (doc.exists) {
-            const existing = doc.data();
-            const timeline = existing.timeline || [];
-            timeline.push(timelineEntry);
-            let remarks = existing.remarks || '';
-            if (autoRemark) {
-                remarks = remarks ? remarks + '\n' + autoRemark : autoRemark;
-            }
-            await cellRef.update({
-                color: status,
-                remarks: remarks,
-                timeline: timeline,
-                updated_at: firebase.firestore.FieldValue.serverTimestamp(),
-                updated_by: currentUser
-            });
-        } else {
-            await cellRef.set({
-                color: status,
-                remarks: autoRemark,
-                timeline: [timelineEntry],
-                updated_at: firebase.firestore.FieldValue.serverTimestamp(),
-                updated_by: currentUser
-            });
+    const existing = lsGet(lsSsKey(cellId)) || null;
+    let data;
+    if (existing) {
+        const timeline = existing.timeline || [];
+        timeline.push(timelineEntry);
+        let remarks = existing.remarks || '';
+        if (autoRemark) {
+            remarks = remarks ? remarks + '\n' + autoRemark : autoRemark;
         }
-        cellsCache[cacheKey(cellId)] = null;
-        await getCellData(cellId);
-        renderSuperStructure();
-        showToast('Status updated');
-    } catch (e) {
-        console.error('Error updating superstructure cell:', e);
-        showToast('Failed to update status', true);
+        data = {
+            ...existing,
+            color: status,
+            remarks: remarks,
+            timeline: timeline,
+            updated_at: new Date().toISOString(),
+            updated_by: currentUser
+        };
+    } else {
+        data = {
+            color: status,
+            remarks: autoRemark,
+            timeline: [timelineEntry],
+            updated_at: new Date().toISOString(),
+            updated_by: currentUser
+        };
     }
+    lsSet(lsSsKey(cellId), data);
+    cellsCache[cacheKey(cellId)] = data;
+    renderSuperStructure();
+    showToast('Status updated');
 }
 
 // ========================
 // Venture Management
 // ========================
 async function loadVentures() {
-    if (!db) {
-        // Local demo: create in-memory ventures
-        venturesList = createDefaultVentures();
-        renderVentureDashboard();
-        return;
-    }
-    try {
-        const snapshot = await db.collection('ventures').get();
-        venturesList = [];
-        snapshot.forEach(doc => {
-            venturesList.push({ id: doc.id, ...doc.data() });
-        });
-        if (venturesList.length === 0) {
-            await seedDefaultVentures();
-            const snap2 = await db.collection('ventures').get();
-            venturesList = [];
-            snap2.forEach(doc => {
-                venturesList.push({ id: doc.id, ...doc.data() });
-            });
-        }
-        renderVentureDashboard();
-    } catch (e) {
-        console.error('Error loading ventures:', e);
-        venturesList = createDefaultVentures();
-        renderVentureDashboard();
-    }
+    loadVenturesFromLS();
+    renderVentureDashboard();
 }
 
 function createDefaultVentures() {
@@ -1405,23 +1297,8 @@ function createDefaultVentures() {
 }
 
 async function seedDefaultVentures() {
-    if (!db) return;
-    const ventures = createDefaultVentures();
-    const batch = db.batch();
-    ventures.forEach(v => {
-        const ref = db.collection('ventures').doc(v.id);
-        batch.set(ref, {
-            name: v.name,
-            created_by: currentUser,
-            created_at: firebase.firestore.FieldValue.serverTimestamp(),
-            blocks: v.blocks,
-            flat_view_items: v.flat_view_items,
-            work_categories: v.work_categories,
-            super_structure_items: v.super_structure_items,
-            archived: {}
-        });
-    });
-    await batch.commit();
+    venturesList = createDefaultVentures();
+    saveVenturesToLS();
 }
 
 function renderVentureDashboard() {
@@ -1731,30 +1608,22 @@ document.getElementById('wizardNext').addEventListener('click', async () => {
 });
 
 async function createVentureFromWizard() {
-    if (!db) {
-        showToast('Firebase not configured. Cannot create venture.', true);
-        closeWizard();
-        return;
-    }
-    try {
-        const ventureRef = db.collection('ventures').doc();
-        await ventureRef.set({
-            name: wizardData.name,
-            created_by: currentUser,
-            created_at: firebase.firestore.FieldValue.serverTimestamp(),
-            blocks: wizardData.blocks,
-            flat_view_items: [...DEFAULT_WORK_ITEMS],
-            work_categories: wizardData.workCategories,
-            super_structure_items: wizardData.superItems,
-            archived: {}
-        });
-        showToast('Venture created successfully');
-        closeWizard();
-        await loadVentures();
-    } catch (e) {
-        console.error('Error creating venture:', e);
-        showToast('Failed to create venture', true);
-    }
+    const newVenture = {
+        id: generateId(),
+        name: wizardData.name,
+        created_by: currentUser,
+        created_at: new Date().toISOString(),
+        blocks: wizardData.blocks,
+        flat_view_items: [...DEFAULT_WORK_ITEMS],
+        work_categories: wizardData.workCategories,
+        super_structure_items: wizardData.superItems,
+        archived: {}
+    };
+    venturesList.push(newVenture);
+    saveVenturesToLS();
+    showToast('Venture created successfully');
+    closeWizard();
+    await loadVentures();
 }
 
 // ========================
@@ -1861,36 +1730,26 @@ function startInlineEdit(container, currentValue, onSave) {
 
 async function saveVentureConfig() {
     if (!currentVenture) return;
-    if (!db) {
-        showToast('Changes saved locally (Firebase not configured)');
-        return;
+    const idx = venturesList.findIndex(v => v.id === currentVenture.id);
+    if (idx >= 0) {
+        venturesList[idx] = currentVenture;
+        saveVenturesToLS();
     }
-    try {
-        await getVentureRef(currentVenture.id).update({
-            flat_view_items: currentVenture.flat_view_items,
-            work_categories: currentVenture.work_categories,
-            super_structure_items: currentVenture.super_structure_items,
-            archived: archivedItems,
-            updated_at: firebase.firestore.FieldValue.serverTimestamp(),
-            updated_by: currentUser
-        });
-        showToast('Changes saved');
-    } catch (e) {
-        console.error('Error saving venture config:', e);
-        showToast('Failed to save changes', true);
-    }
+    showToast('Changes saved');
 }
 
 function logEdit(action, section, itemId, oldVal, newVal) {
-    if (!db || !currentVenture) return;
+    if (!currentVenture) return;
     const logEntry = {
         action, section, item_id: itemId,
         old_value: oldVal, new_value: newVal,
         changed_by: currentUser,
-        changed_at: firebase.firestore.FieldValue.serverTimestamp()
+        changed_at: new Date().toISOString()
     };
-    db.collection('ventures').doc(currentVenture.id).collection('config').doc('edit_log')
-        .set({ entries: firebase.firestore.FieldValue.arrayUnion(logEntry) }, { merge: true }).catch(() => {});
+    const key = 'editlog_' + currentVenture.id;
+    const existing = lsGet(key) || { entries: [] };
+    existing.entries.push(logEntry);
+    lsSet(key, existing);
 }
 
 // Flat View Editing
@@ -2079,14 +1938,8 @@ async function renameVenture(ventureId, newName) {
     const venture = venturesList.find(v => v.id === ventureId);
     if (!venture) return;
     venture.name = newName;
-    if (db) {
-        try {
-            await getVentureRef(ventureId).update({ name: newName });
-            showToast('Venture renamed');
-        } catch (e) {
-            showToast('Failed to rename venture', true);
-        }
-    }
+    saveVenturesToLS();
+    showToast('Venture renamed');
     renderVentureDashboard();
 }
 
@@ -2094,13 +1947,7 @@ async function deleteVenture(ventureId) {
     const venture = venturesList.find(v => v.id === ventureId);
     if (!venture) return;
     venturesList = venturesList.filter(v => v.id !== ventureId);
-    if (db) {
-        try {
-            await getVentureRef(ventureId).delete();
-            showToast('Venture deleted');
-        } catch (e) {
-            showToast('Failed to delete venture', true);
-        }
-    }
+    saveVenturesToLS();
+    showToast('Venture deleted');
     renderVentureDashboard();
 }
