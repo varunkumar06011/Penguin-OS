@@ -1340,6 +1340,24 @@ async function pollData() {
 init();
 
 // ========================
+// Immediate sync triggers (visibility, focus, online)
+// ========================
+function triggerImmediateSync() {
+    // Only sync cells when tracker is visible and no modal is open
+    const tracker = document.getElementById('trackerView');
+    if (tracker && tracker.style.display !== 'none' && !document.querySelector('.modal.show')) {
+        pollData();
+    }
+}
+
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) triggerImmediateSync();
+});
+
+window.addEventListener('focus', triggerImmediateSync);
+window.addEventListener('online', triggerImmediateSync);
+
+// ========================
 // Super Structure View
 // ========================
 function renderSuperStructure() {

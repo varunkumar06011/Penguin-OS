@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for
 import os
+from datetime import timedelta
 from functools import wraps
 from dotenv import load_dotenv
 from supabase import create_client, Client
@@ -8,6 +9,7 @@ load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'vgrand-secret-key-2025')
+app.permanent_session_lifetime = timedelta(days=30)
 
 SUPABASE_URL = os.environ.get('SUPABASE_URL', '')
 SUPABASE_ANON_KEY = os.environ.get('SUPABASE_ANON_KEY', '')
@@ -47,6 +49,7 @@ def login():
 
     if username == DEMO_USERNAME and password == DEMO_PASSWORD:
         session['user'] = username
+        session.permanent = True
         return jsonify({'success': True, 'user': username})
     return jsonify({'success': False, 'error': 'Invalid credentials'}), 401
 
@@ -87,8 +90,10 @@ def api_cells():
     if not supabase:
         return jsonify({}), 500
     res = supabase.table('cell_data').select('*').execute()
+    # Defensive sort: most recent updated_at wins if duplicates still exist pre-migration
+    sorted_rows = sorted(res.data, key=lambda r: (r.get('data') or {}).get('updated_at', ''), reverse=True)
     data = {}
-    for row in res.data:
+    for row in sorted_rows:
         merged = {**(row.get('data') or {})}
         merged['id'] = row['id']
         data[row['id']] = merged
@@ -102,7 +107,8 @@ def api_cell(cell_id):
         return jsonify({}), 500
     res = supabase.table('cell_data').select('*').eq('id', cell_id).execute()
     if res.data:
-        row = res.data[0]
+        # Defensive: take most recently updated if duplicates exist
+        row = max(res.data, key=lambda r: (r.get('data') or {}).get('updated_at', ''))
         merged = {**(row.get('data') or {})}
         merged['id'] = row['id']
         return jsonify(merged)
@@ -119,7 +125,7 @@ def api_cell_post(cell_id):
         supabase.table('cell_data').upsert({
             'id': cell_id,
             'data': body
-        }).execute()
+        }, on_conflict='id').execute()
         return jsonify({'success': True})
     except Exception as e:
         print(f'Error saving cell {cell_id}: {e}')
@@ -137,7 +143,7 @@ def api_cells_batch():
         return jsonify({'success': True})
     rows = [{'id': c['id'], 'data': c.get('data', {})} for c in cells]
     try:
-        supabase.table('cell_data').upsert(rows).execute()
+        supabase.table('cell_data').upsert(rows, on_conflict='id').execute()
         return jsonify({'success': True, 'count': len(rows)})
     except Exception as e:
         print(f'Error in batch upsert: {e}')
@@ -167,7 +173,7 @@ def api_ventures_post():
         supabase.table('ventures').upsert({
             'id': v['id'],
             'data': v
-        }).execute()
+        }, on_conflict='id').execute()
     return jsonify({'success': True})
 
 
@@ -202,7 +208,7 @@ def api_invoice_post():
     supabase.table('invoices').upsert({
         'id': inv['id'],
         'data': inv
-    }).execute()
+    }, on_conflict='id').execute()
     return jsonify({'success': True})
 
 
@@ -237,7 +243,7 @@ def api_po_post():
     supabase.table('purchase_orders').upsert({
         'id': po['id'],
         'data': po
-    }).execute()
+    }, on_conflict='id').execute()
     return jsonify({'success': True})
 
 
@@ -272,7 +278,7 @@ def api_vendor_post():
     supabase.table('vendors').upsert({
         'id': vendor['id'],
         'data': vendor
-    }).execute()
+    }, on_conflict='id').execute()
     return jsonify({'success': True})
 
 
@@ -309,7 +315,7 @@ def api_settings_post(key):
     supabase.table('settings').upsert({
         'key': key,
         'value': value
-    }).execute()
+    }, on_conflict='key').execute()
     return jsonify({'success': True})
 
 

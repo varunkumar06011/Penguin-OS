@@ -297,7 +297,7 @@ body {
     border: none;
     border-radius: 6px;
     cursor: pointer;
-    transition: transform 0.15s, box-shadow 0.15s;
+    transition: transform 0.15s, box-shadow 0.15s, background-color 0.35s ease;
     position: relative;
 }
 
