@@ -14,8 +14,16 @@ WHERE ctid NOT IN (
     ORDER BY id, COALESCE(data->>'updated_at', '') DESC, ctid DESC
 );
 
--- Add UNIQUE constraint on id (idempotent)
-ALTER TABLE cell_data ADD CONSTRAINT IF NOT EXISTS cell_data_id_unique UNIQUE (id);
+-- Add UNIQUE constraint on id (idempotent via pg_constraint check)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'cell_data_id_unique' AND conrelid = 'cell_data'::regclass
+    ) THEN
+        ALTER TABLE cell_data ADD CONSTRAINT cell_data_id_unique UNIQUE (id);
+    END IF;
+END $$;
 
 -- Enable RLS + full-access policy for anon role (app enforces auth in Flask)
 ALTER TABLE cell_data ENABLE ROW LEVEL SECURITY;
@@ -39,7 +47,15 @@ WHERE ctid NOT IN (
     ORDER BY id, COALESCE(data->>'updated_at', '') DESC, ctid DESC
 );
 
-ALTER TABLE ventures ADD CONSTRAINT IF NOT EXISTS ventures_id_unique UNIQUE (id);
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'ventures_id_unique' AND conrelid = 'ventures'::regclass
+    ) THEN
+        ALTER TABLE ventures ADD CONSTRAINT ventures_id_unique UNIQUE (id);
+    END IF;
+END $$;
 ALTER TABLE ventures ENABLE ROW LEVEL SECURITY;
 DO $$
 BEGIN
@@ -61,7 +77,15 @@ WHERE ctid NOT IN (
     ORDER BY id, COALESCE(data->>'updated_at', '') DESC, ctid DESC
 );
 
-ALTER TABLE invoices ADD CONSTRAINT IF NOT EXISTS invoices_id_unique UNIQUE (id);
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'invoices_id_unique' AND conrelid = 'invoices'::regclass
+    ) THEN
+        ALTER TABLE invoices ADD CONSTRAINT invoices_id_unique UNIQUE (id);
+    END IF;
+END $$;
 ALTER TABLE invoices ENABLE ROW LEVEL SECURITY;
 DO $$
 BEGIN
@@ -83,7 +107,15 @@ WHERE ctid NOT IN (
     ORDER BY id, COALESCE(data->>'updated_at', '') DESC, ctid DESC
 );
 
-ALTER TABLE purchase_orders ADD CONSTRAINT IF NOT EXISTS purchase_orders_id_unique UNIQUE (id);
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'purchase_orders_id_unique' AND conrelid = 'purchase_orders'::regclass
+    ) THEN
+        ALTER TABLE purchase_orders ADD CONSTRAINT purchase_orders_id_unique UNIQUE (id);
+    END IF;
+END $$;
 ALTER TABLE purchase_orders ENABLE ROW LEVEL SECURITY;
 DO $$
 BEGIN
@@ -105,7 +137,15 @@ WHERE ctid NOT IN (
     ORDER BY id, COALESCE(data->>'updated_at', '') DESC, ctid DESC
 );
 
-ALTER TABLE vendors ADD CONSTRAINT IF NOT EXISTS vendors_id_unique UNIQUE (id);
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'vendors_id_unique' AND conrelid = 'vendors'::regclass
+    ) THEN
+        ALTER TABLE vendors ADD CONSTRAINT vendors_id_unique UNIQUE (id);
+    END IF;
+END $$;
 ALTER TABLE vendors ENABLE ROW LEVEL SECURITY;
 DO $$
 BEGIN
@@ -127,7 +167,15 @@ WHERE ctid NOT IN (
     ORDER BY key, ctid DESC
 );
 
-ALTER TABLE settings ADD CONSTRAINT IF NOT EXISTS settings_key_unique UNIQUE (key);
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'settings_key_unique' AND conrelid = 'settings'::regclass
+    ) THEN
+        ALTER TABLE settings ADD CONSTRAINT settings_key_unique UNIQUE (key);
+    END IF;
+END $$;
 ALTER TABLE settings ENABLE ROW LEVEL SECURITY;
 DO $$
 BEGIN
