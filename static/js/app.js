@@ -1539,8 +1539,8 @@ function renderSuperStructure() {
             addTd.innerHTML = '<div class="add-item-row"><input type="text" id="addSuperItemInput" placeholder="New super structure item"><button class="btn-secondary" id="addSuperItemBtn">Add</button></div>';
             addRow.appendChild(addTd);
             tbody.appendChild(addRow);
-            document.getElementById('addSuperItemBtn').addEventListener('click', () => {
-                const val = document.getElementById('addSuperItemInput').value.trim();
+            addTd.querySelector('#addSuperItemBtn').addEventListener('click', () => {
+                const val = addTd.querySelector('#addSuperItemInput').value.trim();
                 if (val) addSuperItem(val);
             });
         }
