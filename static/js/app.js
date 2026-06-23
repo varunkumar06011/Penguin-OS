@@ -96,11 +96,29 @@ const WORK_CATEGORIES = {
         "Bathroom Wall Tiles", "Tile Laying",
         "Tile Cutting", "Connections", "Window Dhanis",
         "Colour to Edge", "Wedding Dhanis"
+    ],
+    'CORRIDORS': [
+        { id: 'corridor_0', label: 'Plaster' },
+        { id: 'corridor_1', label: 'Mesh' },
+        { id: 'corridor_2', label: 'Lanter' },
+        { id: 'corridor_3', label: 'Wiring' },
+        { id: 'corridor_4', label: 'Stains & Cleaning' },
+        { id: 'corridor_5', label: 'Flooring' }
+    ],
+    'ELEVATION WORK': [
+        { id: 'elevation_0', label: 'Marka' },
+        { id: 'elevation_1', label: 'Elevation' },
+        { id: 'elevation_2', label: 'Electrics' },
+        { id: 'elevation_3', label: 'Wall Care' },
+        { id: 'elevation_4', label: 'Texture' }
     ]
 };
 
-const CORRIDORS = ["Plaster", "Mesh", "Lanter", "Wiring", "Stains & Cleaning", "Flooring"];
-const ELEVATION_WORK = ["Marka", "Elevation", "Electrics", "Wall Care", "Texture"];
+// Special categories that render against a single P-004 flat instead of regular flat numbers
+const CATEGORY_FLATS = {
+    'CORRIDORS': ['P-004'],
+    'ELEVATION WORK': ['P-004']
+};
 
 const SUPER_STRUCTURE_ITEMS = [
     "Site Preparation", "Excavation", "Marking", "Piles", "Piles Concrete",
@@ -141,10 +159,10 @@ function ensureItemIds(items) {
 
 function ensureWorkCategories(cats) {
     if (!cats) return JSON.parse(JSON.stringify(WORK_CATEGORIES));
-    const result = {};
+    const result = JSON.parse(JSON.stringify(WORK_CATEGORIES)); // start with defaults
     Object.entries(cats).forEach(([catLabel, items]) => {
-        const catId = `cat_${slugId(catLabel)}`;
-        if (typeof items[0] === 'object' && items[0].id) {
+        // Use existing items if they already have IDs; otherwise generate IDs
+        if (items && items.length > 0 && typeof items[0] === 'object' && items[0].id) {
             result[catLabel] = items;
         } else {
             result[catLabel] = items.map((label, i) => ({ id: `item_${slugId(catLabel)}_${slugId(label)}_${i}`, label }));
@@ -161,7 +179,7 @@ function getFlatWorkItems() {
 }
 
 function getSuperStructureItems() {
-    if (currentVenture && currentVenture.super_structure_items) {
+    if (currentVenture && currentVenture.super_structure_items && currentVenture.super_structure_items.length > 0) {
         return ensureItemIds(currentVenture.super_structure_items);
     }
     return ensureItemIds(SUPER_STRUCTURE_ITEMS);
@@ -587,22 +605,16 @@ async function renderWorkView() {
     }
 
     Object.entries(workCategories).forEach(([cat, items]) => {
-        queueLoads(cat, items, flatNumbers);
+        const catFlats = CATEGORY_FLATS[cat] || flatNumbers;
+        queueLoads(cat, items, catFlats);
     });
-    queueLoads('CORRIDORS', CORRIDORS.map((l, i) => ({ id: `corridor_${i}`, label: l })), ['P-004']);
-    queueLoads('ELEVATION WORK', ELEVATION_WORK.map((l, i) => ({ id: `elevation_${i}`, label: l })), ['P-004']);
     await Promise.all(promises);
 
-    // Render 5 main category sections
+    // Render all category sections
     Object.entries(workCategories).forEach(([category, items]) => {
-        container.appendChild(createSectionTable(category, items, flatNumbers));
+        const catFlats = CATEGORY_FLATS[category] || flatNumbers;
+        container.appendChild(createSectionTable(category, items, catFlats));
     });
-
-    // Corridors
-    container.appendChild(createSectionTable('CORRIDORS', CORRIDORS.map((l, i) => ({ id: `corridor_${i}`, label: l })), ['P-004']));
-
-    // Elevation Work
-    container.appendChild(createSectionTable('ELEVATION WORK', ELEVATION_WORK.map((l, i) => ({ id: `elevation_${i}`, label: l })), ['P-004']));
 }
 
 function createSectionTable(category, items, flats) {
@@ -1385,6 +1397,24 @@ function renderSuperStructure() {
         subHeader.className = 'ss-subheader';
         subHeader.textContent = 'PROGRESS';
         section.appendChild(subHeader);
+
+        if (activeItems.length === 0) {
+            const emptyState = document.createElement('div');
+            emptyState.className = 'ss-empty-state';
+            emptyState.textContent = 'No super structure items found.';
+            if (editMode) {
+                const restoreBtn = document.createElement('button');
+                restoreBtn.className = 'btn-secondary';
+                restoreBtn.style.marginTop = '8px';
+                restoreBtn.textContent = 'Restore Default Items';
+                restoreBtn.addEventListener('click', restoreSuperStructureDefaults);
+                emptyState.appendChild(document.createElement('br'));
+                emptyState.appendChild(restoreBtn);
+            }
+            section.appendChild(emptyState);
+            ssWrapper.appendChild(section);
+            return;
+        }
 
         const tableWrapper = document.createElement('div');
         tableWrapper.className = 'grid-container';
@@ -2262,6 +2292,17 @@ async function reorderSuperItem(itemId, direction) {
     await logEdit('reorder', 'super_structure', itemId, idx, newIdx);
     await saveVentureConfig();
     renderSuperStructure();
+}
+
+async function restoreSuperStructureDefaults() {
+    if (!currentVenture) return;
+    currentVenture.super_structure_items = [...SUPER_STRUCTURE_ITEMS];
+    archivedItems['super_structure'] = [];
+    currentVenture.archived = archivedItems;
+    await logEdit('restore_defaults', 'super_structure', null, null, null);
+    await saveVentureConfig();
+    renderSuperStructure();
+    showToast('Super structure defaults restored');
 }
 
 // Venture Dashboard Editing

@@ -753,6 +753,13 @@ body {
     text-align: center;
 }
 
+.ss-empty-state {
+    padding: 24px;
+    text-align: center;
+    color: #6b7280;
+    font-size: 0.95rem;
+}
+
 .ss-table th,
 .ss-table td {
     padding: 6px 4px;
