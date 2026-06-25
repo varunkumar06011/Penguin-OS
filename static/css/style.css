@@ -971,6 +971,7 @@ body {
 .bulk-color-btn[data-color="blue"]   { background: #3498db; }
 .bulk-color-btn[data-color="green"]  { background: #27ae60; }
 .bulk-color-btn.empty { background: #555; color: #fff; }
+.bulk-color-btn.selected { border-color: #fff; transform: scale(1.2); box-shadow: 0 0 8px rgba(255,255,255,0.6); }
 
 .btn-bulk-cancel {
     margin-left: auto;

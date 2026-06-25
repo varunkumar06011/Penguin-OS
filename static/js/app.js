@@ -41,6 +41,7 @@ let workItems = [];
 let cellsCache = {};
 const pendingSaves = new Map(); // cellKey -> debounce timeout
 let bulkMode = false;
+let bulkSelectedColor = null; // when set, clicking a cell instantly applies this color (paint mode)
 const bulkSelected = new Set(); // set of cacheKeys selected in bulk mode
 let selectedCellId = null;
 let selectedWorkItem = null;
@@ -502,15 +503,19 @@ async function renderGrid() {
                     e.preventDefault();
                     if (bulkMode) {
                         const ck = cacheKey(cellId);
-                        if (bulkSelected.has(ck)) {
-                            bulkSelected.delete(ck);
-                            btn.classList.remove('bulk-selected');
+                        if (bulkSelectedColor) {
+                            updateCellColor(cellId, bulkSelectedColor, item.label, flat);
                         } else {
-                            bulkSelected.add(ck);
-                            btn.classList.add('bulk-selected');
+                            if (bulkSelected.has(ck)) {
+                                bulkSelected.delete(ck);
+                                btn.classList.remove('bulk-selected');
+                            } else {
+                                bulkSelected.add(ck);
+                                btn.classList.add('bulk-selected');
+                            }
+                            document.getElementById('bulkCount').textContent =
+                                `${bulkSelected.size} cell${bulkSelected.size !== 1 ? 's' : ''} selected`;
                         }
-                        document.getElementById('bulkCount').textContent =
-                            `${bulkSelected.size} cell${bulkSelected.size !== 1 ? 's' : ''} selected`;
                     } else {
                         openStatusPopup(cellId, item.label, flat, color);
                     }
@@ -615,6 +620,19 @@ async function renderWorkView() {
         const catFlats = CATEGORY_FLATS[category] || flatNumbers;
         container.appendChild(createSectionTable(category, items, catFlats));
     });
+
+    // Add category row in edit mode
+    if (editMode) {
+        const addCatDiv = document.createElement('div');
+        addCatDiv.className = 'add-item-row';
+        addCatDiv.style.margin = '12px 0';
+        addCatDiv.innerHTML = `<input type="text" id="addWorkCategoryInput" placeholder="New category name (e.g. Flooring, Corridors...)"><button class="btn-secondary" id="addWorkCategoryBtn">Add Category</button>`;
+        container.appendChild(addCatDiv);
+        document.getElementById('addWorkCategoryBtn').addEventListener('click', () => {
+            const val = document.getElementById('addWorkCategoryInput').value.trim();
+            if (val) addWorkCategory(val);
+        });
+    }
 }
 
 function createSectionTable(category, items, flats) {
@@ -627,8 +645,9 @@ function createSectionTable(category, items, flats) {
         header.innerHTML = `<span class="cat-label">${category}</span>`;
         const ctrl = document.createElement('span');
         ctrl.style.marginLeft = '12px';
-        ctrl.innerHTML = '<button class="edit-btn" title="Rename category">&#9998;</button>';
-        ctrl.querySelector('button').addEventListener('click', () => startInlineEdit(header, category, (newName) => renameWorkCategory(category, newName)));
+        ctrl.innerHTML = '<button class="edit-btn" title="Rename category">&#9998;</button><button class="edit-btn" title="Delete category">&#10006;</button>';
+        ctrl.querySelector('[title="Rename category"]').addEventListener('click', () => startInlineEdit(header, category, (newName) => renameWorkCategory(category, newName)));
+        ctrl.querySelector('[title="Delete category"]').addEventListener('click', () => showConfirm('Delete Category', `Delete '${category}' and all its items?`, () => deleteWorkCategory(category)));
         header.appendChild(ctrl);
     } else {
         header.textContent = category;
@@ -715,6 +734,7 @@ function createSectionTable(category, items, flats) {
             const btn = document.createElement('button');
             btn.className = 'cell-btn ' + (color || 'empty');
             btn.title = `${flat} - ${itemObj.label}`;
+            btn.dataset.cellId = cacheKey(cellId);
             if (editMode) btn.disabled = true;
 
             const history = document.createElement('button');
@@ -729,7 +749,24 @@ function createSectionTable(category, items, flats) {
             if (!editMode) {
                 btn.addEventListener('click', (e) => {
                     e.preventDefault();
-                    openStatusPopup(cellId, itemObj.label, flat, color);
+                    if (bulkMode) {
+                        const ck = cacheKey(cellId);
+                        if (bulkSelectedColor) {
+                            updateCellColor(cellId, bulkSelectedColor, itemObj.label, flat);
+                        } else {
+                            if (bulkSelected.has(ck)) {
+                                bulkSelected.delete(ck);
+                                btn.classList.remove('bulk-selected');
+                            } else {
+                                bulkSelected.add(ck);
+                                btn.classList.add('bulk-selected');
+                            }
+                            document.getElementById('bulkCount').textContent =
+                                `${bulkSelected.size} cell${bulkSelected.size !== 1 ? 's' : ''} selected`;
+                        }
+                    } else {
+                        openStatusPopup(cellId, itemObj.label, flat, color);
+                    }
                 });
             }
 
@@ -826,22 +863,27 @@ els.statusPopup.addEventListener('click', (e) => {
 // ========================
 function exitBulkMode() {
     bulkMode = false;
+    bulkSelectedColor = null;
     bulkSelected.clear();
     document.getElementById('bulkSelectBtn').classList.remove('active');
     document.getElementById('bulkActionBar').style.display = 'none';
     // Remove all bulk-selected highlights
     document.querySelectorAll('.cell-btn.bulk-selected').forEach(b => b.classList.remove('bulk-selected'));
+    // Remove color button highlights
+    document.querySelectorAll('.bulk-color-btn.selected').forEach(b => b.classList.remove('selected'));
 }
 
 document.getElementById('bulkSelectBtn').addEventListener('click', () => {
     bulkMode = !bulkMode;
     bulkSelected.clear();
+    bulkSelectedColor = null;
     const btn = document.getElementById('bulkSelectBtn');
     const bar = document.getElementById('bulkActionBar');
     if (bulkMode) {
         btn.classList.add('active');
         bar.style.display = 'flex';
         document.getElementById('bulkCount').textContent = '0 cells selected';
+        document.querySelectorAll('.bulk-color-btn.selected').forEach(b => b.classList.remove('selected'));
     } else {
         exitBulkMode();
     }
@@ -851,53 +893,64 @@ document.getElementById('bulkCancelBtn').addEventListener('click', exitBulkMode)
 
 document.querySelectorAll('.bulk-color-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
-        if (bulkSelected.size === 0) { showToast('No cells selected', true); return; }
         const color = btn.dataset.color || null;
-        const today = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-        const statusLabel = color ? COLOR_LABELS[color] : 'Cleared';
-        let autoRemark = '';
-        if (color === 'blue') autoRemark = `Patch work started on ${today}`;
-        else if (color === 'green') autoRemark = `Completed on ${today}`;
-        else if (color === 'yellow') autoRemark = `Work started on ${today}`;
 
-        const autoRemarkPatterns = [/^Patch work started on .+$/m, /^Completed on .+$/m, /^Work started on .+$/m];
-        const timelineEntry = { color: color || null, status_label: statusLabel, date: today, changed_by: currentUser };
+        // If cells are already selected, apply color to them (existing flow)
+        if (bulkSelected.size > 0) {
+            const today = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+            const statusLabel = color ? COLOR_LABELS[color] : 'Cleared';
+            let autoRemark = '';
+            if (color === 'blue') autoRemark = `Patch work started on ${today}`;
+            else if (color === 'green') autoRemark = `Completed on ${today}`;
+            else if (color === 'yellow') autoRemark = `Work started on ${today}`;
 
-        const batch = [];
-        bulkSelected.forEach(ck => {
-            const existing = cellsCache[ck] || null;
-            let data;
-            if (existing) {
-                const timeline = [...(existing.timeline || []), timelineEntry];
-                let remarks = existing.remarks || '';
-                autoRemarkPatterns.forEach(p => { remarks = remarks.replace(p, '').trim(); });
-                if (autoRemark) remarks = remarks ? remarks + '\n' + autoRemark : autoRemark;
-                data = { ...existing, color: color || null, remarks, timeline,
-                    updated_at: new Date().toISOString(), updated_by: currentUser };
-            } else {
-                data = { color: color || null, remarks: autoRemark, timeline: [timelineEntry],
-                    updated_at: new Date().toISOString(), updated_by: currentUser };
+            const autoRemarkPatterns = [/^Patch work started on .+$/m, /^Completed on .+$/m, /^Work started on .+$/m];
+            const timelineEntry = { color: color || null, status_label: statusLabel, date: today, changed_by: currentUser };
+
+            const batch = [];
+            bulkSelected.forEach(ck => {
+                const existing = cellsCache[ck] || null;
+                let data;
+                if (existing) {
+                    const timeline = [...(existing.timeline || []), timelineEntry];
+                    let remarks = existing.remarks || '';
+                    autoRemarkPatterns.forEach(p => { remarks = remarks.replace(p, '').trim(); });
+                    if (autoRemark) remarks = remarks ? remarks + '\n' + autoRemark : autoRemark;
+                    data = { ...existing, color: color || null, remarks, timeline,
+                        updated_at: new Date().toISOString(), updated_by: currentUser };
+                } else {
+                    data = { color: color || null, remarks: autoRemark, timeline: [timelineEntry],
+                        updated_at: new Date().toISOString(), updated_by: currentUser };
+                }
+                cellsCache[ck] = data;
+                // Update DOM instantly
+                const cellBtn = document.querySelector(`[data-cell-id="${ck}"]`);
+                if (cellBtn) cellBtn.className = 'cell-btn ' + (color || 'empty');
+                batch.push({ id: ck, data });
+            });
+
+            const count = batch.length;
+            exitBulkMode();
+            showToast(`Updating ${count} cells…`);
+
+            // Send in chunks of 50
+            try {
+                for (let i = 0; i < batch.length; i += 50) {
+                    await apiPost('/api/cells/batch', { cells: batch.slice(i, i + 50) });
+                }
+                showToast(`${count} cells updated`);
+            } catch (err) {
+                console.error('Bulk save failed:', err);
+                showToast('Bulk save failed — please retry', true);
             }
-            cellsCache[ck] = data;
-            // Update DOM instantly
-            const cellBtn = document.querySelector(`[data-cell-id="${ck}"]`);
-            if (cellBtn) cellBtn.className = 'cell-btn ' + (color || 'empty');
-            batch.push({ id: ck, data });
-        });
-
-        const count = batch.length;
-        exitBulkMode();
-        showToast(`Updating ${count} cells…`);
-
-        // Send in chunks of 50
-        try {
-            for (let i = 0; i < batch.length; i += 50) {
-                await apiPost('/api/cells/batch', { cells: batch.slice(i, i + 50) });
-            }
-            showToast(`${count} cells updated`);
-        } catch (err) {
-            console.error('Bulk save failed:', err);
-            showToast('Bulk save failed — please retry', true);
+        } else {
+            // Paint mode: set the active color so clicking cells applies it instantly
+            bulkSelectedColor = color;
+            // Highlight the selected color button
+            document.querySelectorAll('.bulk-color-btn.selected').forEach(b => b.classList.remove('selected'));
+            btn.classList.add('selected');
+            const colorName = color ? COLOR_LABELS[color] : 'Clear';
+            document.getElementById('bulkCount').textContent = `Paint mode: ${colorName} — click cells to apply`;
         }
     });
 });
@@ -2214,6 +2267,28 @@ async function addWorkItem(category, label) {
     cats[category].push({ id: newId, label });
     currentVenture.work_categories = cats;
     await logEdit('add', 'work_item', newId, null, label);
+    await saveVentureConfig();
+    renderWorkView();
+}
+
+async function addWorkCategory(categoryName) {
+    const cats = ensureWorkCategories(currentVenture.work_categories || WORK_CATEGORIES);
+    if (cats[categoryName]) {
+        showToast('Category name already exists', true);
+        return;
+    }
+    cats[categoryName] = [];
+    currentVenture.work_categories = cats;
+    await logEdit('add', 'work_category', categoryName, null, categoryName);
+    await saveVentureConfig();
+    renderWorkView();
+}
+
+async function deleteWorkCategory(categoryName) {
+    const cats = ensureWorkCategories(currentVenture.work_categories || WORK_CATEGORIES);
+    delete cats[categoryName];
+    currentVenture.work_categories = cats;
+    await logEdit('delete', 'work_category', categoryName, null, null);
     await saveVentureConfig();
     renderWorkView();
 }
