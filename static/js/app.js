@@ -626,11 +626,28 @@ async function renderWorkView() {
         const addCatDiv = document.createElement('div');
         addCatDiv.className = 'add-item-row';
         addCatDiv.style.margin = '12px 0';
-        addCatDiv.innerHTML = `<input type="text" id="addWorkCategoryInput" placeholder="New category name (e.g. Flooring, Corridors...)"><button class="btn-secondary" id="addWorkCategoryBtn">Add Category</button>`;
+
+        const catInput = document.createElement('input');
+        catInput.type = 'text';
+        catInput.id = 'addWorkCategoryInput';
+        catInput.placeholder = 'New category name (e.g. Flooring, Corridors...)';
+
+        const catBtn = document.createElement('button');
+        catBtn.className = 'btn-secondary';
+        catBtn.id = 'addWorkCategoryBtn';
+        catBtn.textContent = 'Add Category';
+
+        addCatDiv.appendChild(catInput);
+        addCatDiv.appendChild(catBtn);
         container.appendChild(addCatDiv);
-        document.getElementById('addWorkCategoryBtn').addEventListener('click', () => {
-            const val = document.getElementById('addWorkCategoryInput').value.trim();
+
+        const submitCategory = () => {
+            const val = catInput.value.trim();
             if (val) addWorkCategory(val);
+        };
+        catBtn.addEventListener('click', submitCategory);
+        catInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); submitCategory(); }
         });
     }
 }
