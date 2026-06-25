@@ -966,7 +966,7 @@ document.querySelectorAll('.bulk-color-btn').forEach(btn => {
             // Highlight the selected color button
             document.querySelectorAll('.bulk-color-btn.selected').forEach(b => b.classList.remove('selected'));
             btn.classList.add('selected');
-            const colorName = color ? COLOR_LABELS[color] : 'Clear';
+            const colorName = color ? COLOR_LABELS[color] : 'No status color';
             document.getElementById('bulkCount').textContent = `Paint mode: ${colorName} — click cells to apply`;
         }
     });
