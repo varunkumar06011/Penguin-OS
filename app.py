@@ -320,6 +320,117 @@ def api_settings_post(key):
 
 
 # ========================
+# Inventory API
+# ========================
+
+@app.route('/api/materials')
+@login_required
+def api_materials():
+    if not supabase:
+        return jsonify([]), 500
+    venture_id = request.args.get('venture_id')
+    q = supabase.table('materials').select('*')
+    if venture_id:
+        q = q.eq('venture_id', venture_id)
+    res = q.execute()
+    return jsonify(res.data or [])
+
+
+@app.route('/api/material', methods=['POST'])
+@login_required
+def api_material_post():
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    m = request.get_json() or {}
+    supabase.table('materials').upsert(m, on_conflict='id').execute()
+    return jsonify({'success': True})
+
+
+@app.route('/api/material/<material_id>', methods=['DELETE'])
+@login_required
+def api_material_delete(material_id):
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    supabase.table('materials').delete().eq('id', material_id).execute()
+    return jsonify({'success': True})
+
+
+@app.route('/api/stock')
+@login_required
+def api_stock():
+    if not supabase:
+        return jsonify([]), 500
+    q = supabase.table('stock_ledger').select('*')
+    for f in ['venture_id', 'material_id', 'entry_type', 'block', 'floor', 'vendor_id']:
+        v = request.args.get(f)
+        if v:
+            q = q.eq(f, v)
+    from_date = request.args.get('from')
+    to_date = request.args.get('to')
+    if from_date:
+        q = q.gte('entry_date', from_date)
+    if to_date:
+        q = q.lte('entry_date', to_date)
+    res = q.execute()
+    return jsonify(res.data or [])
+
+
+@app.route('/api/stock', methods=['POST'])
+@login_required
+def api_stock_post():
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    entry = request.get_json() or {}
+    supabase.table('stock_ledger').upsert(entry, on_conflict='id').execute()
+    return jsonify({'success': True})
+
+
+@app.route('/api/stock/summary')
+@login_required
+def api_stock_summary():
+    if not supabase:
+        return jsonify([]), 500
+    venture_id = request.args.get('venture_id')
+    q = supabase.table('stock_balance').select('*')
+    if venture_id:
+        q = q.eq('venture_id', venture_id)
+    res = q.execute()
+    return jsonify(res.data or [])
+
+
+@app.route('/api/stock/location-report')
+@login_required
+def api_stock_location_report():
+    if not supabase:
+        return jsonify([]), 500
+    venture_id = request.args.get('venture_id')
+    material_id = request.args.get('material_id')
+    q = supabase.table('stock_ledger').select('*').eq('entry_type', 'OUT')
+    if venture_id:
+        q = q.eq('venture_id', venture_id)
+    if material_id:
+        q = q.eq('material_id', material_id)
+    res = q.execute()
+    return jsonify(res.data or [])
+
+
+@app.route('/api/stock/vendor-report')
+@login_required
+def api_stock_vendor_report():
+    if not supabase:
+        return jsonify([]), 500
+    vendor_id = request.args.get('vendor_id')
+    venture_id = request.args.get('venture_id')
+    q = supabase.table('stock_ledger').select('*').eq('entry_type', 'IN')
+    if vendor_id:
+        q = q.eq('vendor_id', vendor_id)
+    if venture_id:
+        q = q.eq('venture_id', venture_id)
+    res = q.execute()
+    return jsonify(res.data or [])
+
+
+# ========================
 # Test DB
 # ========================
 

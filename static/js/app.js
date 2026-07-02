@@ -47,6 +47,7 @@ let selectedCellId = null;
 let selectedWorkItem = null;
 let selectedFlat = null;
 let venturesList = [];
+let remarksImagesBuffer = [];
 
 // Global caches for invoices, POs, vendors, categories (loaded once at init)
 let allInvoices = [];
@@ -143,9 +144,58 @@ let archivedItems = {};
 let pendingFilterFloor = 'all';
 let pendingFilterFlat = 'all';
 let lastPendingRows = [];
+let homeQuickReportType = 'reports';
+let homeQuickReportVenture = null;
+let homeQuickReportBlock = null;
+let homeQuickReportFloor = 1;
+let homeQuickReportFlat = 'all';
 
 function cacheKey(cellId) {
     return currentVenture ? `${currentVenture.id}_${cellId}` : cellId;
+}
+
+function createImageIndicator(count) {
+    if (!count) return null;
+    const badge = document.createElement('span');
+    badge.className = 'remarks-image-indicator';
+    badge.textContent = count > 9 ? '9+' : count;
+    badge.title = `${count} photo${count > 1 ? 's' : ''}`;
+    return badge;
+}
+
+function compressImage(file, maxWidth = 1920, maxHeight = 1920, quality = 0.8) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        const url = URL.createObjectURL(file);
+        img.onload = () => {
+            URL.revokeObjectURL(url);
+            let { width, height } = img;
+            if (width > maxWidth || height > maxHeight) {
+                const ratio = Math.min(maxWidth / width, maxHeight / height);
+                width = Math.round(width * ratio);
+                height = Math.round(height * ratio);
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(0, 0, width, height);
+            ctx.drawImage(img, 0, 0, width, height);
+            const dataUrl = canvas.toDataURL('image/jpeg', quality);
+            resolve({
+                name: file.name.replace(/\.[^.]+$/, '.jpg'),
+                type: 'image/jpeg',
+                dataUrl,
+                size: Math.round(dataUrl.length * 0.75)
+            });
+        };
+        img.onerror = () => {
+            URL.revokeObjectURL(url);
+            reject(new Error('Failed to load image'));
+        };
+        img.src = url;
+    });
 }
 
 function slugId(text) {
@@ -190,8 +240,8 @@ function cellKeyById(block, floor, flat, itemId) {
     return `${block}_floor${floor}_${flat}_${itemId}`;
 }
 
-function ssCellKeyById(block, itemId) {
-    return `superstructure_${block}_${itemId}`;
+function ssCellKeyById(itemId) {
+    return `superstructure_${itemId}`;
 }
 
 function workViewCellKeyById(block, floor, category, itemId, flat) {
@@ -218,6 +268,10 @@ const els = {
     remarksTextarea: document.getElementById('remarksTextarea'),
     saveRemarksBtn: document.getElementById('saveRemarksBtn'),
     closeTimeline: document.getElementById('closeTimeline'),
+    remarksFileDrop: document.getElementById('remarksFileDrop'),
+    remarksFileInput: document.getElementById('remarksFileInput'),
+    remarksFileDropLabel: document.getElementById('remarksFileDropLabel'),
+    remarksFilePreview: document.getElementById('remarksFilePreview'),
     settingsModal: document.getElementById('settingsModal'),
     workItemsList: document.getElementById('workItemsList'),
     addWorkItemBtn: document.getElementById('addWorkItemBtn'),
@@ -354,12 +408,13 @@ async function updateCellColor(cellId, color, workItem, flat) {
     pendingSaves.set(ck, timer);
 }
 
-async function saveCellRemarks(cellId, remarks) {
+async function saveCellRemarks(cellId, remarks, images) {
     const ck = cacheKey(cellId);
     const existing = cellsCache[ck] || {};
     const data = {
         ...existing,
         remarks: remarks,
+        remarkImages: images || [],
         updated_at: new Date().toISOString(),
         updated_by: currentUser
     };
@@ -368,6 +423,7 @@ async function saveCellRemarks(cellId, remarks) {
         cellsCache[ck] = data;
         if (currentView === 'flat') await renderGrid();
         else if (currentView === 'work') await renderWorkView();
+        else if (currentView === 'super') await renderSuperStructure();
         showToast('Remarks saved');
     } catch (err) {
         console.error('Failed to save remarks:', err);
@@ -489,6 +545,10 @@ async function renderGrid() {
             btn.dataset.cellId = cacheKey(cellId);
             if (editMode) btn.disabled = true;
 
+            const imgCount = (cellData?.remarkImages || []).length;
+            const imgIndicator = createImageIndicator(imgCount);
+            if (imgIndicator) btn.appendChild(imgIndicator);
+
             const history = document.createElement('button');
             history.className = 'history-link';
             history.textContent = 'history';
@@ -535,12 +595,17 @@ async function renderGrid() {
         const remarksTd = document.createElement('td');
         remarksTd.className = 'remarks-cell';
         const remarksParts = [];
+        let totalImages = 0;
         for (const flat of flatNumbers) {
             const cellId = cellKeyById(currentBlock, currentFloor, flat, item.id);
             const cellData = cellsCache[cacheKey(cellId)];
             if (cellData?.remarks) {
                 remarksParts.push(`${flat}: ${cellData.remarks}`);
             }
+            totalImages += (cellData?.remarkImages || []).length;
+        }
+        if (totalImages > 0) {
+            remarksParts.unshift(`\u{1F4F7} ${totalImages} photo${totalImages > 1 ? 's' : ''}`);
         }
         remarksTd.textContent = remarksParts.join(' | ');
         remarksTd.title = remarksTd.textContent;
@@ -754,6 +819,10 @@ function createSectionTable(category, items, flats) {
             btn.dataset.cellId = cacheKey(cellId);
             if (editMode) btn.disabled = true;
 
+            const imgCount = (cellData?.remarkImages || []).length;
+            const imgIndicator = createImageIndicator(imgCount);
+            if (imgIndicator) btn.appendChild(imgIndicator);
+
             const history = document.createElement('button');
             history.className = 'history-link';
             history.textContent = 'history';
@@ -800,13 +869,18 @@ function createSectionTable(category, items, flats) {
         const remarksTd = document.createElement('td');
         remarksTd.className = 'remarks-cell';
         const remarksParts = [];
+        let totalImages = 0;
         flats.forEach(flat => {
             const cellId = workViewCellKeyById(currentBlock, currentFloor, category, itemObj.id, flat);
             const cellData = cellsCache[cacheKey(cellId)];
             if (cellData?.remarks) {
                 remarksParts.push(`${flat}: ${cellData.remarks}`);
             }
+            totalImages += (cellData?.remarkImages || []).length;
         });
+        if (totalImages > 0) {
+            remarksParts.unshift(`\u{1F4F7} ${totalImages} photo${totalImages > 1 ? 's' : ''}`);
+        }
         remarksTd.textContent = remarksParts.join(' | ');
         remarksTd.title = remarksTd.textContent;
         row.appendChild(remarksTd);
@@ -1005,6 +1079,8 @@ async function openTimelineModal(cellId, workItem, flat) {
     }
 
     els.remarksTextarea.value = cellData?.remarks || '';
+    remarksImagesBuffer = (cellData?.remarkImages || []).map(a => ({ ...a }));
+    renderRemarksImagePreview();
     els.timelineModal.classList.add('show');
 }
 
@@ -1013,6 +1089,83 @@ function closeTimelineModal() {
     selectedCellId = null;
     selectedWorkItem = null;
     selectedFlat = null;
+    remarksImagesBuffer = [];
+    if (els.remarksFilePreview) els.remarksFilePreview.innerHTML = '';
+    if (els.remarksFileDropLabel) els.remarksFileDropLabel.textContent = 'Click to upload photo or drag & drop (JPG/PNG, max 5MB, larger photos auto-compressed)';
+}
+
+function renderRemarksImagePreview() {
+    if (!els.remarksFilePreview) return;
+    els.remarksFilePreview.innerHTML = '';
+    remarksImagesBuffer.forEach((att, idx) => {
+        const item = document.createElement('div');
+        item.className = 'attach-preview-item';
+
+        const img = document.createElement('img');
+        img.src = att.dataUrl || att.url;
+        img.className = 'attach-preview-thumb';
+        img.alt = att.name;
+        img.addEventListener('click', () => openLightbox(att));
+
+        const removeBtn = document.createElement('button');
+        removeBtn.className = 'attach-preview-remove';
+        removeBtn.innerHTML = '&times;';
+        removeBtn.title = 'Remove';
+        removeBtn.addEventListener('click', () => {
+            remarksImagesBuffer.splice(idx, 1);
+            renderRemarksImagePreview();
+        });
+
+        item.appendChild(img);
+        item.appendChild(removeBtn);
+        els.remarksFilePreview.appendChild(item);
+    });
+    if (els.remarksFileDropLabel) {
+        els.remarksFileDropLabel.textContent = remarksImagesBuffer.length > 0
+            ? `${remarksImagesBuffer.length} photo(s) selected. Click to add more.`
+            : 'Click to upload photo or drag & drop (JPG/PNG, max 5MB, larger photos auto-compressed)';
+    }
+}
+
+async function handleRemarksFiles(files) {
+    const allowed = ['image/jpeg', 'image/png', 'image/webp'];
+    const maxSize = 5 * 1024 * 1024;
+    const compressThreshold = 500 * 1024;
+    const maxImages = 10;
+
+    for (const file of files) {
+        if (remarksImagesBuffer.length >= maxImages) {
+            showToast(`Maximum ${maxImages} photos per cell`, true);
+            return;
+        }
+        if (!allowed.includes(file.type)) {
+            showToast(`${file.name}: Only JPG, PNG, or WEBP images allowed`, true);
+            continue;
+        }
+        if (file.size > maxSize) {
+            showToast(`${file.name}: File too large (max 5MB)`, true);
+            continue;
+        }
+        try {
+            let att;
+            if (file.size > compressThreshold) {
+                att = await compressImage(file, 1920, 1920, 0.8);
+                showToast(`${file.name}: auto-compressed to ${(att.size / 1024).toFixed(0)} KB`);
+            } else {
+                const dataUrl = await new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = (e) => resolve(e.target.result);
+                    reader.onerror = () => reject(new Error('Failed to read file'));
+                    reader.readAsDataURL(file);
+                });
+                att = { name: file.name, type: file.type, dataUrl, size: file.size };
+            }
+            remarksImagesBuffer.push(att);
+            renderRemarksImagePreview();
+        } catch (err) {
+            showToast(`${file.name}: ${err.message || 'Failed to process'}`, true);
+        }
+    }
 }
 
 els.closeTimeline.addEventListener('click', closeTimelineModal);
@@ -1022,8 +1175,31 @@ els.timelineModal.addEventListener('click', (e) => {
 
 els.saveRemarksBtn.addEventListener('click', async () => {
     if (!selectedCellId) return;
-    await saveCellRemarks(selectedCellId, els.remarksTextarea.value);
+    await saveCellRemarks(selectedCellId, els.remarksTextarea.value, remarksImagesBuffer.map(a => ({ name: a.name, type: a.type, dataUrl: a.dataUrl })));
 });
+
+if (els.remarksFileDrop) {
+    els.remarksFileDrop.addEventListener('click', () => els.remarksFileInput.click());
+    els.remarksFileDrop.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        els.remarksFileDrop.classList.add('drag-over');
+    });
+    els.remarksFileDrop.addEventListener('dragleave', () => {
+        els.remarksFileDrop.classList.remove('drag-over');
+    });
+    els.remarksFileDrop.addEventListener('drop', (e) => {
+        e.preventDefault();
+        els.remarksFileDrop.classList.remove('drag-over');
+        handleRemarksFiles(Array.from(e.dataTransfer.files));
+    });
+}
+
+if (els.remarksFileInput) {
+    els.remarksFileInput.addEventListener('change', () => {
+        handleRemarksFiles(Array.from(els.remarksFileInput.files));
+        els.remarksFileInput.value = '';
+    });
+}
 
 // ========================
 // Settings Modal
@@ -1277,6 +1453,15 @@ document.querySelectorAll('.view-tab').forEach(btn => {
         document.getElementById('workViewContainer').style.display = 'none';
         document.getElementById('superStructureContainer').style.display = 'none';
         document.getElementById('pendingViewContainer').style.display = 'none';
+        const floorTabsContainer = document.getElementById('floorTabsContainer');
+        const blockTabsContainer = document.getElementById('blockTabsContainer');
+        if (currentView === 'super') {
+            if (floorTabsContainer) floorTabsContainer.style.display = 'none';
+            if (blockTabsContainer) blockTabsContainer.style.display = 'none';
+        } else {
+            if (floorTabsContainer) floorTabsContainer.style.display = '';
+            if (blockTabsContainer) blockTabsContainer.style.display = '';
+        }
         if (currentView === 'flat') {
             document.getElementById('flatViewContainer').style.display = '';
             renderGrid();
@@ -1449,204 +1634,209 @@ function renderSuperStructure() {
     const ssItems = getSuperStructureItems();
     const archived = archivedItems['super_structure'] || [];
     const activeItems = ssItems.filter(it => !archived.includes(it.id));
-    const blocks = currentVenture ? currentVenture.blocks : [{ id: 'A' }, { id: 'B' }];
 
     const ssWrapper = document.createElement('div');
     ssWrapper.className = 'ss-wrapper';
 
-    blocks.forEach(block => {
-        const section = document.createElement('div');
-        section.className = 'ss-section';
+    const section = document.createElement('div');
+    section.className = 'ss-section';
+    section.style.flex = '1';
+    section.style.maxWidth = '800px';
+    section.style.margin = '0 auto';
 
-        const header = document.createElement('div');
-        header.className = 'section-header';
-        header.textContent = `${block.id} BLOCK`;
-        section.appendChild(header);
+    const header = document.createElement('div');
+    header.className = 'section-header';
+    header.textContent = 'SUPER STRUCTURE';
+    section.appendChild(header);
 
-        const subHeader = document.createElement('div');
-        subHeader.className = 'ss-subheader';
-        subHeader.textContent = 'PROGRESS';
-        section.appendChild(subHeader);
+    const subHeader = document.createElement('div');
+    subHeader.className = 'ss-subheader';
+    subHeader.textContent = 'PROGRESS';
+    section.appendChild(subHeader);
 
-        if (activeItems.length === 0) {
-            const emptyState = document.createElement('div');
-            emptyState.className = 'ss-empty-state';
-            emptyState.textContent = 'No super structure items found.';
-            if (editMode) {
-                const restoreBtn = document.createElement('button');
-                restoreBtn.className = 'btn-secondary';
-                restoreBtn.style.marginTop = '8px';
-                restoreBtn.textContent = 'Restore Default Items';
-                restoreBtn.addEventListener('click', restoreSuperStructureDefaults);
-                emptyState.appendChild(document.createElement('br'));
-                emptyState.appendChild(restoreBtn);
-            }
-            section.appendChild(emptyState);
-            ssWrapper.appendChild(section);
-            return;
+    if (activeItems.length === 0) {
+        const emptyState = document.createElement('div');
+        emptyState.className = 'ss-empty-state';
+        emptyState.textContent = 'No super structure items found.';
+        if (editMode) {
+            const restoreBtn = document.createElement('button');
+            restoreBtn.className = 'btn-secondary';
+            restoreBtn.style.marginTop = '8px';
+            restoreBtn.textContent = 'Restore Default Items';
+            restoreBtn.addEventListener('click', restoreSuperStructureDefaults);
+            emptyState.appendChild(document.createElement('br'));
+            emptyState.appendChild(restoreBtn);
         }
+        section.appendChild(emptyState);
+        ssWrapper.appendChild(section);
+        container.appendChild(ssWrapper);
+        return;
+    }
 
-        const tableWrapper = document.createElement('div');
-        tableWrapper.className = 'grid-container';
-        tableWrapper.style.padding = '0';
+    const tableWrapper = document.createElement('div');
+    tableWrapper.className = 'grid-container';
+    tableWrapper.style.padding = '0';
 
-        const table = document.createElement('table');
-        table.className = 'tracker-table ss-table';
+    const table = document.createElement('table');
+    table.className = 'tracker-table ss-table';
 
-        const thead = document.createElement('thead');
-        const headerRow = document.createElement('tr');
+    const thead = document.createElement('thead');
+    const headerRow = document.createElement('tr');
 
-        const thSNo = document.createElement('th');
-        thSNo.textContent = 'S.No';
-        thSNo.style.width = '40px';
-        headerRow.appendChild(thSNo);
+    const thSNo = document.createElement('th');
+    thSNo.textContent = 'S.No';
+    thSNo.style.width = '40px';
+    headerRow.appendChild(thSNo);
 
-        const thWork = document.createElement('th');
-        thWork.textContent = 'Work Description';
-        thWork.className = 'work-col';
-        headerRow.appendChild(thWork);
+    const thWork = document.createElement('th');
+    thWork.textContent = 'Work Description';
+    thWork.className = 'work-col';
+    headerRow.appendChild(thWork);
 
-        const statusCols = [
-            { key: 'red', label: 'Yet to Start', cls: 'ss-header-red' },
-            { key: 'yellow', label: 'In Progress', cls: 'ss-header-yellow' },
-            { key: 'blue', label: 'Pending', cls: 'ss-header-blue' },
-            { key: 'green', label: 'Completed', cls: 'ss-header-green' }
-        ];
+    const statusCols = [
+        { key: 'red', label: 'Yet to Start', cls: 'ss-header-red' },
+        { key: 'yellow', label: 'In Progress', cls: 'ss-header-yellow' },
+        { key: 'blue', label: 'Pending', cls: 'ss-header-blue' },
+        { key: 'green', label: 'Completed', cls: 'ss-header-green' }
+    ];
+
+    statusCols.forEach(col => {
+        const th = document.createElement('th');
+        th.textContent = col.label;
+        th.className = col.cls;
+        headerRow.appendChild(th);
+    });
+
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+
+    activeItems.forEach((itemObj, wi) => {
+        const row = document.createElement('tr');
+
+        const tdSNo = document.createElement('td');
+        tdSNo.textContent = wi + 1;
+        row.appendChild(tdSNo);
+
+        const tdWork = document.createElement('td');
+        tdWork.className = 'work-cell';
+        if (editMode) {
+            tdWork.innerHTML = `<span class="item-label">${itemObj.label}</span>`;
+            const controls = document.createElement('div');
+            controls.className = 'edit-controls';
+            controls.style.marginTop = '4px';
+            controls.innerHTML = `<button class="edit-btn" title="Rename">&#9998;</button><button class="edit-btn" title="Delete">&#10006;</button>`;
+            if (wi > 0) controls.innerHTML += `<button class="edit-btn" title="Move up">&#9650;</button>`;
+            if (wi < activeItems.length - 1) controls.innerHTML += `<button class="edit-btn" title="Move down">&#9660;</button>`;
+            tdWork.appendChild(controls);
+
+            controls.querySelector('[title="Rename"]').addEventListener('click', () => startInlineEdit(tdWork, itemObj.label, (newLabel) => renameSuperItem(itemObj.id, newLabel)));
+            controls.querySelector('[title="Delete"]').addEventListener('click', () => showConfirm('Delete Item', `Delete '${itemObj.label}'? Existing tracking data will be hidden but not lost.`, () => archiveSuperItem(itemObj.id)));
+            const upBtn = controls.querySelector('[title="Move up"]');
+            const downBtn = controls.querySelector('[title="Move down"]');
+            if (upBtn) upBtn.addEventListener('click', () => reorderSuperItem(itemObj.id, -1));
+            if (downBtn) downBtn.addEventListener('click', () => reorderSuperItem(itemObj.id, 1));
+        } else {
+            tdWork.textContent = itemObj.label;
+        }
+        row.appendChild(tdWork);
+
+        const cellId = ssCellKeyById(itemObj.id);
+        const cellData = cellsCache[cacheKey(cellId)];
+        const activeStatus = cellData?.color || cellData?.status || null;
 
         statusCols.forEach(col => {
-            const th = document.createElement('th');
-            th.textContent = col.label;
-            th.className = col.cls;
-            headerRow.appendChild(th);
-        });
+            const td = document.createElement('td');
+            td.className = 'ss-cell-col';
+            const wrapper = document.createElement('div');
+            wrapper.className = 'cell-wrapper';
 
-        thead.appendChild(headerRow);
-        table.appendChild(thead);
+            const btn = document.createElement('button');
+            const isActive = activeStatus === col.key;
+            btn.className = 'ss-cell ' + (isActive ? 'ss-cell-active ' + col.key : 'ss-cell-inactive');
+            btn.title = `${itemObj.label} — ${col.label}`;
+            if (editMode) btn.disabled = true;
 
-        const tbody = document.createElement('tbody');
+            const imgCount = (cellData?.remarkImages || []).length;
+            const imgIndicator = createImageIndicator(imgCount);
+            if (imgIndicator) btn.appendChild(imgIndicator);
 
-        activeItems.forEach((itemObj, wi) => {
-            const row = document.createElement('tr');
+            const history = document.createElement('button');
+            history.className = 'history-link';
+            history.textContent = 'history';
+            history.style.fontSize = '0.6rem';
 
-            const tdSNo = document.createElement('td');
-            tdSNo.textContent = wi + 1;
-            row.appendChild(tdSNo);
+            wrapper.appendChild(btn);
+            wrapper.appendChild(history);
+            td.appendChild(wrapper);
+            row.appendChild(td);
 
-            const tdWork = document.createElement('td');
-            tdWork.className = 'work-cell';
-            if (editMode) {
-                tdWork.innerHTML = `<span class="item-label">${itemObj.label}</span>`;
-                const controls = document.createElement('div');
-                controls.className = 'edit-controls';
-                controls.style.marginTop = '4px';
-                controls.innerHTML = `<button class="edit-btn" title="Rename">&#9998;</button><button class="edit-btn" title="Delete">&#10006;</button>`;
-                if (wi > 0) controls.innerHTML += `<button class="edit-btn" title="Move up">&#9650;</button>`;
-                if (wi < activeItems.length - 1) controls.innerHTML += `<button class="edit-btn" title="Move down">&#9660;</button>`;
-                tdWork.appendChild(controls);
-
-                controls.querySelector('[title="Rename"]').addEventListener('click', () => startInlineEdit(tdWork, itemObj.label, (newLabel) => renameSuperItem(itemObj.id, newLabel)));
-                controls.querySelector('[title="Delete"]').addEventListener('click', () => showConfirm('Delete Item', `Delete '${itemObj.label}'? Existing tracking data will be hidden but not lost.`, () => archiveSuperItem(itemObj.id)));
-                const upBtn = controls.querySelector('[title="Move up"]');
-                const downBtn = controls.querySelector('[title="Move down"]');
-                if (upBtn) upBtn.addEventListener('click', () => reorderSuperItem(itemObj.id, -1));
-                if (downBtn) downBtn.addEventListener('click', () => reorderSuperItem(itemObj.id, 1));
-            } else {
-                tdWork.textContent = itemObj.label;
+            if (!editMode) {
+                btn.addEventListener('click', async () => {
+                    if (isActive) return;
+                    await updateSuperStructureStatus(itemObj.id, col.key, itemObj.label);
+                });
             }
-            row.appendChild(tdWork);
 
-            const cellId = ssCellKeyById(block.id, itemObj.id);
-            const cellData = cellsCache[cacheKey(cellId)];
-            const activeStatus = cellData?.color || cellData?.status || null;
-
-            statusCols.forEach(col => {
-                const td = document.createElement('td');
-                td.className = 'ss-cell-col';
-                const wrapper = document.createElement('div');
-                wrapper.className = 'cell-wrapper';
-
-                const btn = document.createElement('button');
-                const isActive = activeStatus === col.key;
-                btn.className = 'ss-cell ' + (isActive ? 'ss-cell-active ' + col.key : 'ss-cell-inactive');
-                btn.title = `${itemObj.label} — ${col.label}`;
-                if (editMode) btn.disabled = true;
-
-                const history = document.createElement('button');
-                history.className = 'history-link';
-                history.textContent = 'history';
-                history.style.fontSize = '0.6rem';
-
-                wrapper.appendChild(btn);
-                wrapper.appendChild(history);
-                td.appendChild(wrapper);
-                row.appendChild(td);
-
-                if (!editMode) {
-                    btn.addEventListener('click', async () => {
-                        if (isActive) return;
-                        await updateSuperStructureStatus(block.id, itemObj.id, col.key, itemObj.label);
-                    });
-                }
-
-                btn.addEventListener('contextmenu', (e) => {
-                    e.preventDefault();
-                    openTimelineModal(cellId, itemObj.label, `${block.id} Block`);
-                });
-
-                history.addEventListener('click', () => {
-                    openTimelineModal(cellId, itemObj.label, `${block.id} Block`);
-                });
+            btn.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                openTimelineModal(cellId, itemObj.label, 'Super Structure');
             });
 
-            tbody.appendChild(row);
+            history.addEventListener('click', () => {
+                openTimelineModal(cellId, itemObj.label, 'Super Structure');
+            });
         });
 
-        // Add item row in edit mode
-        if (editMode) {
-            const addRow = document.createElement('tr');
-            const addTd = document.createElement('td');
-            addTd.colSpan = 6;
-            addTd.innerHTML = '<div class="add-item-row"><input type="text" id="addSuperItemInput" placeholder="New super structure item"><button class="btn-secondary" id="addSuperItemBtn">Add</button></div>';
-            addRow.appendChild(addTd);
-            tbody.appendChild(addRow);
-            addTd.querySelector('#addSuperItemBtn').addEventListener('click', () => {
-                const val = addTd.querySelector('#addSuperItemInput').value.trim();
-                if (val) addSuperItem(val);
-            });
-        }
-
-        // Archived section in edit mode
-        if (editMode && archived.length > 0) {
-            const archRow = document.createElement('tr');
-            const archTd = document.createElement('td');
-            archTd.colSpan = 6;
-            archTd.innerHTML = '<div class="archived-section"><h4>Archived Items</h4></div>';
-            const archList = archTd.querySelector('.archived-section');
-            archived.forEach(archId => {
-                const found = ssItems.find(it => it.id === archId);
-                if (found) {
-                    const div = document.createElement('div');
-                    div.className = 'archived-item';
-                    div.innerHTML = `<span>${found.label}</span><button class="btn-secondary" style="padding:4px 10px;font-size:0.75rem;">Restore</button>`;
-                    div.querySelector('button').addEventListener('click', () => restoreSuperItem(archId));
-                    archList.appendChild(div);
-                }
-            });
-            archRow.appendChild(archTd);
-            tbody.appendChild(archRow);
-        }
-
-        table.appendChild(tbody);
-        tableWrapper.appendChild(table);
-        section.appendChild(tableWrapper);
-        ssWrapper.appendChild(section);
+        tbody.appendChild(row);
     });
+
+    // Add item row in edit mode
+    if (editMode) {
+        const addRow = document.createElement('tr');
+        const addTd = document.createElement('td');
+        addTd.colSpan = 6;
+        addTd.innerHTML = '<div class="add-item-row"><input type="text" id="addSuperItemInput" placeholder="New super structure item"><button class="btn-secondary" id="addSuperItemBtn">Add</button></div>';
+        addRow.appendChild(addTd);
+        tbody.appendChild(addRow);
+        addTd.querySelector('#addSuperItemBtn').addEventListener('click', () => {
+            const val = addTd.querySelector('#addSuperItemInput').value.trim();
+            if (val) addSuperItem(val);
+        });
+    }
+
+    // Archived section in edit mode
+    if (editMode && archived.length > 0) {
+        const archRow = document.createElement('tr');
+        const archTd = document.createElement('td');
+        archTd.colSpan = 6;
+        archTd.innerHTML = '<div class="archived-section"><h4>Archived Items</h4></div>';
+        const archList = archTd.querySelector('.archived-section');
+        archived.forEach(archId => {
+            const found = ssItems.find(it => it.id === archId);
+            if (found) {
+                const div = document.createElement('div');
+                div.className = 'archived-item';
+                div.innerHTML = `<span>${found.label}</span><button class="btn-secondary" style="padding:4px 10px;font-size:0.75rem;">Restore</button>`;
+                div.querySelector('button').addEventListener('click', () => restoreSuperItem(archId));
+                archList.appendChild(div);
+            }
+        });
+        archRow.appendChild(archTd);
+        tbody.appendChild(archRow);
+    }
+
+    table.appendChild(tbody);
+    tableWrapper.appendChild(table);
+    section.appendChild(tableWrapper);
+    ssWrapper.appendChild(section);
 
     container.appendChild(ssWrapper);
 }
 
-async function updateSuperStructureStatus(block, itemId, status, workItem) {
-    const cellId = ssCellKeyById(block, itemId);
+async function updateSuperStructureStatus(itemId, status, workItem) {
+    const cellId = ssCellKeyById(itemId);
     const today = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
     const statusLabel = COLOR_LABELS[status];
 
@@ -1742,6 +1932,10 @@ function renderVentureDashboard() {
     document.getElementById('venturesDashboard').style.display = '';
     document.getElementById('trackerView').style.display = 'none';
     document.getElementById('breadcrumbBar').style.display = 'none';
+    ['invoicesPanel', 'poPanel', 'payrollPanel', 'inventoryPanel'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+    });
 
     const grid = document.getElementById('ventureCards');
     grid.innerHTML = '';
@@ -1787,6 +1981,426 @@ function renderVentureDashboard() {
     addCard.innerHTML = '<span class="plus-icon">+</span><span>Add Venture</span>';
     addCard.addEventListener('click', () => openWizard());
     grid.appendChild(addCard);
+
+    // Refresh home quick-reports state to point at a current venture object
+    if (homeQuickReportVenture) {
+        const fresh = venturesList.find(v => v.id === homeQuickReportVenture.id);
+        if (fresh) homeQuickReportVenture = fresh;
+    }
+    if (!homeQuickReportVenture && venturesList.length > 0) {
+        homeQuickReportVenture = venturesList[0];
+    }
+    if (homeQuickReportVenture) {
+        if (!homeQuickReportBlock || !homeQuickReportVenture.blocks.find(b => b.id === homeQuickReportBlock.id)) {
+            homeQuickReportBlock = homeQuickReportVenture.blocks[0];
+        }
+    }
+    renderHomeQuickReports();
+}
+
+function renderHomeQuickReports() {
+    const ventureSelect = document.getElementById('homeReportVenture');
+    const blockSelect = document.getElementById('homeReportBlock');
+    const floorSelect = document.getElementById('homeReportFloor');
+    const flatSelect = document.getElementById('homeReportFlat');
+    if (!ventureSelect) return;
+
+    ventureSelect.innerHTML = '<option value="">-- Select Venture --</option>';
+    venturesList.forEach(v => {
+        const opt = document.createElement('option');
+        opt.value = v.id;
+        opt.textContent = v.name;
+        ventureSelect.appendChild(opt);
+    });
+
+    if (homeQuickReportVenture) {
+        ventureSelect.value = homeQuickReportVenture.id;
+    }
+
+    updateHomeQuickReportFilters();
+    updateHomeQuickReportButtonStates();
+
+    ventureSelect.onchange = () => {
+        homeQuickReportVenture = venturesList.find(v => v.id === ventureSelect.value) || null;
+        homeQuickReportBlock = homeQuickReportVenture ? homeQuickReportVenture.blocks[0] : null;
+        homeQuickReportFloor = 1;
+        homeQuickReportFlat = 'all';
+        updateHomeQuickReportFilters();
+    };
+
+    blockSelect.onchange = () => {
+        if (!homeQuickReportVenture) return;
+        homeQuickReportBlock = homeQuickReportVenture.blocks.find(b => b.id === blockSelect.value) || homeQuickReportVenture.blocks[0];
+        homeQuickReportFloor = 1;
+        homeQuickReportFlat = 'all';
+        updateHomeQuickReportFilters();
+    };
+
+    floorSelect.onchange = () => {
+        homeQuickReportFloor = parseInt(floorSelect.value) || 1;
+        homeQuickReportFlat = 'all';
+        updateHomeQuickReportFilters();
+    };
+
+    flatSelect.onchange = () => {
+        homeQuickReportFlat = flatSelect.value;
+    };
+
+    document.getElementById('homePendingWorkBtn').onclick = () => {
+        homeQuickReportType = 'pending';
+        updateHomeQuickReportButtonStates();
+        runHomeQuickReport();
+    };
+    document.getElementById('homeReportsBtn').onclick = () => {
+        homeQuickReportType = 'reports';
+        updateHomeQuickReportButtonStates();
+        runHomeQuickReport();
+    };
+    document.getElementById('homePayrollBtn').onclick = () => {
+        homeQuickReportType = 'payroll';
+        updateHomeQuickReportButtonStates();
+        runHomeQuickReport();
+    };
+    document.getElementById('homeReportShowBtn').onclick = () => {
+        if (!homeQuickReportVenture) {
+            showToast('Please select a venture', true);
+            return;
+        }
+        runHomeQuickReport();
+    };
+}
+
+function updateHomeQuickReportFilters() {
+    const blockSelect = document.getElementById('homeReportBlock');
+    const floorSelect = document.getElementById('homeReportFloor');
+    const flatSelect = document.getElementById('homeReportFlat');
+
+    if (!homeQuickReportVenture) {
+        blockSelect.innerHTML = '<option value="">-- Select Venture --</option>';
+        blockSelect.disabled = true;
+        floorSelect.innerHTML = '<option value="">-- Select Venture --</option>';
+        floorSelect.disabled = true;
+        flatSelect.innerHTML = '<option value="">-- Select Venture --</option>';
+        flatSelect.disabled = true;
+        return;
+    }
+
+    blockSelect.disabled = false;
+    blockSelect.innerHTML = '';
+    homeQuickReportVenture.blocks.forEach(b => {
+        const opt = document.createElement('option');
+        opt.value = b.id;
+        opt.textContent = b.name || b.id;
+        blockSelect.appendChild(opt);
+    });
+    if (homeQuickReportBlock) blockSelect.value = homeQuickReportBlock.id;
+
+    const floors = homeQuickReportBlock ? (homeQuickReportBlock.floors || 5) : 5;
+    const floorLabels = ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th', '10th'];
+    floorSelect.disabled = false;
+    floorSelect.innerHTML = '';
+    for (let f = 1; f <= floors; f++) {
+        const label = floors === 1 ? 'Ground Floor' : `${floorLabels[f - 1] || f + 'th'} Floor`;
+        const opt = document.createElement('option');
+        opt.value = f;
+        opt.textContent = label;
+        floorSelect.appendChild(opt);
+    }
+    floorSelect.value = String(homeQuickReportFloor);
+
+    const flatsPerFloor = homeQuickReportBlock ? (homeQuickReportBlock.flats_per_floor || FLATS_PER_FLOOR) : FLATS_PER_FLOOR;
+    flatSelect.disabled = false;
+    flatSelect.innerHTML = '<option value="all">All Flats</option>';
+    for (let i = 1; i <= flatsPerFloor; i++) {
+        const flatNum = (homeQuickReportFloor * 100) + i;
+        const opt = document.createElement('option');
+        opt.value = flatNum;
+        opt.textContent = flatNum;
+        flatSelect.appendChild(opt);
+    }
+    flatSelect.value = String(homeQuickReportFlat);
+}
+
+function updateHomeQuickReportButtonStates() {
+    document.querySelectorAll('.home-quick-buttons .btn-pending-filter').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.type === homeQuickReportType);
+    });
+}
+
+async function runHomeQuickReport() {
+    if (!homeQuickReportVenture) {
+        showToast('Please select a venture', true);
+        return;
+    }
+
+    currentVenture = homeQuickReportVenture;
+    currentBlockObj = homeQuickReportBlock;
+    currentBlock = homeQuickReportBlock ? homeQuickReportBlock.id : 'A';
+    currentFloor = homeQuickReportFloor;
+
+    const output = document.getElementById('homeReportsOutput');
+    output.innerHTML = '';
+
+    if (homeQuickReportType === 'pending') {
+        pendingFilterFloor = homeQuickReportFloor;
+        pendingFilterFlat = homeQuickReportFlat;
+        previousView = 'flat';
+        await renderPendingView(output);
+    } else if (homeQuickReportType === 'reports') {
+        await renderHomeReports(output);
+    } else if (homeQuickReportType === 'payroll') {
+        await renderHomePayroll(output);
+    }
+}
+
+async function renderHomeReports(container) {
+    if (!currentVenture || !currentBlockObj) return;
+
+    const floors = currentBlockObj.floors || 5;
+    const flatsPerFloor = currentBlockObj.flats_per_floor || FLATS_PER_FLOOR;
+    const workCategories = ensureWorkCategories((currentVenture && currentVenture.work_categories) ? currentVenture.work_categories : WORK_CATEGORIES);
+    const flatWorkItems = getFlatWorkItems();
+
+    let flatNumbers = [];
+    if (homeQuickReportFlat === 'all') {
+        for (let i = 1; i <= flatsPerFloor; i++) {
+            flatNumbers.push((homeQuickReportFloor * 100) + i);
+        }
+    } else {
+        flatNumbers = [parseInt(homeQuickReportFlat)];
+    }
+
+    const promises = [];
+    flatNumbers.forEach(flat => {
+        flatWorkItems.forEach(item => {
+            const cellId = cellKeyById(currentBlock, homeQuickReportFloor, flat, item.id);
+            promises.push(getCellData(cellId));
+        });
+        Object.entries(workCategories).forEach(([category, items]) => {
+            items.forEach(itemObj => {
+                const cellId = workViewCellKeyById(currentBlock, homeQuickReportFloor, category, itemObj.id, flat);
+                promises.push(getCellData(cellId));
+            });
+        });
+    });
+    await Promise.all(promises);
+
+    const statusCounts = { red: 0, yellow: 0, blue: 0, green: 0, none: 0 };
+    let totalCells = 0;
+
+    flatNumbers.forEach(flat => {
+        flatWorkItems.forEach(item => {
+            const cellId = cellKeyById(currentBlock, homeQuickReportFloor, flat, item.id);
+            const cellData = cellsCache[cacheKey(cellId)];
+            const color = cellData?.color || null;
+            if (color && statusCounts.hasOwnProperty(color)) statusCounts[color]++;
+            else statusCounts.none++;
+            totalCells++;
+        });
+        Object.entries(workCategories).forEach(([category, items]) => {
+            items.forEach(itemObj => {
+                const cellId = workViewCellKeyById(currentBlock, homeQuickReportFloor, category, itemObj.id, flat);
+                const cellData = cellsCache[cacheKey(cellId)];
+                const color = cellData?.color || null;
+                if (color && statusCounts.hasOwnProperty(color)) statusCounts[color]++;
+                else statusCounts.none++;
+                totalCells++;
+            });
+        });
+    });
+
+    const statusInfo = [
+        { key: 'red', label: 'Yet to start', color: getColorHex('red') },
+        { key: 'yellow', label: 'In progress', color: getColorHex('yellow') },
+        { key: 'blue', label: 'Patch work', color: getColorHex('blue') },
+        { key: 'green', label: 'Completed', color: getColorHex('green') },
+        { key: 'none', label: 'Not started', color: '#ccc' }
+    ];
+
+    const chartWrapper = document.createElement('div');
+    chartWrapper.className = 'reports-chart-wrapper';
+
+    const canvasContainer = document.createElement('div');
+    canvasContainer.className = 'reports-canvas-container';
+    const canvas = document.createElement('canvas');
+    canvas.id = 'homeReportsPieChart';
+    canvasContainer.appendChild(canvas);
+    chartWrapper.appendChild(canvasContainer);
+
+    const legendContainer = document.createElement('div');
+    legendContainer.className = 'reports-legend';
+    statusInfo.forEach(info => {
+        const count = statusCounts[info.key];
+        const pct = totalCells > 0 ? ((count / totalCells) * 100).toFixed(1) : '0.0';
+        const item = document.createElement('div');
+        item.className = 'reports-legend-item';
+        item.innerHTML = `
+            <span class="reports-legend-dot" style="background:${info.color};"></span>
+            <span class="reports-legend-label">${info.label}</span>
+            <span class="reports-legend-count">${count}</span>
+            <span class="reports-legend-pct">${pct}%</span>
+        `;
+        legendContainer.appendChild(item);
+    });
+    chartWrapper.appendChild(legendContainer);
+    container.appendChild(chartWrapper);
+
+    const summary = document.createElement('div');
+    summary.className = 'pending-summary';
+    const flatText = homeQuickReportFlat === 'all' ? 'All Flats' : `Flat ${homeQuickReportFlat}`;
+    summary.textContent = `Total cells: ${totalCells} | ${currentVenture.name} | ${currentBlockObj.name || currentBlock} | ${homeQuickReportFloor}${['st','nd','rd','th','th','th','th','th','th','th'][homeQuickReportFloor - 1] || 'th'} Floor | ${flatText}`;
+    container.appendChild(summary);
+
+    if (window.homeReportsChart) window.homeReportsChart.destroy();
+    const chartData = statusInfo.filter(info => statusCounts[info.key] > 0);
+    window.homeReportsChart = new Chart(canvas, {
+        type: 'pie',
+        data: {
+            labels: chartData.map(info => info.label),
+            datasets: [{
+                data: chartData.map(info => statusCounts[info.key]),
+                backgroundColor: chartData.map(info => info.color),
+                borderWidth: 2,
+                borderColor: '#fff'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const label = context.label || '';
+                            const value = context.parsed;
+                            const pct = totalCells > 0 ? ((value / totalCells) * 100).toFixed(1) : '0.0';
+                            return `${label}: ${value} (${pct}%)`;
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+let homePayrollData = { employees: [], categories: [] };
+let homePayrollMonth = new Date().toISOString().slice(0, 7);
+
+async function renderHomePayroll(container) {
+    if (!currentVenture) return;
+
+    const headerBar = document.createElement('div');
+    headerBar.className = 'pending-filter-bar';
+    headerBar.innerHTML = `
+        <div class="pending-filter-group">
+            <label>Month</label>
+            <input type="month" id="homePayrollMonth" value="${homePayrollMonth}">
+        </div>
+        <div class="pending-filter-group" style="align-self:flex-end;">
+            <button id="homePayrollAddEmpBtn" class="btn-primary" style="padding:8px 16px;">+ Add Employee</button>
+        </div>
+    `;
+    container.appendChild(headerBar);
+
+    homePayrollMonth = document.getElementById('homePayrollMonth').value;
+    const key = `payroll_${currentVenture.id}_${homePayrollMonth}`;
+    try {
+        const saved = await apiGet('/api/settings/' + encodeURIComponent(key));
+        if (saved && saved.employees) homePayrollData = saved;
+        else homePayrollData = { employees: [], categories: [] };
+    } catch (e) {
+        homePayrollData = { employees: [], categories: [] };
+    }
+
+    const summaryBar = document.createElement('div');
+    summaryBar.className = 'pending-summary';
+    const totalBase = (homePayrollData.employees || []).reduce((s, e) => s + (parseFloat(e.base) || 0), 0);
+    const totalAdvance = (homePayrollData.employees || []).reduce((s, e) => s + (parseFloat(e.advance) || 0), 0);
+    const netPay = totalBase - totalAdvance;
+    summaryBar.innerHTML = `
+        <strong>${(homePayrollData.employees || []).length}</strong> employees |
+        Total Base: <strong>&#8377;${totalBase.toLocaleString('en-IN', {maximumFractionDigits:2})}</strong> |
+        Total Advance: <strong>&#8377;${totalAdvance.toLocaleString('en-IN', {maximumFractionDigits:2})}</strong> |
+        Net Pay: <strong>&#8377;${netPay.toLocaleString('en-IN', {maximumFractionDigits:2})}</strong>
+    `;
+    container.appendChild(summaryBar);
+
+    const tableWrapper = document.createElement('div');
+    tableWrapper.className = 'grid-container';
+    const table = document.createElement('table');
+    table.className = 'tracker-table pending-table';
+    table.innerHTML = '<thead><tr><th>S.No</th><th>Name</th><th>Category</th><th>Base (&#8377;)</th><th>Advance (&#8377;)</th><th>Net Pay (&#8377;)</th><th>Actions</th></tr></thead>';
+    const tbody = document.createElement('tbody');
+
+    if (!homePayrollData.employees || homePayrollData.employees.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#999;padding:24px;">No employees added yet. Click "+ Add Employee" to get started.</td></tr>';
+    } else {
+        homePayrollData.employees.forEach((emp, idx) => {
+            const net = (parseFloat(emp.base) || 0) - (parseFloat(emp.advance) || 0);
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${idx + 1}</td>
+                <td>${escapeHtml(emp.name)}</td>
+                <td>${escapeHtml(emp.category || '')}</td>
+                <td>&#8377;${(parseFloat(emp.base) || 0).toLocaleString('en-IN', {maximumFractionDigits:2})}</td>
+                <td>&#8377;${(parseFloat(emp.advance) || 0).toLocaleString('en-IN', {maximumFractionDigits:2})}</td>
+                <td>&#8377;${net.toLocaleString('en-IN', {maximumFractionDigits:2})}</td>
+                <td><button class="btn-text home-payroll-del" data-empid="${emp.id}" style="color:#c0392b;">Delete</button></td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+    table.appendChild(tbody);
+    tableWrapper.appendChild(table);
+    container.appendChild(tableWrapper);
+
+    const addRow = document.createElement('div');
+    addRow.className = 'pending-filter-bar';
+    addRow.style.borderTop = '1px solid #e0e4e8';
+    addRow.innerHTML = `
+        <div class="pending-filter-group"><label>Name</label><input type="text" id="homePayrollName" placeholder="Employee name"></div>
+        <div class="pending-filter-group"><label>Category</label><input type="text" id="homePayrollCategory" placeholder="e.g. Mason, Painter"></div>
+        <div class="pending-filter-group"><label>Base (&#8377;)</label><input type="number" id="homePayrollBase" placeholder="0" min="0" step="0.01"></div>
+        <div class="pending-filter-group"><label>Advance (&#8377;)</label><input type="number" id="homePayrollAdvance" placeholder="0" min="0" step="0.01"></div>
+    `;
+    container.appendChild(addRow);
+
+    container.querySelector('#homePayrollAddEmpBtn').addEventListener('click', async () => {
+        const name = container.querySelector('#homePayrollName').value.trim();
+        const category = container.querySelector('#homePayrollCategory').value.trim();
+        const base = parseFloat(container.querySelector('#homePayrollBase').value) || 0;
+        const advance = parseFloat(container.querySelector('#homePayrollAdvance').value) || 0;
+        if (!name) { showToast('Please enter a name', true); return; }
+        if (category && !homePayrollData.categories.includes(category)) homePayrollData.categories.push(category);
+        homePayrollData.employees.push({ id: generateId(), name, category, base, advance });
+        try {
+            await apiPost('/api/settings/' + encodeURIComponent(key), homePayrollData);
+            showToast('Employee added');
+        } catch (err) {
+            showToast('Failed to save employee', true);
+        }
+        await renderHomePayroll(container);
+    });
+
+    container.querySelector('#homePayrollMonth').addEventListener('change', async () => {
+        homePayrollMonth = container.querySelector('#homePayrollMonth').value;
+        await renderHomePayroll(container);
+    });
+
+    container.querySelectorAll('.home-payroll-del').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const empId = btn.dataset.empid;
+            homePayrollData.employees = homePayrollData.employees.filter(e => e.id !== empId);
+            try {
+                await apiPost('/api/settings/' + encodeURIComponent(key), homePayrollData);
+                showToast('Employee deleted');
+            } catch (err) {
+                showToast('Failed to delete employee', true);
+            }
+            await renderHomePayroll(container);
+        });
+    });
 }
 
 async function openVenture(venture) {
@@ -1801,6 +2415,10 @@ async function openVenture(venture) {
     workItems = venture.flat_view_items ? [...venture.flat_view_items] : [...DEFAULT_WORK_ITEMS];
 
     document.getElementById('venturesDashboard').style.display = 'none';
+    document.getElementById('invoicesPanel').style.display = 'none';
+    document.getElementById('poPanel').style.display = 'none';
+    document.getElementById('payrollPanel').style.display = 'none';
+    document.getElementById('inventoryPanel').style.display = 'none';
     document.getElementById('trackerView').style.display = '';
     document.getElementById('breadcrumbBar').style.display = 'flex';
     document.getElementById('bcVenture').textContent = venture.name;
@@ -1820,6 +2438,14 @@ async function openVenture(venture) {
     document.getElementById('workViewContainer').style.display = 'none';
     document.getElementById('superStructureContainer').style.display = 'none';
     document.getElementById('pendingViewContainer').style.display = 'none';
+    const reportsViewContainer = document.getElementById('reportsViewContainer');
+    if (reportsViewContainer) reportsViewContainer.style.display = 'none';
+    const payrollViewContainer = document.getElementById('payrollViewContainer');
+    if (payrollViewContainer) payrollViewContainer.style.display = 'none';
+    const floorTabsContainer = document.getElementById('floorTabsContainer');
+    if (floorTabsContainer) floorTabsContainer.style.display = '';
+    const blockTabsContainer = document.getElementById('blockTabsContainer');
+    if (blockTabsContainer) blockTabsContainer.style.display = '';
 
     renderBlockTabs();
     renderFloorTabs();
@@ -1839,16 +2465,6 @@ function exitToDashboard() {
 }
 
 document.getElementById('backToVentures').addEventListener('click', exitToDashboard);
-
-document.getElementById('pendingWorkBtn').addEventListener('click', () => {
-    document.querySelectorAll('.view-tab').forEach(b => b.classList.remove('active'));
-    currentView = 'pending';
-    document.getElementById('flatViewContainer').style.display = 'none';
-    document.getElementById('workViewContainer').style.display = 'none';
-    document.getElementById('superStructureContainer').style.display = 'none';
-    document.getElementById('pendingViewContainer').style.display = '';
-    renderPendingView();
-});
 
 document.getElementById('bcHome').addEventListener('click', exitToDashboard);
 
@@ -2420,8 +3036,8 @@ async function deleteVenture(ventureId) {
 // ========================
 // Pending Work View
 // ========================
-async function renderPendingView() {
-    const container = document.getElementById('pendingViewContainer');
+async function renderPendingView(targetContainer) {
+    const container = targetContainer || document.getElementById('pendingViewContainer');
     container.innerHTML = '';
 
     if (!currentVenture || !currentBlockObj) return;
@@ -2750,6 +3366,9 @@ async function saveInvoiceCategory(cat) {
 function openInvoicesPanel() {
     document.getElementById('venturesDashboard').style.display = 'none';
     document.getElementById('invoicesPanel').style.display = '';
+    document.getElementById('poPanel').style.display = 'none';
+    document.getElementById('payrollPanel').style.display = 'none';
+    document.getElementById('inventoryPanel').style.display = 'none';
     document.getElementById('breadcrumbBar').style.display = 'none';
     populateInvoiceFilterVentures();
     populateInvoiceFilterCategories();
@@ -2759,6 +3378,25 @@ function openInvoicesPanel() {
 function closeInvoicesPanel() {
     document.getElementById('invoicesPanel').style.display = 'none';
     document.getElementById('venturesDashboard').style.display = '';
+}
+
+function openInventoryPanel() {
+    document.getElementById('venturesDashboard').style.display = 'none';
+    document.getElementById('invoicesPanel').style.display = 'none';
+    document.getElementById('poPanel').style.display = 'none';
+    document.getElementById('payrollPanel').style.display = 'none';
+    document.getElementById('inventoryPanel').style.display = '';
+    document.getElementById('breadcrumbBar').style.display = 'none';
+    if (venturesList.length > 0 && !selectedInventoryVenture) {
+        selectedInventoryVenture = venturesList[0];
+    }
+    renderInventoryView();
+}
+
+function closeInventoryPanel() {
+    document.getElementById('inventoryPanel').style.display = 'none';
+    document.getElementById('venturesDashboard').style.display = '';
+    selectedInventoryVenture = null;
 }
 
 function populateInvoiceFilterVentures() {
@@ -3099,6 +3737,10 @@ function closeLightbox() {
 document.getElementById('openInvoicesBtn').addEventListener('click', openInvoicesPanel);
 document.getElementById('backFromInvoices').addEventListener('click', closeInvoicesPanel);
 
+// Inventory event wiring
+document.getElementById('openInventoryBtn').addEventListener('click', openInventoryPanel);
+document.getElementById('backFromInventory').addEventListener('click', closeInventoryPanel);
+
 document.getElementById('addInvoiceBtn').addEventListener('click', () => openInvoiceForm(null));
 document.getElementById('closeInvoiceForm').addEventListener('click', closeInvoiceForm);
 document.getElementById('cancelInvoiceForm').addEventListener('click', closeInvoiceForm);
@@ -3303,7 +3945,7 @@ function isPOFlaggedUnpaid(po) {
 
 function openPOPanel() {
     document.getElementById('venturesDashboard').style.display = 'none';
-    ['invoicesPanel', 'attendancePanel'].forEach(id => {
+    ['invoicesPanel', 'attendancePanel', 'payrollPanel', 'inventoryPanel'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.display = 'none';
     });
@@ -4050,3 +4692,1239 @@ document.getElementById('saveVendorBtn').addEventListener('click', async () => {
         populatePOVendorSelect(vendorData.id);
     }
 });
+
+// ========================
+// Payroll View
+// ========================
+let payrollData = { employees: [], categories: [] };
+let payrollEditingEmpId = null;
+let selectedPayrollVenture = null; // used when opened from dashboard panel; null = All Ventures
+let payrollPanelMode = false;
+
+document.getElementById('payrollBtn')?.addEventListener('click', () => {
+    document.querySelectorAll('.view-tab').forEach(b => b.classList.remove('active'));
+    previousView = currentView;
+    currentView = 'payroll';
+    document.getElementById('flatViewContainer').style.display = 'none';
+    document.getElementById('workViewContainer').style.display = 'none';
+    document.getElementById('superStructureContainer').style.display = 'none';
+    document.getElementById('pendingViewContainer').style.display = 'none';
+    const rvc = document.getElementById('reportsViewContainer');
+    if (rvc) rvc.style.display = 'none';
+    document.getElementById('payrollViewContainer').style.display = '';
+    payrollPanelMode = false;
+    selectedPayrollVenture = null;
+    renderPayrollView();
+});
+
+function openPayrollPanel() {
+    document.getElementById('venturesDashboard').style.display = 'none';
+    ['invoicesPanel', 'poPanel'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+    });
+    document.getElementById('payrollPanel').style.display = '';
+    document.getElementById('breadcrumbBar').style.display = 'none';
+    selectedPayrollVenture = null; // default to All Ventures
+    payrollPanelMode = true;
+    renderPayrollView();
+}
+
+function closePayrollPanel() {
+    document.getElementById('payrollPanel').style.display = 'none';
+    document.getElementById('venturesDashboard').style.display = '';
+    selectedPayrollVenture = null;
+    payrollPanelMode = false;
+}
+
+document.getElementById('openPayrollBtn').addEventListener('click', openPayrollPanel);
+document.getElementById('backFromPayroll').addEventListener('click', closePayrollPanel);
+
+function payrollMonthKey() {
+    const monthInput = document.getElementById('payrollMonthSelect');
+    return monthInput ? monthInput.value : new Date().toISOString().slice(0, 7);
+}
+
+function payrollActiveVenture() {
+    if (payrollPanelMode) return selectedPayrollVenture;
+    return currentVenture;
+}
+
+function payrollSettingKey(month, venture) {
+    const v = venture || payrollActiveVenture();
+    return v ? `payroll_${v.id}_${month}` : '';
+}
+
+async function loadPayrollData(month, venture) {
+    const v = venture || payrollActiveVenture();
+    if (!v) {
+        // Aggregate payroll data across all ventures
+        const allData = { employees: [], categories: [] };
+        const promises = venturesList.map(async (venture) => {
+            const key = `payroll_${venture.id}_${month}`;
+            const data = await apiGet('/api/settings/' + encodeURIComponent(key));
+            if (data && data.employees) {
+                const employees = (data.employees || []).map(e => ({
+                    ...e,
+                    ventureId: venture.id,
+                    ventureName: venture.name
+                }));
+                allData.employees.push(...employees);
+                (data.categories || []).forEach(cat => {
+                    if (!allData.categories.includes(cat)) allData.categories.push(cat);
+                });
+            }
+        });
+        await Promise.all(promises);
+        return allData;
+    }
+    const key = payrollSettingKey(month, v);
+    const data = await apiGet('/api/settings/' + encodeURIComponent(key));
+    if (data && data.employees) {
+        return data;
+    }
+    return { employees: [], categories: [] };
+}
+
+async function savePayrollData(month, data, venture) {
+    const v = venture || payrollActiveVenture();
+    if (!v) return;
+    const key = payrollSettingKey(month, v);
+    await apiPost('/api/settings/' + encodeURIComponent(key), data);
+}
+
+async function renderPayrollView() {
+    const venture = payrollActiveVenture();
+    const isPanel = payrollPanelMode;
+    const isAllMode = isPanel && !selectedPayrollVenture;
+    const container = document.getElementById(isPanel ? 'payrollPanelContent' : 'payrollViewContainer');
+    if (!container) return;
+    container.innerHTML = '';
+
+    if (!venture && !isAllMode) {
+        container.innerHTML = '<div style="padding:24px;color:#999;">No venture selected.</div>';
+        return;
+    }
+
+    // Default to current month
+    const currentMonth = new Date().toISOString().slice(0, 7);
+
+    // Header bar
+    const headerBar = document.createElement('div');
+    headerBar.className = 'pending-filter-bar';
+
+    // Venture selector (only in panel mode)
+    if (isPanel) {
+        const ventureGroup = document.createElement('div');
+        ventureGroup.className = 'pending-filter-group';
+        let ventureOptions = `<option value="all" ${!selectedPayrollVenture ? 'selected' : ''}>All Ventures</option>`;
+        venturesList.forEach(v => {
+            ventureOptions += `<option value="${v.id}" ${selectedPayrollVenture && selectedPayrollVenture.id === v.id ? 'selected' : ''}>${v.name}</option>`;
+        });
+        ventureGroup.innerHTML = `<label>Venture</label><select id="payrollVentureSelect">${ventureOptions}</select>`;
+        headerBar.appendChild(ventureGroup);
+    } else {
+        // Venture label (tracker view)
+        const ventureGroup = document.createElement('div');
+        ventureGroup.className = 'pending-filter-group';
+        ventureGroup.innerHTML = `<label>Venture</label><div class="pending-readonly">${venture.name}</div>`;
+        headerBar.appendChild(ventureGroup);
+    }
+
+    // Month selector
+    const monthGroup = document.createElement('div');
+    monthGroup.className = 'pending-filter-group';
+    monthGroup.innerHTML = `<label>Month</label><input type="month" id="payrollMonthSelect" value="${currentMonth}">`;
+    headerBar.appendChild(monthGroup);
+
+    // Add employee button
+    const addGroup = document.createElement('div');
+    addGroup.className = 'pending-filter-group';
+    addGroup.style.alignSelf = 'flex-end';
+    addGroup.innerHTML = `<button id="payrollAddEmpBtn" class="btn-primary" style="padding:8px 16px;" ${isAllMode ? 'disabled title="Select a venture to add employees"' : ''}>+ Add Employee</button>`;
+    headerBar.appendChild(addGroup);
+
+    // Export CSV button
+    const exportGroup = document.createElement('div');
+    exportGroup.className = 'pending-filter-group';
+    exportGroup.style.alignSelf = 'flex-end';
+    exportGroup.innerHTML = `<button id="payrollExportCSV" class="btn-secondary" style="padding:8px 16px;">📄 Export CSV</button>`;
+    headerBar.appendChild(exportGroup);
+
+    container.appendChild(headerBar);
+
+    // Load payroll data for the month
+    payrollData = await loadPayrollData(currentMonth, venture);
+
+    // Populate category datalist
+    const datalist = document.getElementById('payrollCategoryList');
+    if (datalist) {
+        datalist.innerHTML = '';
+        (payrollData.categories || []).forEach(cat => {
+            const opt = document.createElement('option');
+            opt.value = cat;
+            datalist.appendChild(opt);
+        });
+    }
+
+    // Summary bar
+    const summaryBar = document.createElement('div');
+    summaryBar.className = 'pending-summary';
+    const totalBase = (payrollData.employees || []).reduce((s, e) => s + (parseFloat(e.base) || 0), 0);
+    const totalAdvance = (payrollData.employees || []).reduce((s, e) => s + (parseFloat(e.advance) || 0), 0);
+    const netPay = totalBase - totalAdvance;
+    let summaryHtml = `
+        <strong>${(payrollData.employees || []).length}</strong> employees |
+        Total Base: <strong>&#8377;${totalBase.toLocaleString('en-IN', {maximumFractionDigits:2})}</strong> |
+        Total Advance: <strong>&#8377;${totalAdvance.toLocaleString('en-IN', {maximumFractionDigits:2})}</strong> |
+        Net Pay: <strong>&#8377;${netPay.toLocaleString('en-IN', {maximumFractionDigits:2})}</strong>
+    `;
+    if (isAllMode) {
+        summaryHtml += `<span style="margin-left:12px;color:#666;">(Showing all ventures — select a venture to manage employees)</span>`;
+    }
+    summaryBar.innerHTML = summaryHtml;
+    container.appendChild(summaryBar);
+
+    // Employee table
+    const tableWrapper = document.createElement('div');
+    tableWrapper.className = 'grid-container';
+    const table = document.createElement('table');
+    table.className = 'tracker-table pending-table';
+
+    const thead = document.createElement('thead');
+    if (isAllMode) {
+        thead.innerHTML = '<tr><th>S.No</th><th>Venture</th><th>Name</th><th>Category</th><th>Base (&#8377;)</th><th>Advance (&#8377;)</th><th>Net Pay (&#8377;)</th></tr>';
+    } else {
+        thead.innerHTML = '<tr><th>S.No</th><th>Name</th><th>Category</th><th>Base (&#8377;)</th><th>Advance (&#8377;)</th><th>Net Pay (&#8377;)</th><th>Actions</th></tr>';
+    }
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    if (!payrollData.employees || payrollData.employees.length === 0) {
+        const emptyRow = document.createElement('tr');
+        const colCount = isAllMode ? 7 : 7;
+        emptyRow.innerHTML = `<td colspan="${colCount}" style="text-align:center;color:#999;padding:24px;">No employees added yet. Click "+ Add Employee" to get started.</td>`;
+        tbody.appendChild(emptyRow);
+    } else {
+        payrollData.employees.forEach((emp, idx) => {
+            const tr = document.createElement('tr');
+            const netPay = (parseFloat(emp.base) || 0) - (parseFloat(emp.advance) || 0);
+            if (isAllMode) {
+                tr.innerHTML = `
+                    <td>${idx + 1}</td>
+                    <td>${escapeHtml(emp.ventureName || '')}</td>
+                    <td>${escapeHtml(emp.name)}</td>
+                    <td>${escapeHtml(emp.category || '')}</td>
+                    <td>${(parseFloat(emp.base) || 0).toLocaleString('en-IN', {maximumFractionDigits:2})}</td>
+                    <td>${(parseFloat(emp.advance) || 0).toLocaleString('en-IN', {maximumFractionDigits:2})}</td>
+                    <td>${netPay.toLocaleString('en-IN', {maximumFractionDigits:2})}</td>
+                `;
+            } else {
+                tr.innerHTML = `
+                    <td>${idx + 1}</td>
+                    <td class="payroll-emp-name" data-empid="${emp.id}">${escapeHtml(emp.name)}</td>
+                    <td class="payroll-emp-cat" data-empid="${emp.id}">${escapeHtml(emp.category || '')}</td>
+                    <td class="payroll-emp-base" data-empid="${emp.id}">${(parseFloat(emp.base) || 0).toLocaleString('en-IN', {maximumFractionDigits:2})}</td>
+                    <td class="payroll-emp-advance" data-empid="${emp.id}">${(parseFloat(emp.advance) || 0).toLocaleString('en-IN', {maximumFractionDigits:2})}</td>
+                    <td>${netPay.toLocaleString('en-IN', {maximumFractionDigits:2})}</td>
+                    <td>
+                        <button class="btn-text payroll-edit-btn" data-empid="${emp.id}" style="font-size:0.78rem;">Edit</button>
+                        <button class="btn-text payroll-del-btn" data-empid="${emp.id}" style="font-size:0.78rem;color:#c0392b;">Delete</button>
+                    </td>
+                `;
+            }
+            tbody.appendChild(tr);
+        });
+    }
+    table.appendChild(tbody);
+    tableWrapper.appendChild(table);
+    container.appendChild(tableWrapper);
+
+    // Wire events
+    const monthSelect = container.querySelector('#payrollMonthSelect');
+    monthSelect.addEventListener('change', async () => {
+        renderPayrollView();
+    });
+
+    if (isPanel) {
+        const ventureSelect = container.querySelector('#payrollVentureSelect');
+        if (ventureSelect) {
+            ventureSelect.addEventListener('change', (e) => {
+                selectedPayrollVenture = e.target.value === 'all' ? null : venturesList.find(v => v.id === e.target.value) || null;
+                renderPayrollView();
+            });
+        }
+    }
+
+    const addBtn = container.querySelector('#payrollAddEmpBtn');
+    if (addBtn && !isAllMode) {
+        addBtn.addEventListener('click', () => {
+            payrollEditingEmpId = null;
+            openPayrollEmpModal(null);
+        });
+    }
+
+    container.querySelector('#payrollExportCSV').addEventListener('click', exportPayrollCSV);
+
+    if (!isAllMode) {
+        container.querySelectorAll('.payroll-edit-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const emp = payrollData.employees.find(e => e.id === btn.dataset.empid);
+                if (emp) {
+                    payrollEditingEmpId = emp.id;
+                    openPayrollEmpModal(emp);
+                }
+            });
+        });
+
+        container.querySelectorAll('.payroll-del-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const emp = payrollData.employees.find(e => e.id === btn.dataset.empid);
+                if (!emp) return;
+                showConfirm('Delete Employee', `Delete '${emp.name}' from payroll?`, async () => {
+                    payrollData.employees = payrollData.employees.filter(e => e.id !== emp.id);
+                    await savePayrollData(payrollMonthKey(), payrollData);
+                    renderPayrollView();
+                    showToast('Employee deleted');
+                });
+            });
+        });
+
+        // Inline edit for name, category, base, advance
+        container.querySelectorAll('.payroll-emp-name').forEach(td => {
+            td.style.cursor = 'pointer';
+            td.addEventListener('click', () => {
+                const emp = payrollData.employees.find(e => e.id === td.dataset.empid);
+                if (!emp) return;
+                payrollInlineEdit(td, emp.name, async (newVal) => {
+                    emp.name = newVal;
+                    await savePayrollData(payrollMonthKey(), payrollData);
+                    renderPayrollView();
+                });
+            });
+        });
+        container.querySelectorAll('.payroll-emp-cat').forEach(td => {
+            td.style.cursor = 'pointer';
+            td.addEventListener('click', () => {
+                const emp = payrollData.employees.find(e => e.id === td.dataset.empid);
+                if (!emp) return;
+                payrollInlineEdit(td, emp.category || '', async (newVal) => {
+                    emp.category = newVal;
+                    if (newVal && !payrollData.categories.includes(newVal)) {
+                        payrollData.categories.push(newVal);
+                    }
+                    await savePayrollData(payrollMonthKey(), payrollData);
+                    renderPayrollView();
+                });
+            });
+        });
+        container.querySelectorAll('.payroll-emp-base').forEach(td => {
+            td.style.cursor = 'pointer';
+            td.addEventListener('click', () => {
+                const emp = payrollData.employees.find(e => e.id === td.dataset.empid);
+                if (!emp) return;
+                payrollInlineEdit(td, String(emp.base || 0), async (newVal) => {
+                    emp.base = parseFloat(newVal) || 0;
+                    await savePayrollData(payrollMonthKey(), payrollData);
+                    renderPayrollView();
+                });
+            });
+        });
+        container.querySelectorAll('.payroll-emp-advance').forEach(td => {
+            td.style.cursor = 'pointer';
+            td.addEventListener('click', () => {
+                const emp = payrollData.employees.find(e => e.id === td.dataset.empid);
+                if (!emp) return;
+                payrollInlineEdit(td, String(emp.advance || 0), async (newVal) => {
+                    emp.advance = parseFloat(newVal) || 0;
+                    await savePayrollData(payrollMonthKey(), payrollData);
+                    renderPayrollView();
+                });
+            });
+        });
+    }
+}
+
+function payrollInlineEdit(td, currentValue, onSave) {
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'item-edit-input';
+    input.value = currentValue;
+    input.style.width = '100px';
+    td.textContent = '';
+    td.appendChild(input);
+    input.focus();
+    input.select();
+
+    const finish = (save) => {
+        if (save) {
+            const newVal = input.value.trim();
+            if (newVal !== currentValue) onSave(newVal);
+            else renderPayrollView();
+        } else {
+            renderPayrollView();
+        }
+    };
+
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+        else if (e.key === 'Escape') { finish(false); }
+    });
+    input.addEventListener('blur', () => finish(true));
+}
+
+function openPayrollEmpModal(emp) {
+    document.getElementById('payrollEmpTitle').textContent = emp ? 'Edit Employee' : 'Add Employee';
+    document.getElementById('payrollEmpName').value = emp ? (emp.name || '') : '';
+    document.getElementById('payrollEmpCategory').value = emp ? (emp.category || '') : '';
+    document.getElementById('payrollEmpBase').value = emp ? (emp.base || '') : '';
+    document.getElementById('payrollEmpAdvance').value = emp ? (emp.advance || '') : '';
+
+    // Populate datalist
+    const datalist = document.getElementById('payrollCategoryList');
+    datalist.innerHTML = '';
+    (payrollData.categories || []).forEach(cat => {
+        const opt = document.createElement('option');
+        opt.value = cat;
+        datalist.appendChild(opt);
+    });
+
+    document.getElementById('payrollEmpModal').classList.add('show');
+}
+
+function closePayrollEmpModal() {
+    document.getElementById('payrollEmpModal').classList.remove('show');
+    payrollEditingEmpId = null;
+}
+
+document.getElementById('closePayrollEmp').addEventListener('click', closePayrollEmpModal);
+document.getElementById('cancelPayrollEmp').addEventListener('click', closePayrollEmpModal);
+document.getElementById('payrollEmpModal').addEventListener('click', (e) => {
+    if (e.target === document.getElementById('payrollEmpModal')) closePayrollEmpModal();
+});
+
+document.getElementById('savePayrollEmp').addEventListener('click', async () => {
+    const name = document.getElementById('payrollEmpName').value.trim();
+    if (!name) { showToast('Please enter a name', true); return; }
+
+    const category = document.getElementById('payrollEmpCategory').value.trim();
+    const base = parseFloat(document.getElementById('payrollEmpBase').value) || 0;
+    const advance = parseFloat(document.getElementById('payrollEmpAdvance').value) || 0;
+
+    if (category && !payrollData.categories.includes(category)) {
+        payrollData.categories.push(category);
+    }
+
+    if (payrollEditingEmpId) {
+        const emp = payrollData.employees.find(e => e.id === payrollEditingEmpId);
+        if (emp) {
+            emp.name = name;
+            emp.category = category;
+            emp.base = base;
+            emp.advance = advance;
+        }
+    } else {
+        payrollData.employees.push({
+            id: generateId(),
+            name,
+            category,
+            base,
+            advance
+        });
+    }
+
+    await savePayrollData(payrollMonthKey(), payrollData);
+    closePayrollEmpModal();
+    renderPayrollView();
+    showToast('Employee saved');
+});
+
+function exportPayrollCSV() {
+    if (!payrollData.employees || payrollData.employees.length === 0) {
+        showToast('No employees to export', true);
+        return;
+    }
+
+    const month = payrollMonthKey();
+    const isAllMode = payrollPanelMode && !selectedPayrollVenture;
+    const ventureName = isAllMode ? 'All Ventures' : (payrollActiveVenture()?.name || 'Venture');
+    const rows = isAllMode
+        ? [['S.No', 'Venture', 'Name', 'Category', 'Base', 'Advance', 'Net Pay']]
+        : [['S.No', 'Name', 'Category', 'Base', 'Advance', 'Net Pay']];
+
+    payrollData.employees.forEach((emp, idx) => {
+        const netPay = (parseFloat(emp.base) || 0) - (parseFloat(emp.advance) || 0);
+        if (isAllMode) {
+            rows.push([
+                idx + 1,
+                emp.ventureName || '',
+                emp.name,
+                emp.category || '',
+                emp.base || 0,
+                emp.advance || 0,
+                netPay
+            ]);
+        } else {
+            rows.push([
+                idx + 1,
+                emp.name,
+                emp.category || '',
+                emp.base || 0,
+                emp.advance || 0,
+                netPay
+            ]);
+        }
+    });
+
+    // Totals row
+    const totalBase = payrollData.employees.reduce((s, e) => s + (parseFloat(e.base) || 0), 0);
+    const totalAdvance = payrollData.employees.reduce((s, e) => s + (parseFloat(e.advance) || 0), 0);
+    const totalRow = isAllMode
+        ? ['', 'TOTALS', '', '', totalBase, totalAdvance, totalBase - totalAdvance]
+        : ['', 'TOTALS', '', totalBase, totalAdvance, totalBase - totalAdvance];
+    rows.push([]);
+    rows.push(totalRow);
+
+    const csvContent = rows.map(row =>
+        row.map(cell => {
+            const str = String(cell);
+            if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+                return '"' + str.replace(/"/g, '""') + '"';
+            }
+            return str;
+        }).join(',')
+    ).join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `payroll_${ventureName}_${month}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(link.href);
+    showToast('CSV exported');
+}
+
+// ========================
+// Inventory Stub
+// ========================
+async function renderInventoryView() {
+    const container = document.getElementById('inventoryPanelContent');
+    if (!container) return;
+    container.innerHTML = '<div style="padding:24px;color:#999;">Inventory module is not available in this build.</div>';
+}
+
+// ========================
+// Inventory Module
+// ========================
+let inventoryMaterials = [];
+let inventoryStockEntries = [];
+let inventoryBalance = [];
+let inventoryTab = 'summary';
+let inventoryEntryEditingId = null;
+let inventoryMaterialEditingId = null;
+let selectedInventoryVenture = null;
+let inventoryRegTypeFilter = 'all';
+let inventoryRegMaterialFilter = 'all';
+let inventoryLocMaterialFilter = 'all';
+let inventoryLocBlockFilter = 'all';
+let inventoryLocFloorFilter = 'all';
+let inventoryVendorFilter = 'all';
+let inventoryVendorMaterialFilter = 'all';
+
+function inventoryActiveVenture() {
+    return selectedInventoryVenture || currentVenture;
+}
+
+async function loadInventoryMaterials(ventureId) {
+    if (!ventureId) return [];
+    try {
+        return await apiGet('/api/materials?venture_id=' + encodeURIComponent(ventureId)) || [];
+    } catch (e) { return []; }
+}
+
+async function loadInventoryStock(ventureId) {
+    if (!ventureId) return [];
+    try {
+        return await apiGet('/api/stock?venture_id=' + encodeURIComponent(ventureId)) || [];
+    } catch (e) { return []; }
+}
+
+async function loadInventorySummary(ventureId) {
+    if (!ventureId) return [];
+    try {
+        return await apiGet('/api/stock/summary?venture_id=' + encodeURIComponent(ventureId)) || [];
+    } catch (e) { return []; }
+}
+
+async function renderInventoryView() {
+    const container = document.getElementById('inventoryPanelContent');
+    container.innerHTML = '';
+
+    const venture = inventoryActiveVenture();
+    if (!venture) {
+        container.innerHTML = '<div style="padding:24px;color:#999;">No venture selected.</div>';
+        return;
+    }
+
+    inventoryMaterials = await loadInventoryMaterials(venture.id);
+    inventoryStockEntries = await loadInventoryStock(venture.id);
+    inventoryBalance = await loadInventorySummary(venture.id);
+
+    // Header bar
+    const isPanel = !!selectedInventoryVenture;
+    const header = document.createElement('div');
+    header.className = 'pending-filter-bar';
+    let ventureOptions = '';
+    venturesList.forEach(v => {
+        ventureOptions += `<option value="${v.id}" ${selectedInventoryVenture && selectedInventoryVenture.id === v.id ? 'selected' : ''}>${escapeHtml(v.name)}</option>`;
+    });
+    header.innerHTML = `
+        <div class="pending-filter-group">
+            <label>Venture</label>
+            ${isPanel
+                ? `<select id="inventoryVentureSelect">${ventureOptions}</select>`
+                : `<div class="pending-readonly">${escapeHtml(venture.name)}</div>`}
+        </div>
+        <div class="pending-filter-group" style="align-self:flex-end;">
+            <button id="inventoryAddMaterialBtn" class="btn-secondary" style="padding:8px 16px;">+ Manage Materials</button>
+        </div>
+    `;
+    container.appendChild(header);
+
+    if (isPanel) {
+        header.querySelector('#inventoryVentureSelect').addEventListener('change', (e) => {
+            selectedInventoryVenture = venturesList.find(v => v.id === e.target.value) || null;
+            renderInventoryView();
+        });
+    }
+
+    // Tab bar
+    const tabBar = document.createElement('div');
+    tabBar.className = 'inventory-tab-bar';
+    tabBar.innerHTML = `
+        <button class="inventory-tab ${inventoryTab === 'summary' ? 'active' : ''}" data-tab="summary">Stock Summary</button>
+        <button class="inventory-tab ${inventoryTab === 'register' ? 'active' : ''}" data-tab="register">Stock Register</button>
+        <button class="inventory-tab ${inventoryTab === 'location' ? 'active' : ''}" data-tab="location">By Location</button>
+        <button class="inventory-tab ${inventoryTab === 'vendor' ? 'active' : ''}" data-tab="vendor">By Vendor</button>
+    `;
+    container.appendChild(tabBar);
+
+    tabBar.querySelectorAll('.inventory-tab').forEach(btn => {
+        btn.addEventListener('click', () => {
+            inventoryTab = btn.dataset.tab;
+            renderInventoryView();
+        });
+    });
+
+    // Action bar for Stock In / Out
+    const actionBar = document.createElement('div');
+    actionBar.className = 'inventory-actions';
+    actionBar.innerHTML = `
+        <button id="inventoryStockInBtn" class="btn-primary" style="flex:1;max-width:220px;">+ Stock In</button>
+        <button id="inventoryStockOutBtn" class="btn-secondary" style="flex:1;max-width:220px;">+ Stock Out</button>
+    `;
+    container.appendChild(actionBar);
+
+    actionBar.querySelector('#inventoryStockInBtn').addEventListener('click', () => openStockEntryModal(null, 'IN'));
+    actionBar.querySelector('#inventoryStockOutBtn').addEventListener('click', () => openStockEntryModal(null, 'OUT'));
+    header.querySelector('#inventoryAddMaterialBtn').addEventListener('click', () => openMaterialModal(null));
+
+    // Render selected tab
+    const tabContent = document.createElement('div');
+    tabContent.id = 'inventoryTabContent';
+    container.appendChild(tabContent);
+
+    if (inventoryTab === 'summary') renderInventorySummary(tabContent);
+    else if (inventoryTab === 'register') renderInventoryRegister(tabContent);
+    else if (inventoryTab === 'location') renderInventoryLocation(tabContent);
+    else renderInventoryVendor(tabContent);
+}
+
+function renderInventorySummary(container) {
+    const tableWrapper = document.createElement('div');
+    tableWrapper.className = 'grid-container';
+
+    const table = document.createElement('table');
+    table.className = 'tracker-table';
+    table.innerHTML = `
+        <thead>
+            <tr>
+                <th>Material</th>
+                <th>Category</th>
+                <th>Unit</th>
+                <th>Purchased</th>
+                <th>Used</th>
+                <th>Adjust</th>
+                <th>Balance</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    `;
+    const tbody = table.querySelector('tbody');
+
+    if (inventoryBalance.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#999;padding:24px;">No materials yet. Click "Manage Materials" to add materials.</td></tr>';
+    } else {
+        inventoryBalance.forEach(row => {
+            const mat = inventoryMaterials.find(m => m.id === row.material_id) || {};
+            const bal = parseFloat(row.balance) || 0;
+            const threshold = parseFloat(mat.min_threshold) || 0;
+            let statusHtml = '<span style="color:#27ae60;font-weight:600;">OK</span>';
+            if (bal <= 0) statusHtml = '<span style="color:#e74c3c;font-weight:600;">Out of Stock</span>';
+            else if (threshold > 0 && bal <= threshold) statusHtml = '<span style="color:#f39c12;font-weight:600;">Low</span>';
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${escapeHtml(mat.name || 'Unknown')}</td>
+                <td>${escapeHtml(mat.category || '-')}</td>
+                <td>${escapeHtml(mat.unit || '-')}</td>
+                <td>${formatNumber(row.total_in)}</td>
+                <td>${formatNumber(row.total_out)}</td>
+                <td>${formatNumber(row.total_adjust)}</td>
+                <td style="font-weight:700;">${formatNumber(row.balance)}</td>
+                <td>${statusHtml}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    tableWrapper.appendChild(table);
+    container.appendChild(tableWrapper);
+}
+
+function renderInventoryRegister(container) {
+    const filterBar = document.createElement('div');
+    filterBar.className = 'pending-filter-bar';
+    filterBar.style.marginBottom = '8px';
+    let materialOptions = '<option value="all">All Materials</option>';
+    inventoryMaterials.forEach(m => {
+        materialOptions += `<option value="${m.id}" ${inventoryRegMaterialFilter === m.id ? 'selected' : ''}>${escapeHtml(m.name)}</option>`;
+    });
+    filterBar.innerHTML = `
+        <div class="pending-filter-group">
+            <label>Type</label>
+            <select id="inventoryRegType">
+                <option value="all" ${inventoryRegTypeFilter === 'all' ? 'selected' : ''}>All</option>
+                <option value="IN" ${inventoryRegTypeFilter === 'IN' ? 'selected' : ''}>In</option>
+                <option value="OUT" ${inventoryRegTypeFilter === 'OUT' ? 'selected' : ''}>Out</option>
+                <option value="ADJUST" ${inventoryRegTypeFilter === 'ADJUST' ? 'selected' : ''}>Adjust</option>
+            </select>
+        </div>
+        <div class="pending-filter-group">
+            <label>Material</label>
+            <select id="inventoryRegMaterial">${materialOptions}</select>
+        </div>
+    `;
+    container.appendChild(filterBar);
+
+    filterBar.querySelector('#inventoryRegType').addEventListener('change', (e) => {
+        inventoryRegTypeFilter = e.target.value;
+        renderInventoryView();
+    });
+    filterBar.querySelector('#inventoryRegMaterial').addEventListener('change', (e) => {
+        inventoryRegMaterialFilter = e.target.value;
+        renderInventoryView();
+    });
+
+    const tableWrapper = document.createElement('div');
+    tableWrapper.className = 'grid-container';
+
+    const table = document.createElement('table');
+    table.className = 'tracker-table';
+    table.innerHTML = `
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Type</th>
+                <th>Material</th>
+                <th>Qty</th>
+                <th>Vendor / Location</th>
+                <th>Rate</th>
+                <th>Amount</th>
+                <th>Remarks</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    `;
+    const tbody = table.querySelector('tbody');
+
+    let rows = [...inventoryStockEntries].sort((a, b) => (b.entry_date || '').localeCompare(a.entry_date || ''));
+    if (inventoryRegTypeFilter !== 'all') rows = rows.filter(r => r.entry_type === inventoryRegTypeFilter);
+    if (inventoryRegMaterialFilter !== 'all') rows = rows.filter(r => r.material_id === inventoryRegMaterialFilter);
+
+    if (rows.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#999;padding:24px;">No stock entries found.</td></tr>';
+    } else {
+        rows.forEach(row => {
+            const mat = inventoryMaterials.find(m => m.id === row.material_id) || {};
+            const badgeClass = row.entry_type === 'IN' ? 'inv-in' : row.entry_type === 'OUT' ? 'inv-out' : 'inv-adj';
+            const vendor = loadVendors().find(v => v.id === row.vendor_id);
+            const location = row.entry_type === 'OUT'
+                ? `${row.block || '-'} / ${row.floor || '-'} / ${row.flat || '-'}`
+                : (vendor ? vendor.name : '-');
+            const amount = row.rate && row.qty ? (row.qty * row.rate).toLocaleString('en-IN', { maximumFractionDigits: 2 }) : '-';
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${formatDate(row.entry_date)}</td>
+                <td><span class="inv-badge ${badgeClass}">${row.entry_type}</span></td>
+                <td>${escapeHtml(mat.name || '-')}</td>
+                <td>${formatNumber(row.qty)}</td>
+                <td>${escapeHtml(location)}</td>
+                <td>${row.rate ? '&#8377;' + formatNumber(row.rate) : '-'}</td>
+                <td>${row.rate ? '&#8377;' + amount : '-'}</td>
+                <td>${escapeHtml(row.remarks || '-')}</td>
+                <td><button class="btn-text edit-entry-btn" data-eid="${row.id}">Edit</button></td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    tableWrapper.appendChild(table);
+    container.appendChild(tableWrapper);
+
+    container.querySelectorAll('.edit-entry-btn').forEach(btn => {
+        btn.addEventListener('click', () => openStockEntryModal(btn.dataset.eid));
+    });
+}
+
+function renderInventoryLocation(container) {
+    const filterBar = document.createElement('div');
+    filterBar.className = 'pending-filter-bar';
+    filterBar.style.marginBottom = '8px';
+    let materialOptions = '<option value="all">All Materials</option>';
+    inventoryMaterials.forEach(m => {
+        materialOptions += `<option value="${m.id}" ${inventoryLocMaterialFilter === m.id ? 'selected' : ''}>${escapeHtml(m.name)}</option>`;
+    });
+    const invVenture = inventoryActiveVenture();
+    filterBar.innerHTML = `
+        <div class="pending-filter-group">
+            <label>Material</label>
+            <select id="inventoryLocMaterial">${materialOptions}</select>
+        </div>
+        <div class="pending-filter-group">
+            <label>Block</label>
+            <select id="inventoryLocBlock"><option value="all" ${inventoryLocBlockFilter === 'all' ? 'selected' : ''}>All</option></select>
+        </div>
+        <div class="pending-filter-group">
+            <label>Floor</label>
+            <select id="inventoryLocFloor"><option value="all" ${inventoryLocFloorFilter === 'all' ? 'selected' : ''}>All</option></select>
+        </div>
+    `;
+    container.appendChild(filterBar);
+
+    const blockSel = filterBar.querySelector('#inventoryLocBlock');
+    const floorSel = filterBar.querySelector('#inventoryLocFloor');
+    if (invVenture && invVenture.blocks) {
+        invVenture.blocks.forEach(b => {
+            const selected = inventoryLocBlockFilter === b.id ? 'selected' : '';
+            blockSel.innerHTML += `<option value="${b.id}" ${selected}>${escapeHtml(b.name || b.id)}</option>`;
+        });
+    }
+    const blockForFloors = (invVenture && invVenture.blocks && invVenture.blocks[0]) ? invVenture.blocks[0] : null;
+    const floors = blockForFloors ? (blockForFloors.floors || 5) : 5;
+    const floorLabels = ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th', '10th'];
+    for (let f = 1; f <= floors; f++) {
+        const label = floors === 1 ? 'Ground Floor' : `${floorLabels[f - 1] || f + 'th'} Floor`;
+        const selected = inventoryLocFloorFilter === label ? 'selected' : '';
+        floorSel.innerHTML += `<option value="${label}" ${selected}>${label}</option>`;
+    }
+
+    filterBar.querySelector('#inventoryLocMaterial').addEventListener('change', (e) => {
+        inventoryLocMaterialFilter = e.target.value;
+        renderInventoryView();
+    });
+    blockSel.addEventListener('change', (e) => {
+        inventoryLocBlockFilter = e.target.value;
+        renderInventoryView();
+    });
+    floorSel.addEventListener('change', (e) => {
+        inventoryLocFloorFilter = e.target.value;
+        renderInventoryView();
+    });
+
+    let rows = inventoryStockEntries.filter(r => r.entry_type === 'OUT').sort((a, b) => (b.entry_date || '').localeCompare(a.entry_date || ''));
+    if (inventoryLocMaterialFilter !== 'all') rows = rows.filter(r => r.material_id === inventoryLocMaterialFilter);
+    if (inventoryLocBlockFilter !== 'all') rows = rows.filter(r => r.block === inventoryLocBlockFilter);
+    if (inventoryLocFloorFilter !== 'all') rows = rows.filter(r => r.floor === inventoryLocFloorFilter);
+
+    const tableWrapper = document.createElement('div');
+    tableWrapper.className = 'grid-container';
+    const table = document.createElement('table');
+    table.className = 'tracker-table';
+    table.innerHTML = `
+        <thead>
+            <tr><th>Date</th><th>Material</th><th>Block</th><th>Floor</th><th>Flat</th><th>Work Item</th><th>Qty</th><th>Remarks</th></tr>
+        </thead>
+        <tbody></tbody>
+    `;
+    const tbody = table.querySelector('tbody');
+    if (rows.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#999;padding:24px;">No stock-out entries for this location.</td></tr>';
+    } else {
+        rows.forEach(row => {
+            const mat = inventoryMaterials.find(m => m.id === row.material_id) || {};
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${formatDate(row.entry_date)}</td>
+                <td>${escapeHtml(mat.name || '-')}</td>
+                <td>${escapeHtml(row.block || '-')}</td>
+                <td>${escapeHtml(row.floor || '-')}</td>
+                <td>${escapeHtml(row.flat || '-')}</td>
+                <td>${escapeHtml(row.work_item || '-')}</td>
+                <td>${formatNumber(row.qty)}</td>
+                <td>${escapeHtml(row.remarks || '-')}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+    tableWrapper.appendChild(table);
+    container.appendChild(tableWrapper);
+}
+
+function renderInventoryVendor(container) {
+    const filterBar = document.createElement('div');
+    filterBar.className = 'pending-filter-bar';
+    filterBar.style.marginBottom = '8px';
+    let materialOptions = '<option value="all">All Materials</option>';
+    inventoryMaterials.forEach(m => {
+        materialOptions += `<option value="${m.id}" ${inventoryVendorMaterialFilter === m.id ? 'selected' : ''}>${escapeHtml(m.name)}</option>`;
+    });
+    let vendorOptions = '<option value="all">All Vendors</option>';
+    loadVendors().forEach(v => {
+        vendorOptions += `<option value="${v.id}" ${inventoryVendorFilter === v.id ? 'selected' : ''}>${escapeHtml(v.name)}</option>`;
+    });
+    filterBar.innerHTML = `
+        <div class="pending-filter-group">
+            <label>Vendor</label>
+            <select id="inventoryVendor">${vendorOptions}</select>
+        </div>
+        <div class="pending-filter-group">
+            <label>Material</label>
+            <select id="inventoryVendorMaterial">${materialOptions}</select>
+        </div>
+    `;
+    container.appendChild(filterBar);
+
+    filterBar.querySelector('#inventoryVendor').addEventListener('change', (e) => {
+        inventoryVendorFilter = e.target.value;
+        renderInventoryView();
+    });
+    filterBar.querySelector('#inventoryVendorMaterial').addEventListener('change', (e) => {
+        inventoryVendorMaterialFilter = e.target.value;
+        renderInventoryView();
+    });
+
+    let rows = inventoryStockEntries.filter(r => r.entry_type === 'IN').sort((a, b) => (b.entry_date || '').localeCompare(a.entry_date || ''));
+    if (inventoryVendorFilter !== 'all') rows = rows.filter(r => r.vendor_id === inventoryVendorFilter);
+    if (inventoryVendorMaterialFilter !== 'all') rows = rows.filter(r => r.material_id === inventoryVendorMaterialFilter);
+
+    const tableWrapper = document.createElement('div');
+    tableWrapper.className = 'grid-container';
+    const table = document.createElement('table');
+    table.className = 'tracker-table';
+    table.innerHTML = `
+        <thead>
+            <tr><th>Date</th><th>Vendor</th><th>Material</th><th>Qty</th><th>Rate</th><th>Amount</th><th>Invoice</th><th>PO</th><th>Remarks</th></tr>
+        </thead>
+        <tbody></tbody>
+    `;
+    const tbody = table.querySelector('tbody');
+    if (rows.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#999;padding:24px;">No stock-in entries for this vendor.</td></tr>';
+    } else {
+        rows.forEach(row => {
+            const mat = inventoryMaterials.find(m => m.id === row.material_id) || {};
+            const vendor = loadVendors().find(v => v.id === row.vendor_id);
+            const amount = row.rate && row.qty ? (row.qty * row.rate).toLocaleString('en-IN', { maximumFractionDigits: 2 }) : '-';
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${formatDate(row.entry_date)}</td>
+                <td>${escapeHtml(vendor ? vendor.name : '-')}</td>
+                <td>${escapeHtml(mat.name || '-')}</td>
+                <td>${formatNumber(row.qty)}</td>
+                <td>${row.rate ? '&#8377;' + formatNumber(row.rate) : '-'}</td>
+                <td>${row.rate ? '&#8377;' + amount : '-'}</td>
+                <td>${escapeHtml(row.invoice_id || '-')}</td>
+                <td>${escapeHtml(row.po_id || '-')}</td>
+                <td>${escapeHtml(row.remarks || '-')}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+    tableWrapper.appendChild(table);
+    container.appendChild(tableWrapper);
+}
+
+function formatNumber(n) {
+    if (n === null || n === undefined || n === '') return '-';
+    const num = parseFloat(n);
+    if (isNaN(num)) return '-';
+    return num.toLocaleString('en-IN', { maximumFractionDigits: 2 });
+}
+
+function formatDate(d) {
+    if (!d) return '-';
+    const dt = new Date(d);
+    if (isNaN(dt)) return d;
+    return dt.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function openStockEntryModal(entryId, defaultType) {
+    inventoryEntryEditingId = entryId || null;
+    document.getElementById('stockEntryTitle').textContent = entryId ? 'Edit Stock Entry' : 'New Stock Entry';
+    document.getElementById('stockEntryType').value = defaultType || 'IN';
+    document.getElementById('stockEntryDate').value = new Date().toISOString().split('T')[0];
+    document.getElementById('stockEntryMaterial').innerHTML = '<option value="">-- Select Material --</option>';
+    inventoryMaterials.forEach(m => {
+        document.getElementById('stockEntryMaterial').innerHTML += `<option value="${m.id}">${escapeHtml(m.name)} (${escapeHtml(m.unit)})</option>`;
+    });
+    document.getElementById('stockEntryQty').value = '';
+    document.getElementById('stockEntryRemarks').value = '';
+    document.getElementById('stockEntryVendor').innerHTML = '<option value="">-- Select Vendor --</option>';
+    loadVendors().forEach(v => {
+        document.getElementById('stockEntryVendor').innerHTML += `<option value="${v.id}">${escapeHtml(v.name)}</option>`;
+    });
+    document.getElementById('stockEntryRate').value = '';
+    document.getElementById('stockEntryInvoice').innerHTML = '<option value="">-- Select Invoice --</option>';
+    allInvoices.forEach(inv => {
+        document.getElementById('stockEntryInvoice').innerHTML += `<option value="${inv.id}">${escapeHtml(inv.invoiceNumber || inv.id)}</option>`;
+    });
+    document.getElementById('stockEntryPO').innerHTML = '<option value="">-- Select PO --</option>';
+    allPOs.forEach(po => {
+        document.getElementById('stockEntryPO').innerHTML += `<option value="${po.id}">${escapeHtml(po.poNumber || po.id)}</option>`;
+    });
+
+    const invVenture = inventoryActiveVenture();
+    const blockSel = document.getElementById('stockEntryBlock');
+    blockSel.innerHTML = '<option value="">-- Select Block --</option>';
+    if (invVenture && invVenture.blocks) {
+        invVenture.blocks.forEach(b => {
+            blockSel.innerHTML += `<option value="${b.id}">${escapeHtml(b.name || b.id)}</option>`;
+        });
+    }
+    const floorSel = document.getElementById('stockEntryFloor');
+    floorSel.innerHTML = '<option value="">-- Select Floor --</option>';
+    const blockForFloors = (invVenture && invVenture.blocks && invVenture.blocks[0]) ? invVenture.blocks[0] : null;
+    const floors = blockForFloors ? (blockForFloors.floors || 5) : 5;
+    const floorLabels = ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th', '10th'];
+    for (let f = 1; f <= floors; f++) {
+        const label = floors === 1 ? 'Ground Floor' : `${floorLabels[f - 1] || f + 'th'} Floor`;
+        floorSel.innerHTML += `<option value="${label}">${label}</option>`;
+    }
+    document.getElementById('stockEntryFlat').value = '';
+    document.getElementById('stockEntryWorkItem').value = '';
+
+    if (entryId) {
+        const entry = inventoryStockEntries.find(e => e.id === entryId);
+        if (entry) {
+            document.getElementById('stockEntryType').value = entry.entry_type || 'IN';
+            document.getElementById('stockEntryDate').value = entry.entry_date || '';
+            document.getElementById('stockEntryMaterial').value = entry.material_id || '';
+            document.getElementById('stockEntryQty').value = entry.qty || '';
+            document.getElementById('stockEntryRemarks').value = entry.remarks || '';
+            document.getElementById('stockEntryVendor').value = entry.vendor_id || '';
+            document.getElementById('stockEntryRate').value = entry.rate || '';
+            document.getElementById('stockEntryInvoice').value = entry.invoice_id || '';
+            document.getElementById('stockEntryPO').value = entry.po_id || '';
+            document.getElementById('stockEntryBlock').value = entry.block || '';
+            document.getElementById('stockEntryFloor').value = entry.floor || '';
+            document.getElementById('stockEntryFlat').value = entry.flat || '';
+            document.getElementById('stockEntryWorkItem').value = entry.work_item || '';
+        }
+    }
+
+    updateStockEntryFields();
+    document.getElementById('stockEntryModal').classList.add('show');
+}
+
+function updateStockEntryFields() {
+    const type = document.getElementById('stockEntryType').value;
+    document.getElementById('stockInFields').style.display = (type === 'IN' || type === 'ADJUST') ? '' : 'none';
+    document.getElementById('stockOutFields').style.display = (type === 'OUT') ? '' : 'none';
+}
+
+function closeStockEntryModal() {
+    document.getElementById('stockEntryModal').classList.remove('show');
+    inventoryEntryEditingId = null;
+}
+
+function openMaterialModal(materialId) {
+    inventoryMaterialEditingId = materialId || null;
+    document.getElementById('materialTitle').textContent = 'Manage Materials';
+    document.getElementById('materialFormTitle').textContent = materialId ? 'Edit Material' : 'Add New Material';
+    document.getElementById('materialName').value = '';
+    document.getElementById('materialCategory').value = '';
+    document.getElementById('materialUnit').value = '';
+    document.getElementById('materialThreshold').value = '0';
+
+    const datalist = document.getElementById('materialCategoryList');
+    datalist.innerHTML = '';
+    const cats = new Set(inventoryMaterials.map(m => m.category).filter(Boolean));
+    cats.forEach(c => {
+        datalist.innerHTML += `<option value="${escapeHtml(c)}"></option>`;
+    });
+
+    const listContainer = document.getElementById('materialList');
+    listContainer.innerHTML = '';
+    if (inventoryMaterials.length === 0) {
+        listContainer.innerHTML = '<div style="padding:12px;color:#999;font-size:0.85rem;">No materials added yet.</div>';
+    } else {
+        inventoryMaterials.forEach(mat => {
+            const item = document.createElement('div');
+            item.className = 'material-list-item';
+            item.innerHTML = `
+                <div class="material-list-info">
+                    <span class="material-list-name">${escapeHtml(mat.name)}</span>
+                    <span class="material-list-meta">${escapeHtml(mat.category || 'Uncategorized')} | ${escapeHtml(mat.unit)} | threshold: ${mat.min_threshold || 0}</span>
+                </div>
+                <div class="material-list-actions">
+                    <button class="btn-text material-edit-btn" data-mid="${mat.id}" style="font-size:0.78rem;">Edit</button>
+                    <button class="btn-text material-del-btn" data-mid="${mat.id}" style="font-size:0.78rem;color:#c0392b;">Delete</button>
+                </div>
+            `;
+            listContainer.appendChild(item);
+        });
+    }
+
+    listContainer.querySelectorAll('.material-edit-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const mat = inventoryMaterials.find(m => m.id === btn.dataset.mid);
+            if (mat) {
+                inventoryMaterialEditingId = mat.id;
+                document.getElementById('materialFormTitle').textContent = 'Edit Material';
+                document.getElementById('materialName').value = mat.name || '';
+                document.getElementById('materialCategory').value = mat.category || '';
+                document.getElementById('materialUnit').value = mat.unit || '';
+                document.getElementById('materialThreshold').value = mat.min_threshold || '0';
+            }
+        });
+    });
+    listContainer.querySelectorAll('.material-del-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const mat = inventoryMaterials.find(m => m.id === btn.dataset.mid);
+            if (!mat) return;
+            const hasEntries = inventoryStockEntries.some(e => e.material_id === mat.id);
+            if (hasEntries) {
+                showToast('Cannot delete material that has stock entries', true);
+                return;
+            }
+            showConfirm('Delete Material', `Delete '${mat.name}'?`, async () => {
+                try {
+                    await apiDelete('/api/material/' + encodeURIComponent(mat.id));
+                    inventoryMaterials = inventoryMaterials.filter(m => m.id !== mat.id);
+                    openMaterialModal(null);
+                    renderInventoryView();
+                    showToast('Material deleted');
+                } catch (err) {
+                    showToast('Failed to delete material', true);
+                }
+            });
+        });
+    });
+
+    if (materialId) {
+        const mat = inventoryMaterials.find(m => m.id === materialId);
+        if (mat) {
+            document.getElementById('materialName').value = mat.name || '';
+            document.getElementById('materialCategory').value = mat.category || '';
+            document.getElementById('materialUnit').value = mat.unit || '';
+            document.getElementById('materialThreshold').value = mat.min_threshold || '0';
+        }
+    }
+
+    document.getElementById('materialModal').classList.add('show');
+}
+
+function closeMaterialModal() {
+    document.getElementById('materialModal').classList.remove('show');
+    inventoryMaterialEditingId = null;
+}
+
+document.getElementById('closeStockEntry').addEventListener('click', closeStockEntryModal);
+document.getElementById('cancelStockEntry').addEventListener('click', closeStockEntryModal);
+document.getElementById('stockEntryModal').addEventListener('click', (e) => {
+    if (e.target === document.getElementById('stockEntryModal')) closeStockEntryModal();
+});
+document.getElementById('stockEntryType').addEventListener('change', updateStockEntryFields);
+
+document.getElementById('saveStockEntry').addEventListener('click', async () => {
+    const type = document.getElementById('stockEntryType').value;
+    const materialId = document.getElementById('stockEntryMaterial').value;
+    const qty = parseFloat(document.getElementById('stockEntryQty').value);
+    const date = document.getElementById('stockEntryDate').value;
+
+    if (!materialId) { showToast('Please select a material', true); return; }
+    if (!date) { showToast('Please select a date', true); return; }
+    if (isNaN(qty) || qty <= 0) { showToast('Please enter a valid quantity', true); return; }
+
+    const rate = parseFloat(document.getElementById('stockEntryRate').value) || 0;
+    const invVenture = inventoryActiveVenture();
+    if (!invVenture) { showToast('No venture selected', true); return; }
+    const entry = {
+        id: inventoryEntryEditingId || generateId(),
+        venture_id: invVenture.id,
+        material_id: materialId,
+        entry_type: type,
+        qty: qty,
+        entry_date: date,
+        vendor_id: document.getElementById('stockEntryVendor').value || null,
+        invoice_id: document.getElementById('stockEntryInvoice').value || null,
+        po_id: document.getElementById('stockEntryPO').value || null,
+        rate: rate || null,
+        amount: rate ? (qty * rate) : null,
+        block: document.getElementById('stockEntryBlock').value || null,
+        floor: document.getElementById('stockEntryFloor').value || null,
+        flat: document.getElementById('stockEntryFlat').value.trim() || null,
+        work_item: document.getElementById('stockEntryWorkItem').value.trim() || null,
+        remarks: document.getElementById('stockEntryRemarks').value.trim() || null,
+        created_by: currentUser
+    };
+
+    try {
+        await apiPost('/api/stock', entry);
+        closeStockEntryModal();
+        showToast('Stock entry saved');
+        renderInventoryView();
+    } catch (err) {
+        console.error('Failed to save stock entry:', err);
+        showToast('Failed to save stock entry', true);
+    }
+});
+
+document.getElementById('closeMaterial').addEventListener('click', closeMaterialModal);
+document.getElementById('cancelMaterial').addEventListener('click', closeMaterialModal);
+document.getElementById('materialModal').addEventListener('click', (e) => {
+    if (e.target === document.getElementById('materialModal')) closeMaterialModal();
+});
+
+document.getElementById('saveMaterial').addEventListener('click', async () => {
+    const name = document.getElementById('materialName').value.trim();
+    const unit = document.getElementById('materialUnit').value.trim();
+    if (!name) { showToast('Please enter a material name', true); return; }
+    if (!unit) { showToast('Please enter a unit', true); return; }
+
+    const invVenture = inventoryActiveVenture();
+    if (!invVenture) { showToast('No venture selected', true); return; }
+    const material = {
+        id: inventoryMaterialEditingId || generateId(),
+        venture_id: invVenture.id,
+        name: name,
+        category: document.getElementById('materialCategory').value.trim() || null,
+        unit: unit,
+        min_threshold: parseFloat(document.getElementById('materialThreshold').value) || 0
+    };
+
+    try {
+        await apiPost('/api/material', material);
+        closeMaterialModal();
+        showToast('Material saved');
+        renderInventoryView();
+    } catch (err) {
+        console.error('Failed to save material:', err);
+        showToast('Failed to save material', true);
+    }
+});
+
