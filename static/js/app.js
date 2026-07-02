@@ -342,6 +342,19 @@ async function getSsCellData(cellId) {
     return data;
 }
 
+async function ensureCellsInCache(requiredKeys) {
+    const missing = requiredKeys.filter(k => cellsCache[k] === undefined);
+    if (missing.length === 0) return;
+    try {
+        const allCells = await apiGet('/api/cells');
+        if (allCells) {
+            Object.assign(cellsCache, allCells);
+        }
+    } catch (e) {
+        console.error('Failed to bulk load cells:', e);
+    }
+}
+
 async function updateCellColor(cellId, color, workItem, flat) {
     const today = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
     const statusLabel = color ? COLOR_LABELS[color] : 'Cleared';
@@ -2170,23 +2183,22 @@ async function renderHomeReports(container) {
         flatNumbers = [parseInt(homeQuickReportFlat)];
     }
 
-    const promises = [];
+    const requiredKeys = [];
     flatNumbers.forEach(flat => {
         flatWorkItems.forEach(item => {
-            const cellId = cellKeyById(currentBlock, homeQuickReportFloor, flat, item.id);
-            promises.push(getCellData(cellId));
+            requiredKeys.push(cacheKey(cellKeyById(currentBlock, homeQuickReportFloor, flat, item.id)));
         });
         Object.entries(workCategories).forEach(([category, items]) => {
             items.forEach(itemObj => {
-                const cellId = workViewCellKeyById(currentBlock, homeQuickReportFloor, category, itemObj.id, flat);
-                promises.push(getCellData(cellId));
+                requiredKeys.push(cacheKey(workViewCellKeyById(currentBlock, homeQuickReportFloor, category, itemObj.id, flat)));
             });
         });
     });
-    await Promise.all(promises);
+    await ensureCellsInCache(requiredKeys);
 
     const statusCounts = { red: 0, yellow: 0, blue: 0, green: 0, none: 0 };
     let totalCells = 0;
+    const workRows = [];
 
     flatNumbers.forEach(flat => {
         flatWorkItems.forEach(item => {
@@ -2196,6 +2208,13 @@ async function renderHomeReports(container) {
             if (color && statusCounts.hasOwnProperty(color)) statusCounts[color]++;
             else statusCounts.none++;
             totalCells++;
+            workRows.push({
+                flat: flat,
+                workItem: item.label,
+                category: 'Flat View',
+                color: color || 'none',
+                statusLabel: color ? COLOR_LABELS[color] : 'Not started'
+            });
         });
         Object.entries(workCategories).forEach(([category, items]) => {
             items.forEach(itemObj => {
@@ -2205,6 +2224,13 @@ async function renderHomeReports(container) {
                 if (color && statusCounts.hasOwnProperty(color)) statusCounts[color]++;
                 else statusCounts.none++;
                 totalCells++;
+                workRows.push({
+                    flat: flat,
+                    workItem: itemObj.label,
+                    category: category,
+                    color: color || 'none',
+                    statusLabel: color ? COLOR_LABELS[color] : 'Not started'
+                });
             });
         });
     });
@@ -2250,6 +2276,46 @@ async function renderHomeReports(container) {
     const flatText = homeQuickReportFlat === 'all' ? 'All Flats' : `Flat ${homeQuickReportFlat}`;
     summary.textContent = `Total cells: ${totalCells} | ${currentVenture.name} | ${currentBlockObj.name || currentBlock} | ${homeQuickReportFloor}${['st','nd','rd','th','th','th','th','th','th','th'][homeQuickReportFloor - 1] || 'th'} Floor | ${flatText}`;
     container.appendChild(summary);
+
+    // Work details table
+    const statusOrder = { green: 0, yellow: 1, blue: 2, red: 3, none: 4 };
+    const sortedRows = [...workRows].sort((a, b) => {
+        const diff = statusOrder[a.color] - statusOrder[b.color];
+        if (diff !== 0) return diff;
+        if (a.flat !== b.flat) return a.flat - b.flat;
+        return a.workItem.localeCompare(b.workItem);
+    });
+
+    const detailsHeading = document.createElement('h4');
+    detailsHeading.style.margin = '16px 0 8px';
+    detailsHeading.style.color = '#1a2a6c';
+    detailsHeading.textContent = 'Work Details';
+    container.appendChild(detailsHeading);
+
+    const tableWrapper = document.createElement('div');
+    tableWrapper.className = 'grid-container';
+    const table = document.createElement('table');
+    table.className = 'tracker-table pending-table';
+    table.innerHTML = '<thead><tr><th>Status</th><th>Work Item</th><th>Category</th><th>Flat</th></tr></thead>';
+    const tbody = document.createElement('tbody');
+    if (sortedRows.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#999;padding:24px;">No work items found</td></tr>';
+    } else {
+        sortedRows.forEach(row => {
+            const tr = document.createElement('tr');
+            const dotColor = row.color === 'none' ? '#ccc' : getColorHex(row.color);
+            tr.innerHTML = `
+                <td><span class="dot" style="background:${dotColor};"></span> ${row.statusLabel}</td>
+                <td>${escapeHtml(row.workItem)}</td>
+                <td>${escapeHtml(row.category)}</td>
+                <td>${row.flat}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+    table.appendChild(tbody);
+    tableWrapper.appendChild(table);
+    container.appendChild(tableWrapper);
 
     if (window.homeReportsChart) window.homeReportsChart.destroy();
     const chartData = statusInfo.filter(info => statusCounts[info.key] > 0);
@@ -3114,7 +3180,7 @@ async function renderPendingView(targetContainer) {
     // Preload all cell data
     const flatWorkItems = getFlatWorkItems();
     const workCategories = ensureWorkCategories((currentVenture && currentVenture.work_categories) ? currentVenture.work_categories : WORK_CATEGORIES);
-    const promises = [];
+    const requiredKeys = [];
 
     floorsToCheck.forEach(floor => {
         const flatNumbers = [];
@@ -3123,18 +3189,16 @@ async function renderPendingView(targetContainer) {
         }
         flatNumbers.forEach(flat => {
             flatWorkItems.forEach(item => {
-                const cellId = cellKeyById(currentBlock, floor, flat, item.id);
-                promises.push(getCellData(cellId));
+                requiredKeys.push(cacheKey(cellKeyById(currentBlock, floor, flat, item.id)));
             });
             Object.entries(workCategories).forEach(([category, items]) => {
                 items.forEach(itemObj => {
-                    const cellId = workViewCellKeyById(currentBlock, floor, category, itemObj.id, flat);
-                    promises.push(getCellData(cellId));
+                    requiredKeys.push(cacheKey(workViewCellKeyById(currentBlock, floor, category, itemObj.id, flat)));
                 });
             });
         });
     });
-    await Promise.all(promises);
+    await ensureCellsInCache(requiredKeys);
 
     // Build rows
     const rows = [];
