@@ -1,15 +1,20 @@
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for
 import os
+import re
+import base64
+import io
 from datetime import timedelta
 from functools import wraps
 from dotenv import load_dotenv
 from supabase import create_client, Client
+from PIL import Image
 
 load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'vgrand-secret-key-2025')
 app.permanent_session_lifetime = timedelta(days=30)
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
 
 SUPABASE_URL = os.environ.get('SUPABASE_URL', '')
 SUPABASE_ANON_KEY = os.environ.get('SUPABASE_ANON_KEY', '')
@@ -39,6 +44,45 @@ def login_required(f):
             return redirect(url_for('login_page'))
         return f(*args, **kwargs)
     return decorated
+
+
+def compress_image_data_url(data_url, max_size=(1024, 1024), quality=65):
+    m = re.match(r'^data:image/(jpeg|png|webp);base64,(.*)$', data_url, re.IGNORECASE)
+    if not m:
+        return data_url
+    try:
+        raw = base64.b64decode(m.group(2), validate=True)
+        img = Image.open(io.BytesIO(raw))
+        if img.mode in ('RGBA', 'P'):
+            rgb = Image.new('RGB', img.size, (255, 255, 255))
+            if img.mode == 'P':
+                img = img.convert('RGBA')
+            if img.mode == 'RGBA':
+                rgb.paste(img, mask=img.split()[3])
+            else:
+                rgb.paste(img)
+            img = rgb
+        elif img.mode != 'RGB':
+            img = img.convert('RGB')
+        img.thumbnail(max_size, Image.Resampling.LANCZOS)
+        out = io.BytesIO()
+        img.save(out, format='JPEG', quality=quality, optimize=True)
+        out.seek(0)
+        encoded = base64.b64encode(out.read()).decode('ascii')
+        return f'data:image/jpeg;base64,{encoded}'
+    except Exception as e:
+        app.logger.warning(f'Image compression failed: {e}')
+        return data_url
+
+
+def compress_images_in_data(data):
+    if isinstance(data, dict):
+        return {k: compress_images_in_data(v) for k, v in data.items()}
+    if isinstance(data, list):
+        return [compress_images_in_data(v) for v in data]
+    if isinstance(data, str) and data.startswith('data:image'):
+        return compress_image_data_url(data)
+    return data
 
 
 @app.route('/login', methods=['POST'])
@@ -121,6 +165,7 @@ def api_cell_post(cell_id):
     if not supabase:
         return jsonify({'error': 'Supabase not connected'}), 500
     body = request.get_json() or {}
+    body = compress_images_in_data(body)
     try:
         supabase.table('cell_data').upsert({
             'id': cell_id,
@@ -141,7 +186,7 @@ def api_cells_batch():
     cells = body.get('cells', [])
     if not cells:
         return jsonify({'success': True})
-    rows = [{'id': c['id'], 'data': c.get('data', {})} for c in cells]
+    rows = [{'id': c['id'], 'data': compress_images_in_data(c.get('data', {}))} for c in cells]
     try:
         supabase.table('cell_data').upsert(rows, on_conflict='id').execute()
         return jsonify({'success': True, 'count': len(rows)})
@@ -447,4 +492,4 @@ def api_test_db():
 
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(debug=False, host='0.0.0.0', port=5000)

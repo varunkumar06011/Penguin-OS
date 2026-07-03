@@ -847,8 +847,31 @@ body {
 
 .ss-table th,
 .ss-table td {
-    padding: 6px 4px;
+    padding: 4px 2px;
     font-size: 0.82rem;
+}
+
+.ss-table {
+    width: auto !important;
+    min-width: auto !important;
+    margin: 0 auto;
+}
+
+.ss-table .work-col {
+    min-width: 80px;
+    width: auto;
+    padding-left: 8px !important;
+}
+
+.ss-table .ss-status-col {
+    width: 1%;
+    white-space: nowrap;
+    text-align: center;
+}
+
+.ss-table .cell-btn {
+    width: 32px;
+    height: 32px;
 }
 
 .ss-header-red {
@@ -3067,19 +3090,25 @@ body {
 /* ========================
    Payroll View
    ======================== */
-.payroll-emp-name,
-.payroll-emp-cat,
-.payroll-emp-base,
-.payroll-emp-advance {
-    cursor: pointer;
+.payroll-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
 }
 
-.payroll-emp-name:hover,
-.payroll-emp-cat:hover,
-.payroll-emp-base:hover,
-.payroll-emp-advance:hover {
-    background: #f0f4ff;
-    border-radius: 4px;
+.payroll-actions .payroll-edit-btn {
+    font-size: 1rem;
+    padding: 0 2px;
+    line-height: 1;
+}
+
+.payroll-actions .payroll-history-btn {
+    font-size: 0.65rem;
+    color: #1a2a6c;
+    text-decoration: underline;
+    padding: 0;
+    line-height: 1.2;
 }
 
 .item-edit-input {
@@ -3206,5 +3235,38 @@ body {
     }
     .inventory-actions {
         padding: 0 12px 12px 12px;
+    }
+
+    /* Super Structure fits mobile without side scroll */
+    .ss-table {
+        width: auto !important;
+        min-width: auto !important;
+        margin: 0 auto;
+    }
+    .ss-table .work-col {
+        min-width: 50px;
+        width: auto;
+        padding-left: 4px !important;
+        word-break: break-word;
+        font-size: 0.75rem;
+    }
+    .ss-table .ss-status-col {
+        width: 40px;
+        min-width: 40px;
+    }
+    .ss-table .cell-btn {
+        width: 24px;
+        height: 24px;
+    }
+    .ss-table .history-link {
+        font-size: 0.55rem;
+    }
+    .ss-table th:first-child,
+    .ss-table td:first-child {
+        width: 26px !important;
+        padding: 2px;
+    }
+    .ss-table .cell-wrapper {
+        gap: 2px;
     }
 }

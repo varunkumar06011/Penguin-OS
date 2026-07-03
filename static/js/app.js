@@ -150,6 +150,186 @@ let homeQuickReportBlock = null;
 let homeQuickReportFloor = 1;
 let homeQuickReportFlat = 'all';
 
+// ========================
+// URL Router & State Persistence
+// ========================
+const APP_STATE_KEY = 'vgrand_app_state';
+
+function getElValue(id) {
+    const el = document.getElementById(id);
+    return el ? el.value : '';
+}
+
+function setElValue(id, value) {
+    const el = document.getElementById(id);
+    if (el && value !== undefined && value !== null) el.value = value;
+}
+
+function buildPanelState() {
+    return {
+        invoices: {
+            venture: getElValue('invoiceFilterVenture'),
+            category: getElValue('invoiceFilterCategory'),
+            from: getElValue('invoiceFilterFrom'),
+            to: getElValue('invoiceFilterTo')
+        },
+        po: {
+            status: getElValue('poFilterStatus'),
+            venture: getElValue('poFilterVenture'),
+            vendor: getElValue('poFilterVendor'),
+            type: getElValue('poFilterType'),
+            from: getElValue('poFilterFrom'),
+            to: getElValue('poFilterTo')
+        },
+        payroll: {
+            selectedVentureId: selectedPayrollVenture ? selectedPayrollVenture.id : null
+        },
+        inventory: {
+            selectedVentureId: selectedInventoryVenture ? selectedInventoryVenture.id : null,
+            tab: inventoryTab,
+            regType: inventoryRegTypeFilter,
+            regMaterial: inventoryRegMaterialFilter,
+            locMaterial: inventoryLocMaterialFilter,
+            locBlock: inventoryLocBlockFilter,
+            locFloor: inventoryLocFloorFilter,
+            vendor: inventoryVendorFilter,
+            vendorMaterial: inventoryVendorMaterialFilter
+        }
+    };
+}
+
+function saveAppState() {
+    const state = {
+        hash: window.location.hash,
+        panelState: buildPanelState()
+    };
+    try {
+        localStorage.setItem(APP_STATE_KEY, JSON.stringify(state));
+    } catch (e) {}
+}
+
+function loadAppState() {
+    try {
+        return JSON.parse(localStorage.getItem(APP_STATE_KEY) || '{}');
+    } catch (e) {
+        return {};
+    }
+}
+
+function restorePanelState(panel) {
+    const state = loadAppState().panelState || {};
+    const p = state[panel];
+    if (!p) return;
+    if (panel === 'invoices') {
+        setElValue('invoiceFilterVenture', p.venture);
+        setElValue('invoiceFilterCategory', p.category);
+        setElValue('invoiceFilterFrom', p.from);
+        setElValue('invoiceFilterTo', p.to);
+    } else if (panel === 'po') {
+        setElValue('poFilterStatus', p.status);
+        setElValue('poFilterVenture', p.venture);
+        setElValue('poFilterVendor', p.vendor);
+        setElValue('poFilterType', p.type);
+        setElValue('poFilterFrom', p.from);
+        setElValue('poFilterTo', p.to);
+    } else if (panel === 'payroll') {
+        if (p.selectedVentureId) {
+            selectedPayrollVenture = venturesList.find(v => v.id === p.selectedVentureId) || null;
+        }
+    } else if (panel === 'inventory') {
+        if (p.selectedVentureId) {
+            selectedInventoryVenture = venturesList.find(v => v.id === p.selectedVentureId) || null;
+        }
+        if (p.tab) inventoryTab = p.tab;
+        inventoryRegTypeFilter = p.regType || 'all';
+        inventoryRegMaterialFilter = p.regMaterial || 'all';
+        inventoryLocMaterialFilter = p.locMaterial || 'all';
+        inventoryLocBlockFilter = p.locBlock || 'all';
+        inventoryLocFloorFilter = p.locFloor || 'all';
+        inventoryVendorFilter = p.vendor || 'all';
+        inventoryVendorMaterialFilter = p.vendorMaterial || 'all';
+    }
+}
+
+function buildTrackerRoute() {
+    if (!currentVenture) return '#/ventures';
+    const block = currentBlock || 'A';
+    const floor = currentFloor || 1;
+    const view = ['flat', 'work', 'super'].includes(currentView) ? currentView : 'flat';
+    return `#/venture/${encodeURIComponent(currentVenture.id)}/${block}/${floor}/${view}`;
+}
+
+let ignoreNextHashChange = false;
+
+function navigateTo(hash) {
+    const target = hash.startsWith('#') ? hash : '#' + hash;
+    if (window.location.hash !== target) {
+        ignoreNextHashChange = true;
+        window.location.hash = target;
+    } else {
+        saveAppState();
+    }
+}
+
+function parseHash(hash) {
+    const h = (hash || window.location.hash).replace(/^#/, '');
+    if (!h) return { route: 'ventures' };
+    const parts = h.split('/').filter(Boolean);
+    if (parts[0] === 'ventures') return { route: 'ventures' };
+    if (parts[0] === 'invoices') return { route: 'invoices' };
+    if (parts[0] === 'pos') return { route: 'pos' };
+    if (parts[0] === 'payroll') return { route: 'payroll' };
+    if (parts[0] === 'inventory') return { route: 'inventory' };
+    if (parts[0] === 'venture' && parts[1]) {
+        return { route: 'tracker', ventureId: parts[1], block: parts[2], floor: parts[3], view: parts[4] };
+    }
+    return { route: 'ventures' };
+}
+
+async function applyHashRoute() {
+    const saved = loadAppState();
+    let hash = window.location.hash;
+    if (!hash && saved.hash) {
+        hash = saved.hash;
+        ignoreNextHashChange = true;
+        window.location.hash = saved.hash;
+    }
+    const route = parseHash(hash);
+
+    if (route.route === 'ventures') {
+        exitToDashboard();
+    } else if (route.route === 'tracker') {
+        const venture = venturesList.find(v => v.id === route.ventureId);
+        if (venture) {
+            await openVenture(venture, {
+                block: route.block,
+                floor: route.floor ? parseInt(route.floor) : undefined,
+                view: route.view
+            });
+        } else {
+            exitToDashboard();
+        }
+    } else if (route.route === 'invoices') {
+        openInvoicesPanel();
+    } else if (route.route === 'pos') {
+        openPOPanel();
+    } else if (route.route === 'payroll') {
+        openPayrollPanel();
+    } else if (route.route === 'inventory') {
+        openInventoryPanel();
+    }
+    restorePanelState(route.route);
+}
+
+window.addEventListener('hashchange', () => {
+    if (ignoreNextHashChange) {
+        ignoreNextHashChange = false;
+        return;
+    }
+    applyHashRoute();
+});
+window.addEventListener('beforeunload', saveAppState);
+
 function cacheKey(cellId) {
     return currentVenture ? `${currentVenture.id}_${cellId}` : cellId;
 }
@@ -504,15 +684,15 @@ async function renderGrid() {
     thRemarks.textContent = 'Remarks';
     gridHeader.appendChild(thRemarks);
 
-    // Preload all cell data
-    const promises = [];
+    // Preload all cell data in one bulk request
+    const requiredKeys = [];
     activeItems.forEach(item => {
         for (const flat of flatNumbers) {
             const cellId = cellKeyById(currentBlock, currentFloor, flat, item.id);
-            promises.push(getCellData(cellId));
+            requiredKeys.push(cacheKey(cellId));
         }
     });
-    await Promise.all(promises);
+    await ensureCellsInCache(requiredKeys);
 
     activeItems.forEach((item, wi) => {
         const row = document.createElement('tr');
@@ -675,23 +855,23 @@ async function renderWorkView() {
 
     const workCategories = ensureWorkCategories((currentVenture && currentVenture.work_categories) ? currentVenture.work_categories : WORK_CATEGORIES);
 
-    // Preload all cell data
-    const promises = [];
+    // Preload all cell data in one bulk request
+    const requiredKeys = [];
 
-    function queueLoads(category, items, flats) {
+    function queueKeys(category, items, flats) {
         items.forEach((itemObj) => {
             flats.forEach(flat => {
                 const cellId = workViewCellKeyById(currentBlock, currentFloor, category, itemObj.id, flat);
-                promises.push(getCellData(cellId));
+                requiredKeys.push(cacheKey(cellId));
             });
         });
     }
 
     Object.entries(workCategories).forEach(([cat, items]) => {
         const catFlats = CATEGORY_FLATS[cat] || flatNumbers;
-        queueLoads(cat, items, catFlats);
+        queueKeys(cat, items, catFlats);
     });
-    await Promise.all(promises);
+    await ensureCellsInCache(requiredKeys);
 
     // Render all category sections
     Object.entries(workCategories).forEach(([category, items]) => {
@@ -946,14 +1126,24 @@ document.querySelectorAll('.color-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
         if (!selectedCellId) return;
         const color = btn.dataset.color || null;
-        await updateCellColor(selectedCellId, color, selectedWorkItem, selectedFlat);
+        if (selectedCellId.startsWith('superstructure_')) {
+            const itemId = selectedCellId.replace('superstructure_', '');
+            await updateSuperStructureStatus(itemId, color, selectedWorkItem);
+        } else {
+            await updateCellColor(selectedCellId, color, selectedWorkItem, selectedFlat);
+        }
         closeStatusPopup();
     });
 });
 
 els.clearStatusBtn.addEventListener('click', async () => {
     if (!selectedCellId) return;
-    await updateCellColor(selectedCellId, null, selectedWorkItem, selectedFlat);
+    if (selectedCellId.startsWith('superstructure_')) {
+        const itemId = selectedCellId.replace('superstructure_', '');
+        await updateSuperStructureStatus(itemId, null, selectedWorkItem);
+    } else {
+        await updateCellColor(selectedCellId, null, selectedWorkItem, selectedFlat);
+    }
     closeStatusPopup();
 });
 
@@ -1104,7 +1294,7 @@ function closeTimelineModal() {
     selectedFlat = null;
     remarksImagesBuffer = [];
     if (els.remarksFilePreview) els.remarksFilePreview.innerHTML = '';
-    if (els.remarksFileDropLabel) els.remarksFileDropLabel.textContent = 'Click to upload photo or drag & drop (JPG/PNG, max 5MB, larger photos auto-compressed)';
+    if (els.remarksFileDropLabel) els.remarksFileDropLabel.textContent = 'Click to upload photo or drag & drop (JPG/PNG, max 20MB, saved in low resolution)';
 }
 
 function renderRemarksImagePreview() {
@@ -1136,13 +1326,13 @@ function renderRemarksImagePreview() {
     if (els.remarksFileDropLabel) {
         els.remarksFileDropLabel.textContent = remarksImagesBuffer.length > 0
             ? `${remarksImagesBuffer.length} photo(s) selected. Click to add more.`
-            : 'Click to upload photo or drag & drop (JPG/PNG, max 5MB, larger photos auto-compressed)';
+            : 'Click to upload photo or drag & drop (JPG/PNG, max 20MB, saved in low resolution)';
     }
 }
 
 async function handleRemarksFiles(files) {
     const allowed = ['image/jpeg', 'image/png', 'image/webp'];
-    const maxSize = 5 * 1024 * 1024;
+    const maxSize = 20 * 1024 * 1024;
     const compressThreshold = 500 * 1024;
     const maxImages = 10;
 
@@ -1156,7 +1346,7 @@ async function handleRemarksFiles(files) {
             continue;
         }
         if (file.size > maxSize) {
-            showToast(`${file.name}: File too large (max 5MB)`, true);
+            showToast(`${file.name}: File too large (max 20MB)`, true);
             continue;
         }
         try {
@@ -1400,9 +1590,15 @@ function renderBlockTabs() {
     const container = document.getElementById('blockTabsContainer');
     container.innerHTML = '';
     if (!currentVenture || !currentVenture.blocks) return;
-    currentVenture.blocks.forEach((block, index) => {
+
+    const activeBlock = currentVenture.blocks.find(b => b.id === currentBlock) || currentVenture.blocks[0];
+    currentBlock = activeBlock.id;
+    currentBlockObj = activeBlock;
+
+    currentVenture.blocks.forEach((block) => {
         const btn = document.createElement('button');
-        btn.className = 'block-tab' + (index === 0 ? ' active' : '');
+        const isActive = block.id === currentBlock;
+        btn.className = 'block-tab' + (isActive ? ' active' : '');
         btn.dataset.block = block.id;
         btn.textContent = block.name || block.id + ' Block';
         btn.addEventListener('click', () => {
@@ -1419,13 +1615,10 @@ function renderBlockTabs() {
             } else {
                 renderSuperStructure();
             }
+            navigateTo(buildTrackerRoute());
         });
         container.appendChild(btn);
     });
-    if (currentVenture.blocks.length > 0) {
-        currentBlock = currentVenture.blocks[0].id;
-        currentBlockObj = currentVenture.blocks[0];
-    }
 }
 
 function renderFloorTabs() {
@@ -1433,9 +1626,14 @@ function renderFloorTabs() {
     container.innerHTML = '';
     const floors = currentBlockObj ? (currentBlockObj.floors || 5) : 5;
     const floorLabels = ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th', '10th'];
+
+    const targetFloor = (currentFloor >= 1 && currentFloor <= floors) ? currentFloor : 1;
+    currentFloor = targetFloor;
+
     for (let f = 1; f <= floors; f++) {
         const btn = document.createElement('button');
-        btn.className = 'floor-tab' + (f === 1 ? ' active' : '');
+        const isActive = f === currentFloor;
+        btn.className = 'floor-tab' + (isActive ? ' active' : '');
         btn.dataset.floor = f;
         const label = floors === 1 ? 'Ground Floor' : `${floorLabels[f - 1] || f + 'th'} Floor`;
         btn.textContent = label;
@@ -1450,10 +1648,10 @@ function renderFloorTabs() {
             } else {
                 renderSuperStructure();
             }
+            navigateTo(buildTrackerRoute());
         });
         container.appendChild(btn);
     }
-    currentFloor = 1;
 }
 
 // View toggle
@@ -1485,6 +1683,7 @@ document.querySelectorAll('.view-tab').forEach(btn => {
             document.getElementById('superStructureContainer').style.display = '';
             renderSuperStructure();
         }
+        navigateTo(buildTrackerRoute());
     });
 });
 
@@ -1508,17 +1707,28 @@ async function init() {
     const ok = await checkSession();
     if (!ok) return;
 
-    // Load cells in background — don't block UI rendering
-    preloadCells().catch(() => {});
-
-    try { await loadVentures(); } catch (e) { venturesList = createDefaultVentures(); renderVentureDashboard(); }
-    try { allInvoices = await apiGet('/api/invoices') || []; } catch (e) { allInvoices = []; }
-    try { allCategories = await apiGet('/api/settings/invoice_categories') || [
+    const defaultCategories = [
         'Brick', 'Sand', 'Steel', 'Cement', 'Tiles',
         'Electrical', 'Plumbing', 'Labour', 'Paint', 'Wood'
-    ]; } catch (e) { allCategories = ['Brick', 'Sand', 'Steel', 'Cement', 'Tiles', 'Electrical', 'Plumbing', 'Labour', 'Paint', 'Wood']; }
-    try { allPOs = await apiGet('/api/pos') || []; } catch (e) { allPOs = []; }
-    try { allVendors = await apiGet('/api/vendors') || []; } catch (e) { allVendors = []; }
+    ];
+
+    // Load all initial data in parallel so the page opens faster
+    try {
+        await Promise.all([
+            loadVentures().catch(() => { venturesList = createDefaultVentures(); }),
+            preloadCells().catch(() => {}),
+            apiGet('/api/invoices').then(d => allInvoices = d || []).catch(() => { allInvoices = []; }),
+            apiGet('/api/settings/invoice_categories').then(d => allCategories = d || defaultCategories).catch(() => { allCategories = defaultCategories; }),
+            apiGet('/api/pos').then(d => allPOs = d || []).catch(() => { allPOs = []; }),
+            apiGet('/api/vendors').then(d => allVendors = d || []).catch(() => { allVendors = []; })
+        ]);
+    } catch (e) {}
+
+    if (!venturesList || venturesList.length === 0) {
+        venturesList = createDefaultVentures();
+    }
+
+    await applyHashRoute();
     startPolling();
 }
 
@@ -1706,19 +1916,10 @@ function renderSuperStructure() {
     thWork.className = 'work-col';
     headerRow.appendChild(thWork);
 
-    const statusCols = [
-        { key: 'red', label: 'Yet to Start', cls: 'ss-header-red' },
-        { key: 'yellow', label: 'In Progress', cls: 'ss-header-yellow' },
-        { key: 'blue', label: 'Pending', cls: 'ss-header-blue' },
-        { key: 'green', label: 'Completed', cls: 'ss-header-green' }
-    ];
-
-    statusCols.forEach(col => {
-        const th = document.createElement('th');
-        th.textContent = col.label;
-        th.className = col.cls;
-        headerRow.appendChild(th);
-    });
+    const thStatus = document.createElement('th');
+    thStatus.textContent = 'Status';
+    thStatus.className = 'ss-status-col';
+    headerRow.appendChild(thStatus);
 
     thead.appendChild(headerRow);
     table.appendChild(thead);
@@ -1759,47 +1960,42 @@ function renderSuperStructure() {
         const cellData = cellsCache[cacheKey(cellId)];
         const activeStatus = cellData?.color || cellData?.status || null;
 
-        statusCols.forEach(col => {
-            const td = document.createElement('td');
-            td.className = 'ss-cell-col';
-            const wrapper = document.createElement('div');
-            wrapper.className = 'cell-wrapper';
+        const td = document.createElement('td');
+        const wrapper = document.createElement('div');
+        wrapper.className = 'cell-wrapper';
 
-            const btn = document.createElement('button');
-            const isActive = activeStatus === col.key;
-            btn.className = 'ss-cell ' + (isActive ? 'ss-cell-active ' + col.key : 'ss-cell-inactive');
-            btn.title = `${itemObj.label} — ${col.label}`;
-            if (editMode) btn.disabled = true;
+        const btn = document.createElement('button');
+        btn.className = 'cell-btn ' + (activeStatus || 'empty');
+        btn.title = `${itemObj.label} — ${activeStatus ? COLOR_LABELS[activeStatus] : 'No status'}`;
+        if (editMode) btn.disabled = true;
 
-            const imgCount = (cellData?.remarkImages || []).length;
-            const imgIndicator = createImageIndicator(imgCount);
-            if (imgIndicator) btn.appendChild(imgIndicator);
+        const imgCount = (cellData?.remarkImages || []).length;
+        const imgIndicator = createImageIndicator(imgCount);
+        if (imgIndicator) btn.appendChild(imgIndicator);
 
-            const history = document.createElement('button');
-            history.className = 'history-link';
-            history.textContent = 'history';
-            history.style.fontSize = '0.6rem';
+        const history = document.createElement('button');
+        history.className = 'history-link';
+        history.textContent = 'history';
 
-            wrapper.appendChild(btn);
-            wrapper.appendChild(history);
-            td.appendChild(wrapper);
-            row.appendChild(td);
+        wrapper.appendChild(btn);
+        wrapper.appendChild(history);
+        td.appendChild(wrapper);
+        row.appendChild(td);
 
-            if (!editMode) {
-                btn.addEventListener('click', async () => {
-                    if (isActive) return;
-                    await updateSuperStructureStatus(itemObj.id, col.key, itemObj.label);
-                });
-            }
-
-            btn.addEventListener('contextmenu', (e) => {
+        if (!editMode) {
+            btn.addEventListener('click', (e) => {
                 e.preventDefault();
-                openTimelineModal(cellId, itemObj.label, 'Super Structure');
+                openStatusPopup(cellId, itemObj.label, 'Super Structure', activeStatus);
             });
+        }
 
-            history.addEventListener('click', () => {
-                openTimelineModal(cellId, itemObj.label, 'Super Structure');
-            });
+        btn.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            openTimelineModal(cellId, itemObj.label, 'Super Structure');
+        });
+
+        history.addEventListener('click', () => {
+            openTimelineModal(cellId, itemObj.label, 'Super Structure');
         });
 
         tbody.appendChild(row);
@@ -1809,7 +2005,7 @@ function renderSuperStructure() {
     if (editMode) {
         const addRow = document.createElement('tr');
         const addTd = document.createElement('td');
-        addTd.colSpan = 6;
+        addTd.colSpan = 3;
         addTd.innerHTML = '<div class="add-item-row"><input type="text" id="addSuperItemInput" placeholder="New super structure item"><button class="btn-secondary" id="addSuperItemBtn">Add</button></div>';
         addRow.appendChild(addTd);
         tbody.appendChild(addRow);
@@ -1823,7 +2019,7 @@ function renderSuperStructure() {
     if (editMode && archived.length > 0) {
         const archRow = document.createElement('tr');
         const archTd = document.createElement('td');
-        archTd.colSpan = 6;
+        archTd.colSpan = 3;
         archTd.innerHTML = '<div class="archived-section"><h4>Archived Items</h4></div>';
         const archList = archTd.querySelector('.archived-section');
         archived.forEach(archId => {
@@ -1851,7 +2047,46 @@ function renderSuperStructure() {
 async function updateSuperStructureStatus(itemId, status, workItem) {
     const cellId = ssCellKeyById(itemId);
     const today = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+    const ck = cacheKey(cellId);
+    const existing = cellsCache[ck] || null;
+
+    if (!status) {
+        const timelineEntry = {
+            color: null,
+            status_label: 'Cleared',
+            date: today,
+            changed_by: currentUser
+        };
+        let data;
+        if (existing) {
+            data = {
+                ...existing,
+                color: null,
+                timeline: [...(existing.timeline || []), timelineEntry],
+                updated_at: new Date().toISOString(),
+                updated_by: currentUser
+            };
+        } else {
+            data = {
+                color: null,
+                timeline: [timelineEntry],
+                updated_at: new Date().toISOString(),
+                updated_by: currentUser
+            };
+        }
+        await apiPost('/api/cell/' + encodeURIComponent(ck), data);
+        cellsCache[ck] = data;
+        renderSuperStructure();
+        showToast('Status cleared');
+        return;
+    }
+
     const statusLabel = COLOR_LABELS[status];
+
+    if (existing && existing.timeline && existing.timeline.length > 0) {
+        const lastEntry = existing.timeline[existing.timeline.length - 1];
+        if (lastEntry && lastEntry.color === status) return;
+    }
 
     let autoRemark = '';
     if (status === 'blue') autoRemark = `Patch work started on ${today}`;
@@ -1865,8 +2100,6 @@ async function updateSuperStructureStatus(itemId, status, workItem) {
         changed_by: currentUser
     };
 
-    const ck = cacheKey(cellId);
-    const existing = cellsCache[ck] || null;
     let data;
     if (existing) {
         const timeline = existing.timeline || [];
@@ -1903,7 +2136,6 @@ async function updateSuperStructureStatus(itemId, status, workItem) {
 // ========================
 async function loadVentures() {
     await loadVenturesFromLS();
-    renderVentureDashboard();
 }
 
 function createDefaultVentures() {
@@ -1985,7 +2217,10 @@ function renderVentureDashboard() {
             showConfirm('Delete Venture', `This will delete ALL data for ${venture.name}. Type venture name to confirm.`, () => deleteVenture(venture.id), venture.name);
         });
 
-        card.addEventListener('click', () => openVenture(venture));
+        card.addEventListener('click', async () => {
+            await openVenture(venture);
+            navigateTo(buildTrackerRoute());
+        });
         grid.appendChild(card);
     });
 
@@ -2070,6 +2305,17 @@ function renderHomeQuickReports() {
         runHomeQuickReport();
     };
     document.getElementById('homePayrollBtn').onclick = () => {
+        if (!payrollPasswordVerified) {
+            const entered = window.prompt('Enter payroll password (amount 1010):');
+            if (entered !== PAYROLL_PASSWORD) {
+                showToast('Incorrect payroll password', true);
+                document.getElementById('homeReportsOutput').innerHTML = '';
+                homeQuickReportType = 'reports';
+                updateHomeQuickReportButtonStates();
+                return;
+            }
+            payrollPasswordVerified = true;
+        }
         homeQuickReportType = 'payroll';
         updateHomeQuickReportButtonStates();
         runHomeQuickReport();
@@ -2352,6 +2598,9 @@ async function renderHomeReports(container) {
 
 let homePayrollData = { employees: [], categories: [] };
 let homePayrollMonth = new Date().toISOString().slice(0, 7);
+let homePayrollEditingId = null;
+let payrollPasswordVerified = false;
+const PAYROLL_PASSWORD = '1010';
 
 async function renderHomePayroll(container) {
     if (!currentVenture) return;
@@ -2412,7 +2661,13 @@ async function renderHomePayroll(container) {
                 <td>&#8377;${(parseFloat(emp.base) || 0).toLocaleString('en-IN', {maximumFractionDigits:2})}</td>
                 <td>&#8377;${(parseFloat(emp.advance) || 0).toLocaleString('en-IN', {maximumFractionDigits:2})}</td>
                 <td>&#8377;${net.toLocaleString('en-IN', {maximumFractionDigits:2})}</td>
-                <td><button class="btn-text home-payroll-del" data-empid="${emp.id}" style="color:#c0392b;">Delete</button></td>
+                <td style="text-align:center;">
+                    <div class="payroll-actions">
+                        <button class="btn-text home-payroll-edit" data-empid="${emp.id}" title="Edit">&#9998;</button>
+                        <button class="btn-text home-payroll-del" data-empid="${emp.id}" style="color:#c0392b;" title="Delete">Delete</button>
+                        <button class="btn-text home-payroll-history" data-empid="${emp.id}">history</button>
+                    </div>
+                </td>
             `;
             tbody.appendChild(tr);
         });
@@ -2421,32 +2676,10 @@ async function renderHomePayroll(container) {
     tableWrapper.appendChild(table);
     container.appendChild(tableWrapper);
 
-    const addRow = document.createElement('div');
-    addRow.className = 'pending-filter-bar';
-    addRow.style.borderTop = '1px solid #e0e4e8';
-    addRow.innerHTML = `
-        <div class="pending-filter-group"><label>Name</label><input type="text" id="homePayrollName" placeholder="Employee name"></div>
-        <div class="pending-filter-group"><label>Category</label><input type="text" id="homePayrollCategory" placeholder="e.g. Mason, Painter"></div>
-        <div class="pending-filter-group"><label>Base (&#8377;)</label><input type="number" id="homePayrollBase" placeholder="0" min="0" step="0.01"></div>
-        <div class="pending-filter-group"><label>Advance (&#8377;)</label><input type="number" id="homePayrollAdvance" placeholder="0" min="0" step="0.01"></div>
-    `;
-    container.appendChild(addRow);
-
-    container.querySelector('#homePayrollAddEmpBtn').addEventListener('click', async () => {
-        const name = container.querySelector('#homePayrollName').value.trim();
-        const category = container.querySelector('#homePayrollCategory').value.trim();
-        const base = parseFloat(container.querySelector('#homePayrollBase').value) || 0;
-        const advance = parseFloat(container.querySelector('#homePayrollAdvance').value) || 0;
-        if (!name) { showToast('Please enter a name', true); return; }
-        if (category && !homePayrollData.categories.includes(category)) homePayrollData.categories.push(category);
-        homePayrollData.employees.push({ id: generateId(), name, category, base, advance });
-        try {
-            await apiPost('/api/settings/' + encodeURIComponent(key), homePayrollData);
-            showToast('Employee added');
-        } catch (err) {
-            showToast('Failed to save employee', true);
-        }
-        await renderHomePayroll(container);
+    container.querySelector('#homePayrollAddEmpBtn').addEventListener('click', () => {
+        payrollModalContext = { type: 'home', data: homePayrollData, key: key, container: container };
+        payrollEditingEmpId = null;
+        openPayrollEmpModal(null);
     });
 
     container.querySelector('#homePayrollMonth').addEventListener('change', async () => {
@@ -2454,27 +2687,54 @@ async function renderHomePayroll(container) {
         await renderHomePayroll(container);
     });
 
+    container.querySelectorAll('.home-payroll-edit').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const emp = homePayrollData.employees.find(e => e.id === btn.dataset.empid);
+            if (emp) {
+                payrollModalContext = { type: 'home', data: homePayrollData, key: key, container: container };
+                payrollEditingEmpId = emp.id;
+                openPayrollEmpModal(emp);
+            }
+        });
+    });
+
+    container.querySelectorAll('.home-payroll-history').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const emp = homePayrollData.employees.find(e => e.id === btn.dataset.empid);
+            if (emp) {
+                const advHistory = emp.advanceHistory || [];
+                openPayrollHistoryModal(emp, { isAdvanceHistory: true, history: advHistory, title: `Advance History - ${emp.name}` });
+            }
+        });
+    });
+
     container.querySelectorAll('.home-payroll-del').forEach(btn => {
         btn.addEventListener('click', async () => {
             const empId = btn.dataset.empid;
             homePayrollData.employees = homePayrollData.employees.filter(e => e.id !== empId);
+            renderHomePayroll(container);
+            showToast('Employee deleted');
             try {
                 await apiPost('/api/settings/' + encodeURIComponent(key), homePayrollData);
-                showToast('Employee deleted');
             } catch (err) {
-                showToast('Failed to delete employee', true);
+                showToast('Failed to save deletion', true);
             }
-            await renderHomePayroll(container);
         });
     });
 }
 
-async function openVenture(venture) {
+async function openVenture(venture, opts = {}) {
     currentVenture = venture;
-    currentBlockObj = venture.blocks[0];
+
+    const requestedBlock = opts.block || (opts.blockId);
+    currentBlockObj = requestedBlock
+        ? (venture.blocks.find(b => b.id === requestedBlock) || venture.blocks[0])
+        : venture.blocks[0];
     currentBlock = currentBlockObj.id;
-    currentFloor = 1;
-    currentView = 'flat';
+
+    currentFloor = opts.floor ? parseInt(opts.floor) : 1;
+    currentView = ['flat', 'work', 'super'].includes(opts.view) ? opts.view : 'flat';
+
     editMode = false;
     archivedItems = venture.archived || {};
 
@@ -2498,9 +2758,10 @@ async function openVenture(venture) {
 
     // Reset view tabs
     document.querySelectorAll('.view-tab').forEach(b => b.classList.remove('active'));
-    document.querySelector('.view-tab[data-view="flat"]').classList.add('active');
+    const activeTab = document.querySelector(`.view-tab[data-view="${currentView}"]`);
+    if (activeTab) activeTab.classList.add('active');
 
-    document.getElementById('flatViewContainer').style.display = '';
+    document.getElementById('flatViewContainer').style.display = 'none';
     document.getElementById('workViewContainer').style.display = 'none';
     document.getElementById('superStructureContainer').style.display = 'none';
     document.getElementById('pendingViewContainer').style.display = 'none';
@@ -2509,13 +2770,24 @@ async function openVenture(venture) {
     const payrollViewContainer = document.getElementById('payrollViewContainer');
     if (payrollViewContainer) payrollViewContainer.style.display = 'none';
     const floorTabsContainer = document.getElementById('floorTabsContainer');
-    if (floorTabsContainer) floorTabsContainer.style.display = '';
     const blockTabsContainer = document.getElementById('blockTabsContainer');
-    if (blockTabsContainer) blockTabsContainer.style.display = '';
+    if (currentView === 'super') {
+        if (floorTabsContainer) floorTabsContainer.style.display = 'none';
+        if (blockTabsContainer) blockTabsContainer.style.display = 'none';
+    } else {
+        if (floorTabsContainer) floorTabsContainer.style.display = '';
+        if (blockTabsContainer) blockTabsContainer.style.display = '';
+    }
 
     renderBlockTabs();
     renderFloorTabs();
-    await renderGrid();
+    if (currentView === 'flat') {
+        await renderGrid();
+    } else if (currentView === 'work') {
+        await renderWorkView();
+    } else if (currentView === 'super') {
+        await renderSuperStructure();
+    }
 }
 
 function exitToDashboard() {
@@ -2528,6 +2800,7 @@ function exitToDashboard() {
     document.getElementById('editModeBanner').style.display = 'none';
     document.body.classList.remove('edit-mode-active');
     renderVentureDashboard();
+    navigateTo('#/ventures');
 }
 
 document.getElementById('backToVentures').addEventListener('click', exitToDashboard);
@@ -2753,6 +3026,7 @@ async function createVentureFromWizard() {
     showToast('Venture created successfully');
     closeWizard();
     await loadVentures();
+    renderVentureDashboard();
 }
 
 // ========================
@@ -3436,12 +3710,15 @@ function openInvoicesPanel() {
     document.getElementById('breadcrumbBar').style.display = 'none';
     populateInvoiceFilterVentures();
     populateInvoiceFilterCategories();
+    restorePanelState('invoices');
     renderInvoiceCards();
+    navigateTo('#/invoices');
 }
 
 function closeInvoicesPanel() {
     document.getElementById('invoicesPanel').style.display = 'none';
     document.getElementById('venturesDashboard').style.display = '';
+    navigateTo('#/ventures');
 }
 
 function openInventoryPanel() {
@@ -3451,16 +3728,19 @@ function openInventoryPanel() {
     document.getElementById('payrollPanel').style.display = 'none';
     document.getElementById('inventoryPanel').style.display = '';
     document.getElementById('breadcrumbBar').style.display = 'none';
+    restorePanelState('inventory');
     if (venturesList.length > 0 && !selectedInventoryVenture) {
         selectedInventoryVenture = venturesList[0];
     }
     renderInventoryView();
+    navigateTo('#/inventory');
 }
 
 function closeInventoryPanel() {
     document.getElementById('inventoryPanel').style.display = 'none';
     document.getElementById('venturesDashboard').style.display = '';
     selectedInventoryVenture = null;
+    navigateTo('#/ventures');
 }
 
 function populateInvoiceFilterVentures() {
@@ -4016,12 +4296,15 @@ function openPOPanel() {
     document.getElementById('poPanel').style.display = '';
     document.getElementById('breadcrumbBar').style.display = 'none';
     populatePOFilters();
+    restorePanelState('po');
     renderPOCards();
+    navigateTo('#/pos');
 }
 
 function closePOPanel() {
     document.getElementById('poPanel').style.display = 'none';
     document.getElementById('venturesDashboard').style.display = '';
+    navigateTo('#/ventures');
 }
 
 document.getElementById('openPOBtn').addEventListener('click', openPOPanel);
@@ -4764,6 +5047,7 @@ let payrollData = { employees: [], categories: [] };
 let payrollEditingEmpId = null;
 let selectedPayrollVenture = null; // used when opened from dashboard panel; null = All Ventures
 let payrollPanelMode = false;
+let payrollModalContext = { type: 'panel', data: null, key: '', container: null };
 
 document.getElementById('payrollBtn')?.addEventListener('click', () => {
     document.querySelectorAll('.view-tab').forEach(b => b.classList.remove('active'));
@@ -4789,9 +5073,10 @@ function openPayrollPanel() {
     });
     document.getElementById('payrollPanel').style.display = '';
     document.getElementById('breadcrumbBar').style.display = 'none';
-    selectedPayrollVenture = null; // default to All Ventures
+    restorePanelState('payroll');
     payrollPanelMode = true;
     renderPayrollView();
+    navigateTo('#/payroll');
 }
 
 function closePayrollPanel() {
@@ -4799,6 +5084,7 @@ function closePayrollPanel() {
     document.getElementById('venturesDashboard').style.display = '';
     selectedPayrollVenture = null;
     payrollPanelMode = false;
+    navigateTo('#/ventures');
 }
 
 document.getElementById('openPayrollBtn').addEventListener('click', openPayrollPanel);
@@ -4986,14 +5272,17 @@ async function renderPayrollView() {
             } else {
                 tr.innerHTML = `
                     <td>${idx + 1}</td>
-                    <td class="payroll-emp-name" data-empid="${emp.id}">${escapeHtml(emp.name)}</td>
-                    <td class="payroll-emp-cat" data-empid="${emp.id}">${escapeHtml(emp.category || '')}</td>
-                    <td class="payroll-emp-base" data-empid="${emp.id}">${(parseFloat(emp.base) || 0).toLocaleString('en-IN', {maximumFractionDigits:2})}</td>
-                    <td class="payroll-emp-advance" data-empid="${emp.id}">${(parseFloat(emp.advance) || 0).toLocaleString('en-IN', {maximumFractionDigits:2})}</td>
+                    <td>${escapeHtml(emp.name)}</td>
+                    <td>${escapeHtml(emp.category || '')}</td>
+                    <td>${(parseFloat(emp.base) || 0).toLocaleString('en-IN', {maximumFractionDigits:2})}</td>
+                    <td>${(parseFloat(emp.advance) || 0).toLocaleString('en-IN', {maximumFractionDigits:2})}</td>
                     <td>${netPay.toLocaleString('en-IN', {maximumFractionDigits:2})}</td>
-                    <td>
-                        <button class="btn-text payroll-edit-btn" data-empid="${emp.id}" style="font-size:0.78rem;">Edit</button>
-                        <button class="btn-text payroll-del-btn" data-empid="${emp.id}" style="font-size:0.78rem;color:#c0392b;">Delete</button>
+                    <td style="text-align:center;">
+                        <div class="payroll-actions">
+                            <button class="btn-text payroll-edit-btn" data-empid="${emp.id}" title="Edit">&#9998;</button>
+                            <button class="btn-text payroll-del-btn" data-empid="${emp.id}" style="color:#c0392b;" title="Delete">Delete</button>
+                            <button class="btn-text payroll-history-btn" data-empid="${emp.id}">history</button>
+                        </div>
                     </td>
                 `;
             }
@@ -5023,6 +5312,7 @@ async function renderPayrollView() {
     const addBtn = container.querySelector('#payrollAddEmpBtn');
     if (addBtn && !isAllMode) {
         addBtn.addEventListener('click', () => {
+            payrollModalContext = { type: 'panel', data: null, key: '', container: null };
             payrollEditingEmpId = null;
             openPayrollEmpModal(null);
         });
@@ -5035,6 +5325,7 @@ async function renderPayrollView() {
             btn.addEventListener('click', () => {
                 const emp = payrollData.employees.find(e => e.id === btn.dataset.empid);
                 if (emp) {
+                    payrollModalContext = { type: 'panel', data: null, key: '', container: null };
                     payrollEditingEmpId = emp.id;
                     openPayrollEmpModal(emp);
                 }
@@ -5047,97 +5338,30 @@ async function renderPayrollView() {
                 if (!emp) return;
                 showConfirm('Delete Employee', `Delete '${emp.name}' from payroll?`, async () => {
                     payrollData.employees = payrollData.employees.filter(e => e.id !== emp.id);
-                    await savePayrollData(payrollMonthKey(), payrollData);
                     renderPayrollView();
                     showToast('Employee deleted');
+                    try {
+                        await savePayrollData(payrollMonthKey(), payrollData);
+                    } catch (err) {
+                        showToast('Failed to save deletion', true);
+                        console.error(err);
+                    }
                 });
             });
         });
 
-        // Inline edit for name, category, base, advance
-        container.querySelectorAll('.payroll-emp-name').forEach(td => {
-            td.style.cursor = 'pointer';
-            td.addEventListener('click', () => {
-                const emp = payrollData.employees.find(e => e.id === td.dataset.empid);
-                if (!emp) return;
-                payrollInlineEdit(td, emp.name, async (newVal) => {
-                    emp.name = newVal;
-                    await savePayrollData(payrollMonthKey(), payrollData);
-                    renderPayrollView();
-                });
-            });
-        });
-        container.querySelectorAll('.payroll-emp-cat').forEach(td => {
-            td.style.cursor = 'pointer';
-            td.addEventListener('click', () => {
-                const emp = payrollData.employees.find(e => e.id === td.dataset.empid);
-                if (!emp) return;
-                payrollInlineEdit(td, emp.category || '', async (newVal) => {
-                    emp.category = newVal;
-                    if (newVal && !payrollData.categories.includes(newVal)) {
-                        payrollData.categories.push(newVal);
-                    }
-                    await savePayrollData(payrollMonthKey(), payrollData);
-                    renderPayrollView();
-                });
-            });
-        });
-        container.querySelectorAll('.payroll-emp-base').forEach(td => {
-            td.style.cursor = 'pointer';
-            td.addEventListener('click', () => {
-                const emp = payrollData.employees.find(e => e.id === td.dataset.empid);
-                if (!emp) return;
-                payrollInlineEdit(td, String(emp.base || 0), async (newVal) => {
-                    emp.base = parseFloat(newVal) || 0;
-                    await savePayrollData(payrollMonthKey(), payrollData);
-                    renderPayrollView();
-                });
-            });
-        });
-        container.querySelectorAll('.payroll-emp-advance').forEach(td => {
-            td.style.cursor = 'pointer';
-            td.addEventListener('click', () => {
-                const emp = payrollData.employees.find(e => e.id === td.dataset.empid);
-                if (!emp) return;
-                payrollInlineEdit(td, String(emp.advance || 0), async (newVal) => {
-                    emp.advance = parseFloat(newVal) || 0;
-                    await savePayrollData(payrollMonthKey(), payrollData);
-                    renderPayrollView();
-                });
+        // History button (small link under the pencil, like flat/work view)
+        container.querySelectorAll('.payroll-history-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const emp = payrollData.employees.find(e => e.id === btn.dataset.empid);
+                if (emp) openPayrollHistoryModal(emp);
             });
         });
     }
 }
 
-function payrollInlineEdit(td, currentValue, onSave) {
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.className = 'item-edit-input';
-    input.value = currentValue;
-    input.style.width = '100px';
-    td.textContent = '';
-    td.appendChild(input);
-    input.focus();
-    input.select();
-
-    const finish = (save) => {
-        if (save) {
-            const newVal = input.value.trim();
-            if (newVal !== currentValue) onSave(newVal);
-            else renderPayrollView();
-        } else {
-            renderPayrollView();
-        }
-    };
-
-    input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') { e.preventDefault(); finish(true); }
-        else if (e.key === 'Escape') { finish(false); }
-    });
-    input.addEventListener('blur', () => finish(true));
-}
-
 function openPayrollEmpModal(emp) {
+    const data = payrollModalContext.type === 'home' ? (payrollModalContext.data || payrollData) : payrollData;
     document.getElementById('payrollEmpTitle').textContent = emp ? 'Edit Employee' : 'Add Employee';
     document.getElementById('payrollEmpName').value = emp ? (emp.name || '') : '';
     document.getElementById('payrollEmpCategory').value = emp ? (emp.category || '') : '';
@@ -5147,7 +5371,7 @@ function openPayrollEmpModal(emp) {
     // Populate datalist
     const datalist = document.getElementById('payrollCategoryList');
     datalist.innerHTML = '';
-    (payrollData.categories || []).forEach(cat => {
+    (data.categories || []).forEach(cat => {
         const opt = document.createElement('option');
         opt.value = cat;
         datalist.appendChild(opt);
@@ -5175,6 +5399,36 @@ document.getElementById('savePayrollEmp').addEventListener('click', async () => 
     const base = parseFloat(document.getElementById('payrollEmpBase').value) || 0;
     const advance = parseFloat(document.getElementById('payrollEmpAdvance').value) || 0;
 
+    if (payrollModalContext.type === 'home') {
+        const data = payrollModalContext.data;
+        const key = payrollModalContext.key;
+        const container = payrollModalContext.container;
+        if (category && !data.categories.includes(category)) {
+            data.categories.push(category);
+        }
+        if (payrollEditingEmpId) {
+            const emp = data.employees.find(e => e.id === payrollEditingEmpId);
+            if (emp) {
+                emp.name = name;
+                emp.category = category;
+                emp.base = base;
+                emp.advance = advance;
+            }
+        } else {
+            data.employees.push({ id: generateId(), name, category, base, advance, advanceHistory: [] });
+        }
+        closePayrollEmpModal();
+        renderHomePayroll(container);
+        showToast('Employee saved');
+        try {
+            await apiPost('/api/settings/' + encodeURIComponent(key), data);
+        } catch (err) {
+            showToast('Failed to save changes', true);
+            console.error(err);
+        }
+        return;
+    }
+
     if (category && !payrollData.categories.includes(category)) {
         payrollData.categories.push(category);
     }
@@ -5182,6 +5436,16 @@ document.getElementById('savePayrollEmp').addEventListener('click', async () => 
     if (payrollEditingEmpId) {
         const emp = payrollData.employees.find(e => e.id === payrollEditingEmpId);
         if (emp) {
+            emp.history = emp.history || [];
+            const oldBase = parseFloat(emp.base) || 0;
+            const oldAdvance = parseFloat(emp.advance) || 0;
+            const now = new Date().toISOString();
+            if (base !== oldBase) {
+                emp.history.push({ date: now, field: 'Base', oldValue: oldBase, newValue: base });
+            }
+            if (advance !== oldAdvance) {
+                emp.history.push({ date: now, field: 'Advance', oldValue: oldAdvance, newValue: advance });
+            }
             emp.name = name;
             emp.category = category;
             emp.base = base;
@@ -5193,14 +5457,58 @@ document.getElementById('savePayrollEmp').addEventListener('click', async () => 
             name,
             category,
             base,
-            advance
+            advance,
+            history: []
         });
     }
 
-    await savePayrollData(payrollMonthKey(), payrollData);
     closePayrollEmpModal();
     renderPayrollView();
     showToast('Employee saved');
+    try {
+        await savePayrollData(payrollMonthKey(), payrollData);
+    } catch (err) {
+        showToast('Failed to save changes', true);
+        console.error(err);
+    }
+});
+
+function openPayrollHistoryModal(emp, opts = {}) {
+    const isAdvance = opts.isAdvanceHistory || false;
+    document.getElementById('payrollHistoryTitle').textContent = opts.title || `History - ${emp.name}`;
+    const body = document.getElementById('payrollHistoryBody');
+    const history = opts.history || emp.history || [];
+    if (history.length === 0) {
+        body.innerHTML = '<div style="padding:12px;color:#999;">No history recorded yet.</div>';
+    } else if (isAdvance) {
+        body.innerHTML = history.map(h => {
+            const amount = parseFloat(h.amount) || 0;
+            return `<div style="padding:8px 0;border-bottom:1px solid #f0f2f5;">
+                <div style="font-size:0.75rem;color:#888;">${h.date || '-'}</div>
+                <div style="font-size:0.85rem;">Advance: &#8377;${amount.toLocaleString('en-IN', {maximumFractionDigits:2})}${h.remarks ? ' <span style="color:#666;">(' + escapeHtml(h.remarks) + ')</span>' : ''}</div>
+                ${h.nextAdvanceDate ? `<div style="font-size:0.75rem;color:#666;">Next: ${h.nextAdvanceDate}</div>` : ''}
+            </div>`;
+        }).join('');
+    } else {
+        body.innerHTML = history.map(h => {
+            const oldVal = parseFloat(h.oldValue) || 0;
+            const newVal = parseFloat(h.newValue) || 0;
+            return `<div style="padding:8px 0;border-bottom:1px solid #f0f2f5;">
+                <div style="font-size:0.75rem;color:#888;">${new Date(h.date).toLocaleString('en-IN')}</div>
+                <div style="font-size:0.85rem;">${h.field}: &#8377;${oldVal.toLocaleString('en-IN', {maximumFractionDigits:2})} &rarr; &#8377;${newVal.toLocaleString('en-IN', {maximumFractionDigits:2})}</div>
+            </div>`;
+        }).join('');
+    }
+    document.getElementById('payrollHistoryModal').classList.add('show');
+}
+
+function closePayrollHistoryModal() {
+    document.getElementById('payrollHistoryModal').classList.remove('show');
+}
+
+document.getElementById('closePayrollHistory').addEventListener('click', closePayrollHistoryModal);
+document.getElementById('payrollHistoryModal').addEventListener('click', (e) => {
+    if (e.target === document.getElementById('payrollHistoryModal')) closePayrollHistoryModal();
 });
 
 function exportPayrollCSV() {
