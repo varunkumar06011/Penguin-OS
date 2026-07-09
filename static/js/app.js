@@ -506,15 +506,23 @@ async function checkSession() {
     try {
         const resp = await fetch('/api/me');
         const data = await resp.json();
-        if (data.user) {
+        if (resp.ok && data.user) {
             currentUser = data.user;
             currentUserRole = data.role || 'supervisor';
             currentUserPermissions = buildPermissions(currentUserRole);
             if (els.userEmail) els.userEmail.textContent = currentUser;
             return true;
         }
-    } catch (e) {}
-    window.location.href = '/login';
+        if (resp.ok) {
+            // Authenticated but no user: redirect to login once
+            window.location.href = '/login';
+            return false;
+        }
+        // Server error: stay put and show an error so we don't loop
+        showToast('Server error — please refresh later', true);
+    } catch (e) {
+        showToast('Network error — please refresh later', true);
+    }
     return false;
 }
 

@@ -9,7 +9,11 @@ from functools import wraps
 from dotenv import load_dotenv
 from supabase import create_client, Client
 from werkzeug.security import check_password_hash, generate_password_hash
-from PIL import Image
+
+try:
+    from PIL import Image
+except ImportError:  # Pillow may not be installed in every environment
+    Image = None
 
 load_dotenv()
 
@@ -76,6 +80,8 @@ def requires_role(*allowed_roles):
 
 
 def compress_image_data_url(data_url, max_size=(1024, 1024), quality=65):
+    if Image is None:
+        return data_url
     m = re.match(r'^data:image/(jpeg|png|webp);base64,(.*)$', data_url, re.IGNORECASE)
     if not m:
         return data_url
