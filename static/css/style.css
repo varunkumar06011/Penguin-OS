@@ -5,14 +5,16 @@
 }
 
 body {
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    background: #f5f7fa;
-    color: #333;
+    font-family: 'Okra', 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    background: #f5f5f5;
+    color: #1a1a1a;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
 }
 
 /* Login */
 .login-body {
-    background: linear-gradient(135deg, #1a2a6c, #2d388a);
+    background: linear-gradient(135deg, #1a1a1a, #333);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -35,13 +37,42 @@ body {
 .login-box h1 {
     font-size: 1.6rem;
     margin-bottom: 8px;
-    color: #1a2a6c;
+    color: #1a1a1a;
 }
 
 .login-box p {
     color: #777;
     margin-bottom: 24px;
     font-size: 0.95rem;
+}
+
+.login-portals {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 20px;
+}
+
+.portal-btn {
+    background: #fff;
+    border: 1px solid #1a1a1a;
+    color: #1a1a1a;
+    padding: 10px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 600;
+    transition: all 0.2s;
+    text-align: left;
+}
+
+.portal-btn:hover {
+    background: #f5f5f5;
+}
+
+.portal-btn.active {
+    background: #1a1a1a;
+    color: #fff;
 }
 
 .form-group {
@@ -71,7 +102,7 @@ body {
 }
 
 .btn-primary {
-    background: #1a2a6c;
+    background: #1a1a1a;
     color: #fff;
     border: none;
     padding: 12px 20px;
@@ -83,13 +114,13 @@ body {
 }
 
 .btn-primary:hover {
-    background: #2d388a;
+    background: #333;
 }
 
 .btn-secondary {
     background: #fff;
-    color: #1a2a6c;
-    border: 1px solid #1a2a6c;
+    color: #1a1a1a;
+    border: 1px solid #1a1a1a;
     padding: 8px 16px;
     border-radius: 6px;
     font-size: 0.9rem;
@@ -98,7 +129,7 @@ body {
 }
 
 .btn-secondary:hover {
-    background: #1a2a6c;
+    background: #1a1a1a;
     color: #fff;
 }
 
@@ -117,7 +148,7 @@ body {
 
 /* Top Bar */
 .top-bar {
-    background: #1a2a6c;
+    background: #1a1a1a;
     color: #fff;
     display: flex;
     align-items: center;
@@ -148,7 +179,7 @@ body {
 .block-tab {
     background: rgba(255,255,255,0.85);
     border: none;
-    color: #1a2a6c;
+    color: #1a1a1a;
     padding: 8px 20px;
     border-radius: 6px 6px 0 0;
     cursor: pointer;
@@ -159,11 +190,11 @@ body {
 
 .block-tab:hover {
     background: #fff;
-    color: #1a2a6c;
+    color: #1a1a1a;
 }
 
 .block-tab.active {
-    background: #1a2a6c;
+    background: #1a1a1a;
     color: #fff;
     box-shadow: 0 2px 6px rgba(26,42,108,0.3);
 }
@@ -219,7 +250,7 @@ body {
 
 .floor-tab.active,
 .floor-tab:hover {
-    background: #1a2a6c;
+    background: #1a1a1a;
     color: #fff;
 }
 
@@ -326,7 +357,7 @@ body {
 
 .history-link {
     font-size: 0.7rem;
-    color: #1a2a6c;
+    color: #1a1a1a;
     text-decoration: underline;
     cursor: pointer;
     background: none;
@@ -334,7 +365,7 @@ body {
 }
 
 .history-link:hover {
-    color: #2d388a;
+    color: #333;
 }
 
 .remarks-cell {
@@ -402,7 +433,7 @@ body {
 
 .modal-header h3 {
     font-size: 1.1rem;
-    color: #1a2a6c;
+    color: #1a1a1a;
 }
 
 .close-btn {
@@ -542,7 +573,7 @@ body {
 
 .remarks-file-drop:hover,
 .remarks-file-drop.drag-over {
-    border-color: #1a2a6c;
+    border-color: #1a1a1a;
     background: #f8f9fb;
 }
 
@@ -598,7 +629,7 @@ body {
     right: -2px;
     width: 14px;
     height: 14px;
-    background: #1a2a6c;
+    background: #1a1a1a;
     color: #fff;
     border-radius: 50%;
     font-size: 0.6rem;
@@ -618,7 +649,7 @@ body {
 .settings-section-title {
     font-size: 1rem;
     font-weight: 600;
-    color: #1a2a6c;
+    color: #1a1a1a;
     margin-bottom: 8px;
 }
 
@@ -716,7 +747,7 @@ body {
 
 .work-item-name:focus {
     outline: none;
-    border-color: #1a2a6c;
+    border-color: #1a1a1a;
     background: #fff;
 }
 
@@ -781,7 +812,7 @@ body {
 
 .view-tab.active,
 .view-tab:hover {
-    background: #1a2a6c;
+    background: #1a1a1a;
     color: #fff;
 }
 
@@ -799,7 +830,7 @@ body {
 }
 
 .section-header {
-    background: #1a2a6c;
+    background: #1a1a1a;
     color: #fff;
     padding: 12px 20px;
     font-weight: 700;
@@ -829,7 +860,7 @@ body {
 
 .ss-subheader {
     background: #e8eaf0;
-    color: #1a2a6c;
+    color: #1a1a1a;
     padding: 8px 16px;
     font-weight: 700;
     font-size: 0.85rem;
@@ -943,7 +974,7 @@ body {
 
 .dashboard-header h2 {
     font-size: 1.5rem;
-    color: #1a2a6c;
+    color: #1a1a1a;
     font-weight: 700;
 }
 
@@ -970,7 +1001,7 @@ body {
 
 .venture-card h3 {
     font-size: 1.2rem;
-    color: #1a2a6c;
+    color: #1a1a1a;
     margin-bottom: 8px;
 }
 
@@ -993,8 +1024,8 @@ body {
 }
 
 .add-venture-card:hover {
-    border-color: #1a2a6c;
-    color: #1a2a6c;
+    border-color: #1a1a1a;
+    color: #1a1a1a;
     background: #eef0f5;
 }
 
@@ -1016,8 +1047,8 @@ body {
 .btn-pending-filter {
     margin-left: auto;
     background: #fff;
-    color: #1a2a6c;
-    border: 1px solid #1a2a6c;
+    color: #1a1a1a;
+    border: 1px solid #1a1a1a;
     padding: 8px 16px;
     border-radius: 6px;
     font-size: 0.9rem;
@@ -1027,7 +1058,7 @@ body {
 }
 
 .btn-pending-filter:hover {
-    background: #1a2a6c;
+    background: #1a1a1a;
     color: #fff;
 }
 
@@ -1035,8 +1066,8 @@ body {
 .btn-bulk-select {
     margin-left: auto;
     background: #fff;
-    color: #1a2a6c;
-    border: 2px solid #1a2a6c;
+    color: #1a1a1a;
+    border: 2px solid #1a1a1a;
     padding: 6px 14px;
     border-radius: 6px;
     font-size: 0.85rem;
@@ -1045,7 +1076,7 @@ body {
     transition: all 0.2s;
 }
 .btn-bulk-select.active {
-    background: #1a2a6c;
+    background: #1a1a1a;
     color: #fff;
 }
 
@@ -1054,7 +1085,7 @@ body {
     align-items: center;
     gap: 12px;
     padding: 10px 24px;
-    background: #1a2a6c;
+    background: #1a1a1a;
     color: #fff;
     font-size: 0.9rem;
     font-weight: 600;
@@ -1103,15 +1134,15 @@ body {
 }
 
 .cell-btn.bulk-selected {
-    outline: 3px solid #1a2a6c;
+    outline: 3px solid #1a1a1a;
     outline-offset: 2px;
     transform: scale(0.92);
 }
 
 .back-btn {
     background: none;
-    border: 1px solid #1a2a6c;
-    color: #1a2a6c;
+    border: 1px solid #1a1a1a;
+    color: #1a1a1a;
     padding: 6px 14px;
     border-radius: 6px;
     cursor: pointer;
@@ -1120,14 +1151,14 @@ body {
 }
 
 .back-btn:hover {
-    background: #1a2a6c;
+    background: #1a1a1a;
     color: #fff;
 }
 
 .venture-title {
     font-size: 1.2rem;
     font-weight: 700;
-    color: #1a2a6c;
+    color: #1a1a1a;
 }
 
 /* Breadcrumb */
@@ -1143,7 +1174,7 @@ body {
 }
 
 .breadcrumb .bc-home {
-    color: #1a2a6c;
+    color: #1a1a1a;
     cursor: pointer;
     font-weight: 600;
 }
@@ -1234,7 +1265,7 @@ body {
 }
 
 .wizard-summary-card h4 {
-    color: #1a2a6c;
+    color: #1a1a1a;
     margin-bottom: 8px;
     font-size: 1rem;
 }
@@ -1256,7 +1287,7 @@ body {
 
 .wizard-items-section h4 {
     font-size: 0.95rem;
-    color: #1a2a6c;
+    color: #1a1a1a;
     margin-bottom: 8px;
     padding-bottom: 6px;
     border-bottom: 1px solid #e0e4e8;
@@ -1333,7 +1364,7 @@ body {
 .item-edit-input {
     width: 100%;
     padding: 4px 8px;
-    border: 1px solid #1a2a6c;
+    border: 1px solid #1a1a1a;
     border-radius: 4px;
     font-size: 0.85rem;
 }
@@ -1405,7 +1436,7 @@ body {
 
 .confirm-box h4 {
     margin-bottom: 12px;
-    color: #1a2a6c;
+    color: #1a1a1a;
 }
 
 .confirm-box p {
@@ -1567,10 +1598,13 @@ body {
         display: none;
     }
     .block-tab {
-        padding: 6px 14px;
+        padding: 8px 16px;
         font-size: 0.85rem;
         white-space: nowrap;
         flex-shrink: 0;
+        min-height: 40px;
+        display: flex;
+        align-items: center;
     }
 
     /* Floor tabs */
@@ -1585,7 +1619,7 @@ body {
         display: none;
     }
     .floor-tab {
-        padding: 6px 14px;
+        padding: 8px 16px;
         font-size: 0.8rem;
         white-space: nowrap;
         flex-shrink: 0;
@@ -1603,7 +1637,7 @@ body {
         display: none;
     }
     .view-tab {
-        padding: 6px 14px;
+        padding: 8px 16px;
         font-size: 0.8rem;
         white-space: nowrap;
         flex-shrink: 0;
@@ -1643,8 +1677,8 @@ body {
         padding-left: 8px !important;
     }
     .cell-btn {
-        width: 28px;
-        height: 28px;
+        width: 32px;
+        height: 32px;
         border-radius: 4px;
     }
     .cell-wrapper {
@@ -1843,12 +1877,12 @@ body {
         font-size: 0.75rem;
     }
     .cell-btn {
-        width: 24px;
-        height: 24px;
+        width: 28px;
+        height: 28px;
     }
     .ss-cell {
-        width: 22px;
-        height: 22px;
+        width: 26px;
+        height: 26px;
     }
     .tracker-table th,
     .tracker-table td {
@@ -1919,7 +1953,7 @@ body {
     border-radius: 6px;
     font-size: 0.9rem;
     font-weight: 600;
-    color: #1a2a6c;
+    color: #1a1a1a;
     min-width: 140px;
 }
 
@@ -1997,7 +2031,7 @@ body {
 
 .home-quick-reports h3 {
     font-size: 1.1rem;
-    color: #1a2a6c;
+    color: #1a1a1a;
     margin-bottom: 16px;
     font-weight: 700;
 }
@@ -2022,7 +2056,7 @@ body {
 }
 
 .home-quick-buttons .btn-pending-filter.active {
-    background: #1a2a6c;
+    background: #1a1a1a;
     color: #fff;
 }
 
@@ -2053,7 +2087,11 @@ body {
 #invoicesPanel,
 #poPanel,
 #payrollPanel,
-#inventoryPanel {
+#inventoryPanel,
+#instantReportsPanel,
+#inventoryAuditPanel,
+#datewiseExpensesPanel,
+#burnReportPanel {
     padding: 0 24px 40px 24px;
     max-width: 1200px;
     margin: 0 auto;
@@ -2069,7 +2107,7 @@ body {
 
 .invoice-panel-title {
     font-size: 1.4rem;
-    color: #1a2a6c;
+    color: #1a1a1a;
     font-weight: 700;
     flex: 1;
 }
@@ -2142,7 +2180,7 @@ body {
 
 .inv-summary-count {
     font-weight: 600;
-    color: #1a2a6c;
+    color: #1a1a1a;
 }
 
 .inv-summary-sep {
@@ -2196,13 +2234,13 @@ body {
 .invoice-card-category {
     font-size: 1rem;
     font-weight: 700;
-    color: #1a2a6c;
+    color: #1a1a1a;
 }
 
 .invoice-card-venture {
     font-size: 0.75rem;
     color: #fff;
-    background: #2d388a;
+    background: #333;
     padding: 2px 8px;
     border-radius: 12px;
     white-space: nowrap;
@@ -2294,7 +2332,7 @@ body {
 .invoice-form-field select:focus,
 .invoice-form-field textarea:focus {
     outline: none;
-    border-color: #1a2a6c;
+    border-color: #1a1a1a;
 }
 
 .invoice-file-drop {
@@ -2310,9 +2348,9 @@ body {
 
 .invoice-file-drop:hover,
 .invoice-file-drop.drag-over {
-    border-color: #1a2a6c;
+    border-color: #1a1a1a;
     background: #f0f4ff;
-    color: #1a2a6c;
+    color: #1a1a1a;
 }
 
 .invoice-file-preview {
@@ -2622,7 +2660,7 @@ body {
 
 .po-panel-title {
     font-size: 1.4rem;
-    color: #1a2a6c;
+    color: #1a1a1a;
     font-weight: 700;
     flex: 1;
 }
@@ -2718,7 +2756,7 @@ body {
 .po-card-number {
     font-size: 0.85rem;
     font-weight: 700;
-    color: #1a2a6c;
+    color: #1a1a1a;
     font-family: monospace;
 }
 
@@ -2862,7 +2900,7 @@ body {
 
 .po-doc-filename {
     font-size: 0.8rem;
-    color: #1a2a6c;
+    color: #1a1a1a;
     font-weight: 500;
 }
 
@@ -3075,7 +3113,7 @@ body {
 
 .reports-legend-count {
     font-weight: 700;
-    color: #1a2a6c;
+    color: #1a1a1a;
     min-width: 40px;
     text-align: right;
 }
@@ -3105,7 +3143,7 @@ body {
 
 .payroll-actions .payroll-history-btn {
     font-size: 0.65rem;
-    color: #1a2a6c;
+    color: #1a1a1a;
     text-decoration: underline;
     padding: 0;
     line-height: 1.2;
@@ -3149,7 +3187,7 @@ body {
 }
 
 .inventory-tab.active {
-    background: #1a2a6c;
+    background: #1a1a1a;
     color: #fff;
 }
 
@@ -3201,7 +3239,7 @@ body {
 
 .material-list-name {
     font-weight: 600;
-    color: #1a2a6c;
+    color: #1a1a1a;
 }
 
 .material-list-meta {
@@ -3268,5 +3306,80 @@ body {
     }
     .ss-table .cell-wrapper {
         gap: 2px;
+    }
+}
+
+/* ========================
+   Mobile Bottom Action Bar
+   ======================== */
+.mobile-action-bar {
+    display: none;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: #1a1a1a;
+    z-index: 95;
+    justify-content: space-around;
+    padding: 6px 0;
+    box-shadow: 0 -2px 12px rgba(0,0,0,0.15);
+}
+
+.mobile-action-btn {
+    background: none;
+    border: none;
+    color: #fff;
+    font-size: 1.3rem;
+    padding: 8px 16px;
+    cursor: pointer;
+    border-radius: 6px;
+    transition: background 0.15s;
+    min-width: 48px;
+    min-height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mobile-action-btn:hover,
+.mobile-action-btn:active {
+    background: rgba(255,255,255,0.15);
+}
+
+@media (max-width: 768px) {
+    .mobile-action-bar {
+        display: flex;
+    }
+    body {
+        padding-bottom: 60px;
+    }
+    .category-chip-bar {
+        padding: 8px 12px !important;
+        gap: 6px !important;
+    }
+    .category-chip {
+        padding: 5px 10px !important;
+        font-size: 0.75rem !important;
+    }
+    .invoice-dashboard-bar {
+        justify-content: flex-start !important;
+        gap: 8px !important;
+    }
+    .invoice-dashboard-bar .btn-secondary {
+        padding: 6px 10px;
+        font-size: 0.75rem;
+    }
+    #instantReportsPanel,
+    #inventoryAuditPanel,
+    #datewiseExpensesPanel,
+    #burnReportPanel {
+        padding: 0 12px 40px 12px;
+    }
+    .pending-filter-bar {
+        flex-direction: column;
+        gap: 8px;
+    }
+    .pending-filter-group {
+        min-width: 100% !important;
     }
 }

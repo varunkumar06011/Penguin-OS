@@ -4,7 +4,7 @@ import json
 import re
 import base64
 import io
-from datetime import timedelta
+from datetime import timedelta, datetime, date
 from functools import wraps
 from dotenv import load_dotenv
 from supabase import create_client, Client
@@ -44,6 +44,13 @@ def load_json_fallback(filename):
 DEMO_USERNAME = 'Vgrand@123'
 DEMO_PASSWORD = 'Vgrand1234'
 
+# Role-based fallback accounts (used when Supabase users table is not populated)
+FALLBACK_USERS = {
+    'Vgrand01': {'password': 'Infra1234',   'role': 'supervisor', 'full_name': 'VGrand Supervisor'},
+    'vgrand02': {'password': 'infra 123',   'role': 'manager',    'full_name': 'VGrand Manager'},
+    'vgrand03': {'password': 'infra 12345', 'role': 'admin',      'full_name': 'VGrand Admin'},
+}
+
 DEFAULT_WORK_ITEMS = [
     "BRICK WORK", "ELECTRICAL PIPES", "MESH", "PLASTERING",
     "CEILING PAINT", "POP FRAME", "CEILING WIRING", "POP SHEETS",
@@ -74,6 +81,22 @@ def requires_role(*allowed_roles):
             user = session.get('user')
             role = user.get('role') if isinstance(user, dict) else 'admin'
             if role not in allowed_roles:
+                return jsonify({'error': 'Forbidden'}), 403
+            return f(*args, **kwargs)
+        return wrapped
+    return decorator
+
+
+def requires_role_or_override(*primary_roles):
+    """Like requires_role, but admin and manager always have override access."""
+    all_roles = set(primary_roles) | {'admin', 'manager'}
+    def decorator(f):
+        @wraps(f)
+        @login_required
+        def wrapped(*args, **kwargs):
+            user = session.get('user')
+            role = user.get('role') if isinstance(user, dict) else 'admin'
+            if role not in all_roles:
                 return jsonify({'error': 'Forbidden'}), 403
             return f(*args, **kwargs)
         return wrapped
@@ -148,6 +171,12 @@ def login():
     if not user_obj and username == DEMO_USERNAME and password == DEMO_PASSWORD:
         user_obj = {'id': 'demo', 'email': DEMO_USERNAME, 'role': 'admin', 'org_id': None}
 
+    # Fallback to role-based accounts (supervisor, manager, admin)
+    if not user_obj and username in FALLBACK_USERS:
+        fb = FALLBACK_USERS[username]
+        if password == fb['password']:
+            user_obj = {'id': f'fb_{username}', 'email': username, 'role': fb['role'], 'org_id': None}
+
     if user_obj:
         session['user'] = user_obj
         session.permanent = True
@@ -196,7 +225,18 @@ def api_cells():
         fallback = load_json_fallback('cells.json')
         return jsonify(fallback or {})
     try:
-        res = supabase.table('cell_data').select('*').execute()
+        query = supabase.table('cell_data').select('*')
+        # Optional filter params for lazy-loading a specific venture/block/floor slice
+        venture_id = request.args.get('venture_id')
+        block = request.args.get('block')
+        floor = request.args.get('floor')
+        if venture_id:
+            query = query.filter('data->>venture_id', 'eq', venture_id)
+        if block:
+            query = query.filter('data->>block', 'eq', block)
+        if floor:
+            query = query.filter('data->>floor', 'eq', str(floor))
+        res = query.execute()
         # Defensive sort: most recent updated_at wins if duplicates still exist pre-migration
         sorted_rows = sorted(res.data, key=lambda r: (r.get('data') or {}).get('updated_at', ''), reverse=True)
         data = {}
@@ -653,6 +693,634 @@ def api_stock_vendor_report():
 
 
 # ========================
+# Cells Reorder API
+# ========================
+
+@app.route('/api/cells/reorder', methods=['POST'])
+@requires_role_or_override('supervisor')
+def api_cells_reorder():
+    if not supabase:
+        return jsonify({'success': True, 'note': 'read-only local mode'})
+    body = request.get_json() or {}
+    venture_id = body.get('venture_id')
+    work_item = body.get('work_item')
+    ordered_ids = body.get('ordered_ids', [])
+    if not ordered_ids:
+        return jsonify({'success': True})
+    try:
+        for idx, cid in enumerate(ordered_ids):
+            supabase.table('category_sets').update({
+                'sort_order': idx
+            }).eq('venture_id', venture_id).eq('name', work_item).execute()
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f'Error reordering cells: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+# ========================
+# Category Creation API
+# ========================
+
+@app.route('/api/category', methods=['POST'])
+@requires_role_or_override('supervisor')
+def api_category_create():
+    if not supabase:
+        return jsonify({'success': True, 'note': 'read-only local mode'})
+    body = request.get_json() or {}
+    venture_id = body.get('venture_id')
+    name = body.get('name', '').strip()
+    if not name or not venture_id:
+        return jsonify({'error': 'venture_id and name are required'}), 400
+    try:
+        # Get org_id from venture
+        vres = supabase.table('ventures').select('*').eq('id', venture_id).execute()
+        org_id = None
+        if vres.data:
+            org_id = (vres.data[0].get('data') or {}).get('org_id')
+        # Get max sort_order
+        existing = supabase.table('category_sets').select('sort_order').eq(
+            'venture_id', venture_id).eq('category_type', 'work_group').order(
+            'sort_order', desc=True).limit(1).execute()
+        next_order = (existing.data[0]['sort_order'] + 1) if existing.data else 0
+        res = supabase.table('category_sets').insert({
+            'org_id': org_id or '11111111-1111-1111-1111-111111111111',
+            'venture_id': venture_id,
+            'category_type': 'work_group',
+            'name': name,
+            'sort_order': next_order
+        }).execute()
+        return jsonify({'success': True, 'id': res.data[0]['id'] if res.data else None})
+    except Exception as e:
+        print(f'Error creating category: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+# ========================
+# Instant Reports API (Admin-only)
+# ========================
+
+@app.route('/api/reports/instant')
+@requires_role('admin')
+def api_instant_reports():
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    venture_id = request.args.get('venture_id')
+    if not venture_id:
+        return jsonify({'error': 'venture_id is required'}), 400
+    try:
+        result = {'venture_id': venture_id, 'blocks': [], 'spend': {}, 'consumption': []}
+        # Cell status summary: % complete per block/floor
+        cells_res = supabase.table('cell_data').select('*').execute()
+        cell_stats = {}
+        for row in cells_res.data:
+            d = row.get('data') or {}
+            v_id = d.get('venture_id')
+            if v_id != venture_id:
+                continue
+            block = d.get('block', 'Unknown')
+            floor = d.get('floor', 'Unknown')
+            color = d.get('color', '')
+            key = f'{block}|{floor}'
+            if key not in cell_stats:
+                cell_stats[key] = {'total': 0, 'completed': 0}
+            cell_stats[key]['total'] += 1
+            if color == 'green':
+                cell_stats[key]['completed'] += 1
+        for key, stats in cell_stats.items():
+            block, floor = key.split('|')
+            pct = round((stats['completed'] / stats['total'] * 100), 1) if stats['total'] else 0
+            result['blocks'].append({
+                'block': block, 'floor': floor,
+                'total': stats['total'], 'completed': stats['completed'],
+                'pct_complete': pct
+            })
+        # Spend from invoices
+        inv_res = supabase.table('invoices').select('*').execute()
+        total_invoice = 0
+        for inv in inv_res.data:
+            d = inv.get('data') or {}
+            if d.get('venture_id') == venture_id or inv.get('venture_id') == venture_id:
+                amt = d.get('amount') or inv.get('amount') or 0
+                total_invoice += float(amt)
+        result['spend']['invoices'] = round(total_invoice, 2)
+        # Spend from POs
+        po_res = supabase.table('purchase_orders').select('*').execute()
+        total_po = 0
+        for po in po_res.data:
+            d = po.get('data') or {}
+            if d.get('venture_id') == venture_id or po.get('venture_id') == venture_id:
+                amt = d.get('billAmount') or d.get('quotedAmount') or po.get('amount') or 0
+                total_po += float(amt)
+        result['spend']['purchase_orders'] = round(total_po, 2)
+        # Consumption from stock_ledger
+        stock_res = supabase.table('stock_ledger').select('*').eq('venture_id', venture_id).execute()
+        consumption = {}
+        for entry in stock_res.data:
+            if entry.get('entry_type') == 'OUT':
+                mid = entry.get('material_id', 'unknown')
+                if mid not in consumption:
+                    consumption[mid] = {'material_id': mid, 'total_qty': 0}
+                consumption[mid]['total_qty'] += float(entry.get('qty', 0))
+        result['consumption'] = list(consumption.values())
+        return jsonify(result)
+    except Exception as e:
+        print(f'Error generating instant reports: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+# ========================
+# Payroll API (Admin-only for release; Manager can view)
+# ========================
+
+@app.route('/api/payroll')
+@requires_role_or_override('supervisor')
+def api_payroll_list():
+    if not supabase:
+        return jsonify([]), 500
+    venture_id = request.args.get('venture_id')
+    q = supabase.table('payroll').select('*, milestones(id,status,work_item,description)')
+    if venture_id:
+        q = q.eq('venture_id', venture_id)
+    res = q.execute()
+    return jsonify(res.data or [])
+
+
+@app.route('/api/payroll', methods=['POST'])
+@requires_role('admin')
+def api_payroll_create():
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    body = request.get_json() or {}
+    user = session.get('user', {})
+    try:
+        row = {
+            'venture_id': body.get('venture_id'),
+            'subcontractor_id': body.get('subcontractor_id'),
+            'milestone_id': body.get('milestone_id'),
+            'amount': body.get('amount', 0),
+            'status': 'pending',
+            'created_by': user.get('id') if isinstance(user, dict) else None,
+        }
+        res = supabase.table('payroll').insert(row).execute()
+        return jsonify({'success': True, 'id': res.data[0]['id'] if res.data else None})
+    except Exception as e:
+        print(f'Error creating payroll: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/payroll/<payroll_id>/release', methods=['POST'])
+@requires_role('admin')
+def api_payroll_release(payroll_id):
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    try:
+        supabase.table('payroll').update({
+            'status': 'unlocked',
+            'updated_at': datetime.utcnow().isoformat()
+        }).eq('id', payroll_id).execute()
+        return jsonify({'success': True})
+    except Exception as e:
+        err_msg = str(e)
+        # Surface the Postgres trigger's exception message directly
+        if 'Cannot unlock payroll' in err_msg:
+            return jsonify({'error': err_msg}), 400
+        print(f'Error releasing payroll {payroll_id}: {e}')
+        return jsonify({'error': err_msg}), 500
+
+
+# ========================
+# Inventory Audit API (Admin-only)
+# ========================
+
+@app.route('/api/inventory/audit')
+@requires_role('admin')
+def api_inventory_audit():
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    venture_id = request.args.get('venture_id')
+    if not venture_id:
+        return jsonify({'error': 'venture_id is required'}), 400
+    try:
+        # Get all materials for this venture
+        mats_res = supabase.table('materials').select('*').eq('venture_id', venture_id).execute()
+        materials = mats_res.data or []
+        # Get stock balances
+        bal_res = supabase.table('stock_balance').select('*').eq('venture_id', venture_id).execute()
+        balances = {b['material_id']: b for b in (bal_res.data or [])}
+        # Get PO line items
+        po_li_res = supabase.table('po_line_items').select('*').eq('venture_id', venture_id).execute()
+        po_items = po_li_res.data or []
+        ordered_qty = {}
+        for li in po_items:
+            mid = li.get('material_id', 'unknown')
+            ordered_qty[mid] = ordered_qty.get(mid, 0) + float(li.get('qty', 0))
+        # Build audit rows
+        audit_rows = []
+        for mat in materials:
+            mid = mat['id']
+            bal = balances.get(mid, {})
+            received = float(bal.get('total_in', 0))
+            consumed = float(bal.get('total_out', 0))
+            expected_remaining = received - consumed
+            actual_balance = float(bal.get('balance', 0))
+            tolerance = float(mat.get('min_threshold', 0)) * 0.1  # 10% of min_threshold
+            discrepancy = abs(expected_remaining - actual_balance) > max(tolerance, 0.01)
+            short_delivery = ordered_qty.get(mid, 0) - received
+            audit_rows.append({
+                'material_id': mid,
+                'material_name': mat.get('name', mid),
+                'unit': mat.get('unit', ''),
+                'ordered_qty': round(ordered_qty.get(mid, 0), 2),
+                'received_qty': round(received, 2),
+                'consumed_qty': round(consumed, 2),
+                'expected_remaining': round(expected_remaining, 2),
+                'actual_balance': round(actual_balance, 2),
+                'short_delivery': round(short_delivery, 2),
+                'discrepancy_flag': discrepancy,
+                'linked_work_item': mat.get('linked_work_item')
+            })
+        return jsonify(audit_rows)
+    except Exception as e:
+        print(f'Error in inventory audit: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+# ========================
+# Date-wise Expense Check API (Admin-only)
+# ========================
+
+@app.route('/api/expenses/date-check')
+@requires_role('admin')
+def api_expenses_date_check():
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    venture_id = request.args.get('venture_id')
+    from_date = request.args.get('from')
+    to_date = request.args.get('to')
+    if not venture_id or not from_date or not to_date:
+        return jsonify({'error': 'venture_id, from, and to are required'}), 400
+    try:
+        # Sum invoices by day
+        inv_res = supabase.table('invoices').select('*').execute()
+        daily_spend = {}
+        for inv in inv_res.data:
+            d = inv.get('data') or {}
+            v_id = d.get('venture_id') or inv.get('venture_id')
+            if v_id != venture_id:
+                continue
+            inv_date = d.get('date') or inv.get('due_date')
+            if not inv_date:
+                continue
+            amt = float(d.get('amount', 0) or inv.get('amount', 0) or 0)
+            day = inv_date[:10]
+            daily_spend[day] = daily_spend.get(day, 0) + amt
+        # Sum stock_ledger OUT entries by day (valued via material rate)
+        stock_res = supabase.table('stock_ledger').select('*').eq(
+            'venture_id', venture_id).eq('entry_type', 'OUT').execute()
+        for entry in stock_res.data:
+            entry_day = entry.get('entry_date', '')[:10]
+            if not entry_day:
+                continue
+            rate = float(entry.get('rate', 0) or 0)
+            qty = float(entry.get('qty', 0) or 0)
+            daily_spend[entry_day] = daily_spend.get(entry_day, 0) + (rate * qty)
+        # Build date range
+        start = datetime.strptime(from_date, '%Y-%m-%d').date()
+        end = datetime.strptime(to_date, '%Y-%m-%d').date()
+        result = []
+        current = start
+        while current <= end:
+            day_str = current.isoformat()
+            result.append({
+                'date': day_str,
+                'amount': round(daily_spend.get(day_str, 0), 2)
+            })
+            current += timedelta(days=1)
+        return jsonify(result)
+    except Exception as e:
+        print(f'Error in date-check expenses: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+# ========================
+# Material Leakage Check API
+# ========================
+
+@app.route('/api/materials/leakage-check')
+@requires_role_or_override('supervisor')
+def api_materials_leakage_check():
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    venture_id = request.args.get('venture_id')
+    if not venture_id:
+        return jsonify({'error': 'venture_id is required'}), 400
+    try:
+        # Materials
+        mats_res = supabase.table('materials').select('*').eq('venture_id', venture_id).execute()
+        materials = mats_res.data or []
+        # Stock balances
+        bal_res = supabase.table('stock_balance').select('*').eq('venture_id', venture_id).execute()
+        balances = {b['material_id']: b for b in (bal_res.data or [])}
+        # PO line items for ordered qty
+        po_li_res = supabase.table('po_line_items').select('*').eq('venture_id', venture_id).execute()
+        po_items = po_li_res.data or []
+        ordered_qty = {}
+        for li in po_items:
+            mid = li.get('material_id', 'unknown')
+            ordered_qty[mid] = ordered_qty.get(mid, 0) + float(li.get('qty', 0))
+        # Stock ledger for received and consumed
+        stock_res = supabase.table('stock_ledger').select('*').eq('venture_id', venture_id).execute()
+        received_qty = {}
+        consumed_qty = {}
+        for entry in stock_res.data:
+            mid = entry.get('material_id', 'unknown')
+            if entry.get('entry_type') == 'IN':
+                received_qty[mid] = received_qty.get(mid, 0) + float(entry.get('qty', 0))
+            elif entry.get('entry_type') == 'OUT':
+                consumed_qty[mid] = consumed_qty.get(mid, 0) + float(entry.get('qty', 0))
+        # Build result
+        rows = []
+        for mat in materials:
+            mid = mat['id']
+            bal = balances.get(mid, {})
+            received = received_qty.get(mid, 0)
+            consumed = consumed_qty.get(mid, 0)
+            ordered = ordered_qty.get(mid, 0)
+            expected_remaining = received - consumed
+            actual_balance = float(bal.get('balance', 0))
+            tolerance = float(mat.get('min_threshold', 0)) * 0.1
+            discrepancy = abs(expected_remaining - actual_balance) > max(tolerance, 0.01)
+            short_delivery = ordered - received
+            rows.append({
+                'material_id': mid,
+                'material_name': mat.get('name', mid),
+                'unit': mat.get('unit', ''),
+                'ordered_qty': round(ordered, 2),
+                'received_qty': round(received, 2),
+                'consumed_qty': round(consumed, 2),
+                'expected_remaining': round(expected_remaining, 2),
+                'actual_balance': round(actual_balance, 2),
+                'short_delivery': round(short_delivery, 2),
+                'discrepancy_flag': discrepancy,
+                'short_delivery_flag': short_delivery > max(tolerance, 0.01),
+                'linked_work_item': mat.get('linked_work_item')
+            })
+        return jsonify(rows)
+    except Exception as e:
+        print(f'Error in material leakage check: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+# ========================
+# Milestone API
+# ========================
+
+@app.route('/api/milestone', methods=['POST'])
+@requires_role_or_override('supervisor')
+def api_milestone_create():
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    body = request.get_json() or {}
+    user = session.get('user', {})
+    try:
+        row = {
+            'venture_id': body.get('venture_id'),
+            'subcontractor_id': body.get('subcontractor_id'),
+            'work_item': body.get('work_item'),
+            'block': body.get('block'),
+            'floor': body.get('floor'),
+            'flat': body.get('flat'),
+            'description': body.get('description', ''),
+            'required_photo_pair': body.get('required_photo_pair', True),
+            'status': 'pending',
+        }
+        res = supabase.table('milestones').insert(row).execute()
+        return jsonify({'success': True, 'id': res.data[0]['id'] if res.data else None})
+    except Exception as e:
+        print(f'Error creating milestone: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/milestone/<milestone_id>/photo', methods=['POST'])
+@requires_role_or_override('supervisor')
+def api_milestone_photo(milestone_id):
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    body = request.get_json() or {}
+    photo_type = body.get('photo_type')  # 'before' or 'after'
+    photo_url = body.get('photo_url')
+    taken_at = body.get('taken_at')
+    user = session.get('user', {})
+    if photo_type not in ('before', 'after'):
+        return jsonify({'error': 'photo_type must be before or after'}), 400
+    if not photo_url:
+        return jsonify({'error': 'photo_url is required'}), 400
+    try:
+        res = supabase.table('milestone_photos').insert({
+            'milestone_id': milestone_id,
+            'photo_type': photo_type,
+            'photo_url': photo_url,
+            'taken_at': taken_at,
+            'uploaded_by': user.get('id') if isinstance(user, dict) else None,
+        }).execute()
+        return jsonify({'success': True, 'id': res.data[0]['id'] if res.data else None})
+    except Exception as e:
+        print(f'Error uploading milestone photo: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/milestone/<milestone_id>/submit', methods=['POST'])
+@requires_role_or_override('supervisor')
+def api_milestone_submit(milestone_id):
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    user = session.get('user', {})
+    try:
+        # Check both before and after photos exist
+        photos_res = supabase.table('milestone_photos').select('*').eq(
+            'milestone_id', milestone_id).execute()
+        photos = photos_res.data or []
+        has_before = any(p.get('photo_type') == 'before' for p in photos)
+        has_after = any(p.get('photo_type') == 'after' for p in photos)
+        if not has_before or not has_after:
+            return jsonify({'error': 'Both before and after photos are required before submission'}), 400
+        supabase.table('milestones').update({
+            'status': 'submitted',
+            'submitted_by': user.get('id') if isinstance(user, dict) else None,
+            'submitted_at': datetime.utcnow().isoformat()
+        }).eq('id', milestone_id).execute()
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f'Error submitting milestone: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/milestone/<milestone_id>/verify', methods=['POST'])
+@requires_role('admin')
+def api_milestone_verify(milestone_id):
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    user = session.get('user', {})
+    try:
+        supabase.table('milestones').update({
+            'status': 'verified',
+            'verified_by': user.get('id') if isinstance(user, dict) else None,
+            'verified_at': datetime.utcnow().isoformat()
+        }).eq('id', milestone_id).execute()
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f'Error verifying milestone: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/milestone/<milestone_id>/reject', methods=['POST'])
+@requires_role('admin')
+def api_milestone_reject(milestone_id):
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    try:
+        supabase.table('milestones').update({
+            'status': 'rejected'
+        }).eq('id', milestone_id).execute()
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f'Error rejecting milestone: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/milestones')
+@requires_role_or_override('supervisor')
+def api_milestones_list():
+    if not supabase:
+        return jsonify([]), 500
+    venture_id = request.args.get('venture_id')
+    status = request.args.get('status')
+    q = supabase.table('milestones').select('*, milestone_photos(*)')
+    if venture_id:
+        q = q.eq('venture_id', venture_id)
+    if status:
+        q = q.eq('status', status)
+    res = q.execute()
+    return jsonify(res.data or [])
+
+
+# ========================
+# Budgets & Burn Report API (Admin-only)
+# ========================
+
+@app.route('/api/budgets', methods=['GET', 'POST'])
+@requires_role('admin')
+def api_budgets():
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    if request.method == 'GET':
+        venture_id = request.args.get('venture_id')
+        q = supabase.table('budgets').select('*')
+        if venture_id:
+            q = q.eq('venture_id', venture_id)
+        res = q.execute()
+        return jsonify(res.data or [])
+    else:
+        body = request.get_json() or {}
+        user = session.get('user', {})
+        try:
+            row = {
+                'venture_id': body.get('venture_id'),
+                'budget_date': body.get('budget_date'),
+                'daily_budget': body.get('daily_budget', 0),
+                'interval': body.get('interval', 'daily'),
+                'created_by': user.get('id') if isinstance(user, dict) else None,
+            }
+            res = supabase.table('budgets').insert(row).execute()
+            return jsonify({'success': True, 'id': res.data[0]['id'] if res.data else None})
+        except Exception as e:
+            print(f'Error saving budget: {e}')
+            return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/budgets/burn-report')
+@requires_role('admin')
+def api_budgets_burn_report():
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    venture_id = request.args.get('venture_id')
+    from_date = request.args.get('from')
+    to_date = request.args.get('to')
+    if not venture_id or not from_date or not to_date:
+        return jsonify({'error': 'venture_id, from, and to are required'}), 400
+    try:
+        # Get budgets for this venture
+        budget_res = supabase.table('budgets').select('*').eq('venture_id', venture_id).execute()
+        budgets = budget_res.data or []
+        # Build daily budget map (expand weekly into 7 days)
+        daily_budget_map = {}
+        for b in budgets:
+            bdate = b.get('budget_date', '')[:10]
+            amt = float(b.get('daily_budget', 0))
+            if b.get('interval') == 'weekly':
+                for i in range(7):
+                    d = (datetime.strptime(bdate, '%Y-%m-%d').date() + timedelta(days=i)).isoformat()
+                    daily_budget_map[d] = daily_budget_map.get(d, 0) + amt
+            else:
+                daily_budget_map[bdate] = daily_budget_map.get(bdate, 0) + amt
+        # Actual spend: invoices + stock_ledger IN
+        inv_res = supabase.table('invoices').select('*').execute()
+        daily_spend = {}
+        for inv in inv_res.data:
+            d = inv.get('data') or {}
+            v_id = d.get('venture_id') or inv.get('venture_id')
+            if v_id != venture_id:
+                continue
+            inv_date = d.get('date') or inv.get('due_date')
+            if not inv_date:
+                continue
+            amt = float(d.get('amount', 0) or inv.get('amount', 0) or 0)
+            day = inv_date[:10]
+            daily_spend[day] = daily_spend.get(day, 0) + amt
+        stock_res = supabase.table('stock_ledger').select('*').eq(
+            'venture_id', venture_id).eq('entry_type', 'IN').execute()
+        for entry in stock_res.data:
+            entry_day = entry.get('entry_date', '')[:10]
+            if not entry_day:
+                continue
+            amt = float(entry.get('amount', 0) or 0)
+            daily_spend[entry_day] = daily_spend.get(entry_day, 0) + amt
+        # Build date range
+        start = datetime.strptime(from_date, '%Y-%m-%d').date()
+        end = datetime.strptime(to_date, '%Y-%m-%d').date()
+        result = []
+        mtd_budget = 0
+        mtd_actual = 0
+        current = start
+        while current <= end:
+            day_str = current.isoformat()
+            budget = daily_budget_map.get(day_str, 0)
+            actual = daily_spend.get(day_str, 0)
+            variance = budget - actual
+            variance_pct = round((variance / budget * 100), 1) if budget else 0
+            result.append({
+                'date': day_str,
+                'budget': round(budget, 2),
+                'actual': round(actual, 2),
+                'variance': round(variance, 2),
+                'variance_pct': variance_pct
+            })
+            mtd_budget += budget
+            mtd_actual += actual
+            current += timedelta(days=1)
+        return jsonify({
+            'days': result,
+            'mtd_budget': round(mtd_budget, 2),
+            'mtd_actual': round(mtd_actual, 2),
+            'mtd_variance': round(mtd_budget - mtd_actual, 2)
+        })
+    except Exception as e:
+        print(f'Error generating burn report: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+# ========================
 # Test DB
 # ========================
 
@@ -669,4 +1337,4 @@ def api_test_db():
 
 
 if __name__ == '__main__':
-    app.run(debug=False, host='0.0.0.0', port=5000)
+    app.run(debug=True, host='0.0.0.0', port=5000)

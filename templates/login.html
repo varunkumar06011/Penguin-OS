@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>VGrand Infra Tracking - Login</title>
+    <link rel="stylesheet" href="/static/css/fonts.css">
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body class="login-body">
@@ -12,13 +13,18 @@
             <h1>VGrand Infra Tracking</h1>
             <p>Construction Site Progress Tracker</p>
             <form id="loginForm">
+                <div class="login-portals">
+                    <button type="button" class="portal-btn active" data-username="Vgrand01" data-password="Infra1234" data-role="supervisor">Supervisor Portal</button>
+                    <button type="button" class="portal-btn" data-username="vgrand02" data-password="infra 123" data-role="manager">Manager Portal</button>
+                    <button type="button" class="portal-btn" data-username="vgrand03" data-password="infra 12345" data-role="admin">Admin Portal</button>
+                </div>
                 <div class="form-group">
                     <label for="username">Username</label>
-                    <input type="text" id="username" name="username" value="Vgrand@123" required>
+                    <input type="text" id="username" name="username" value="Vgrand01" required>
                 </div>
                 <div class="form-group">
                     <label for="password">Password</label>
-                    <input type="password" id="password" name="password" value="Vgrand1234" required>
+                    <input type="password" id="password" name="password" value="Infra1234" required>
                 </div>
                 <div class="error-msg" id="loginError"></div>
                 <button type="submit" class="btn-primary">Sign In</button>
@@ -26,6 +32,15 @@
         </div>
     </div>
     <script>
+        document.querySelectorAll('.portal-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.portal-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                document.getElementById('username').value = btn.dataset.username;
+                document.getElementById('password').value = btn.dataset.password;
+            });
+        });
+
         document.getElementById('loginForm').addEventListener('submit', async function(e) {
             e.preventDefault();
             const username = document.getElementById('username').value;

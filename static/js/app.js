@@ -24,6 +24,18 @@ async function apiPost(path, data) {
     return res.json();
 }
 
+async function apiUpload(path, formData) {
+    const res = await fetch(path, {
+        method: 'POST',
+        body: formData
+    });
+    if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(`HTTP ${res.status}: ${text}`);
+    }
+    return res.json();
+}
+
 async function apiDelete(path) {
     await fetch(path, { method: 'DELETE' });
 }
@@ -149,7 +161,7 @@ let archivedItems = {};
 let pendingFilterFloor = 'all';
 let pendingFilterFlat = 'all';
 let lastPendingRows = [];
-let homeQuickReportType = 'reports';
+let homeQuickReportType = 'pending';
 let homeQuickReportVenture = null;
 let homeQuickReportBlock = null;
 let homeQuickReportFloor = 1;
@@ -483,6 +495,17 @@ function buildPermissions(role) {
         p.editWorkItems = false;
         p.editVentures = false;
         p.manageUsers = false;
+        p.viewInstantReports = false;
+        p.viewInventoryAudit = false;
+        p.viewDatewiseExpenses = false;
+        p.viewMaterialLeakage = true;
+        p.viewMilestones = true;
+        p.verifyMilestones = false;
+        p.releasePayroll = false;
+        p.viewBurnReport = false;
+        p.manageBudgets = false;
+        p.createCategory = false;
+        p.reorderCells = false;
     } else if (role === 'manager' || role === 'admin') {
         p.viewDashboard = true;
         p.updateCellStatus = true;
@@ -495,6 +518,17 @@ function buildPermissions(role) {
         p.editWorkItems = true;
         p.editVentures = true;
         p.manageUsers = role === 'admin';
+        p.viewInstantReports = role === 'admin';
+        p.viewInventoryAudit = role === 'admin';
+        p.viewDatewiseExpenses = role === 'admin';
+        p.viewMaterialLeakage = true;
+        p.viewMilestones = true;
+        p.verifyMilestones = role === 'admin';
+        p.releasePayroll = role === 'admin';
+        p.viewBurnReport = role === 'admin';
+        p.manageBudgets = role === 'admin';
+        p.createCategory = true;
+        p.reorderCells = true;
     } else {
         // Unknown / fallback read-only
         p.viewDashboard = true;
@@ -584,20 +618,12 @@ async function ensureCellsInCache(requiredKeys) {
     const missing = requiredKeys.filter(k => cellsCache[k] === undefined);
     if (missing.length === 0) return;
     try {
-        const allCells = await apiGet('/api/cells');
-        if (allCells) {
-            Object.assign(cellsCache, allCells);
-        }
-    } catch (e) {
-        console.error('Failed to bulk load cells:', e);
-    }
-}
-
-async function ensureCellsInCache(requiredKeys) {
-    const missing = requiredKeys.filter(k => cellsCache[k] === undefined);
-    if (missing.length === 0) return;
-    try {
-        const allCells = await apiGet('/api/cells');
+        const params = new URLSearchParams();
+        if (currentVenture && currentVenture.id) params.set('venture_id', currentVenture.id);
+        if (currentBlock) params.set('block', currentBlock);
+        if (currentFloor !== null && currentFloor !== undefined) params.set('floor', String(currentFloor));
+        const qs = params.toString();
+        const allCells = await apiGet(`/api/cells${qs ? '?' + qs : ''}`);
         if (allCells) {
             Object.assign(cellsCache, allCells);
         }
@@ -986,6 +1012,57 @@ async function renderWorkView() {
     }
 
     const workCategories = ensureWorkCategories((currentVenture && currentVenture.work_categories) ? currentVenture.work_categories : WORK_CATEGORIES);
+    const categoryNames = Object.keys(workCategories);
+
+    // Category chip bar (non-edit mode only)
+    if (!editMode && categoryNames.length > 1) {
+        const chipBar = document.createElement('div');
+        chipBar.className = 'category-chip-bar';
+        chipBar.style.cssText = 'display:flex;gap:8px;padding:8px 24px;flex-wrap:wrap;background:#fff;border-bottom:1px solid #e0e4e8;';
+
+        const allChip = document.createElement('button');
+        allChip.className = 'category-chip';
+        allChip.textContent = 'All';
+        allChip.style.cssText = 'padding:6px 14px;border:1px solid #1a1a1a;border-radius:16px;background:#1a1a1a;color:#fff;cursor:pointer;font-size:0.8rem;';
+        allChip.dataset.category = '__all__';
+        chipBar.appendChild(allChip);
+
+        categoryNames.forEach(cat => {
+            const chip = document.createElement('button');
+            chip.className = 'category-chip';
+            chip.textContent = cat;
+            chip.style.cssText = 'padding:6px 14px;border:1px solid #ccc;border-radius:16px;background:#fff;color:#555;cursor:pointer;font-size:0.8rem;';
+            chip.dataset.category = cat;
+            chipBar.appendChild(chip);
+        });
+
+        container.appendChild(chipBar);
+
+        chipBar.addEventListener('click', (e) => {
+            const chip = e.target.closest('.category-chip');
+            if (!chip) return;
+            const cat = chip.dataset.category;
+            chipBar.querySelectorAll('.category-chip').forEach(c => {
+                if (c.dataset.category === cat) {
+                    c.style.background = '#1a1a1a';
+                    c.style.color = '#fff';
+                    c.style.borderColor = '#1a1a1a';
+                } else {
+                    c.style.background = '#fff';
+                    c.style.color = '#555';
+                    c.style.borderColor = '#ccc';
+                }
+            });
+            // Show/hide sections
+            container.querySelectorAll('.work-view-section').forEach(sec => {
+                if (cat === '__all__' || sec.dataset.category === cat) {
+                    sec.style.display = '';
+                } else {
+                    sec.style.display = 'none';
+                }
+            });
+        });
+    }
 
     // Preload all cell data in one bulk request
     const requiredKeys = [];
@@ -1008,7 +1085,9 @@ async function renderWorkView() {
     // Render all category sections
     Object.entries(workCategories).forEach(([category, items]) => {
         const catFlats = CATEGORY_FLATS[category] || flatNumbers;
-        container.appendChild(createSectionTable(category, items, catFlats));
+        const sectionEl = createSectionTable(category, items, catFlats);
+        sectionEl.dataset.category = category;
+        container.appendChild(sectionEl);
     });
 
     // Add category row in edit mode
@@ -1867,6 +1946,7 @@ async function init() {
     await applyHashRoute();
     applyRoleBasedUI();
     startPolling();
+    ensureMobileActionBar();
 }
 
 function applyRoleBasedUI() {
@@ -1891,12 +1971,18 @@ function applyRoleBasedUI() {
     hide('addPOBtn');
     hide('addVendorBtn');
     hide('addVendorCategoryBtn');
-    hide('homePayrollBtn');
+    hide('openInstantReportsBtn');
+    hide('openInventoryAuditBtn');
+    hide('openDatewiseExpensesBtn');
+    hide('openBurnReportBtn');
 
     if (currentUserPermissions.viewInvoices) show('openInvoicesBtn');
     if (currentUserPermissions.viewPayroll) show('openPayrollBtn');
     if (currentUserPermissions.viewPOs) show('openPOBtn');
-    if (currentUserPermissions.viewPayroll) show('homePayrollBtn');
+    if (currentUserPermissions.viewInstantReports) show('openInstantReportsBtn');
+    if (currentUserPermissions.viewInventoryAudit) show('openInventoryAuditBtn');
+    if (currentUserPermissions.viewDatewiseExpenses) show('openDatewiseExpensesBtn');
+    if (currentUserPermissions.viewBurnReport) show('openBurnReportBtn');
     if (currentUserPermissions.editWorkItems || currentUserPermissions.editVentures) {
         show('settingsBtn');
         show('editModeBtn');
@@ -2368,7 +2454,8 @@ function renderVentureDashboard() {
     document.getElementById('venturesDashboard').style.display = '';
     document.getElementById('trackerView').style.display = 'none';
     document.getElementById('breadcrumbBar').style.display = 'none';
-    ['invoicesPanel', 'poPanel', 'payrollPanel', 'inventoryPanel'].forEach(id => {
+    ['invoicesPanel', 'poPanel', 'reportsPanel', 'payrollPanel', 'inventoryPanel',
+     'instantReportsPanel', 'inventoryAuditPanel', 'datewiseExpensesPanel', 'burnReportPanel'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.display = 'none';
     });
@@ -2438,6 +2525,8 @@ function renderVentureDashboard() {
 }
 
 function renderHomeQuickReports() {
+    // Quick Reports panel removed; main nav buttons are the primary access.
+    return;
     const ventureSelect = document.getElementById('homeReportVenture');
     const blockSelect = document.getElementById('homeReportBlock');
     const floorSelect = document.getElementById('homeReportFloor');
@@ -2487,27 +2576,6 @@ function renderHomeQuickReports() {
 
     document.getElementById('homePendingWorkBtn').onclick = () => {
         homeQuickReportType = 'pending';
-        updateHomeQuickReportButtonStates();
-        runHomeQuickReport();
-    };
-    document.getElementById('homeReportsBtn').onclick = () => {
-        homeQuickReportType = 'reports';
-        updateHomeQuickReportButtonStates();
-        runHomeQuickReport();
-    };
-    document.getElementById('homePayrollBtn').onclick = () => {
-        if (!payrollPasswordVerified) {
-            const entered = window.prompt('Enter payroll password (amount 1010):');
-            if (entered !== PAYROLL_PASSWORD) {
-                showToast('Incorrect payroll password', true);
-                document.getElementById('homeReportsOutput').innerHTML = '';
-                homeQuickReportType = 'reports';
-                updateHomeQuickReportButtonStates();
-                return;
-            }
-            payrollPasswordVerified = true;
-        }
-        homeQuickReportType = 'payroll';
         updateHomeQuickReportButtonStates();
         runHomeQuickReport();
     };
@@ -2596,10 +2664,6 @@ async function runHomeQuickReport() {
         pendingFilterFlat = homeQuickReportFlat;
         previousView = 'flat';
         await renderPendingView(output);
-    } else if (homeQuickReportType === 'reports') {
-        await renderHomeReports(output);
-    } else if (homeQuickReportType === 'payroll') {
-        await renderHomePayroll(output);
     }
 }
 
@@ -2979,6 +3043,22 @@ async function openVenture(venture, opts = {}) {
     } else if (currentView === 'super') {
         await renderSuperStructure();
     }
+
+    // Render admin/manager widgets if venture is open
+    const leakageWidget = document.getElementById('materialLeakageWidget');
+    const milestoneWidget = document.getElementById('milestoneWidget');
+    if (leakageWidget && currentUserPermissions.viewMaterialLeakage && currentVenture.id) {
+        leakageWidget.style.display = '';
+        renderMaterialLeakageWidget(leakageWidget, currentVenture.id);
+    } else if (leakageWidget) {
+        leakageWidget.style.display = 'none';
+    }
+    if (milestoneWidget && currentUserPermissions.viewMilestones && currentVenture.id) {
+        milestoneWidget.style.display = '';
+        renderMilestoneWidget(milestoneWidget, currentVenture.id);
+    } else if (milestoneWidget) {
+        milestoneWidget.style.display = 'none';
+    }
 }
 
 function exitToDashboard() {
@@ -2990,6 +3070,10 @@ function exitToDashboard() {
     document.getElementById('editModeBtn').style.display = 'none';
     document.getElementById('editModeBanner').style.display = 'none';
     document.body.classList.remove('edit-mode-active');
+    const lw = document.getElementById('materialLeakageWidget');
+    if (lw) lw.style.display = 'none';
+    const mw = document.getElementById('milestoneWidget');
+    if (mw) mw.style.display = 'none';
     renderVentureDashboard();
     navigateTo('#/ventures');
 }
@@ -3450,6 +3534,9 @@ async function addWorkCategory(categoryName) {
     currentVenture.work_categories = cats;
     await logEdit('add', 'work_category', categoryName, null, categoryName);
     await saveVentureConfig();
+    if (currentVenture.id) {
+        try { await apiPost('/api/category', { venture_id: currentVenture.id, name: categoryName }); } catch (e) {}
+    }
     renderWorkView();
 }
 
@@ -4279,6 +4366,16 @@ document.getElementById('backFromInvoices').addEventListener('click', closeInvoi
 // Inventory event wiring
 document.getElementById('openInventoryBtn').addEventListener('click', openInventoryPanel);
 document.getElementById('backFromInventory').addEventListener('click', closeInventoryPanel);
+
+// Admin-only panel event wiring
+document.getElementById('openInstantReportsBtn').addEventListener('click', openInstantReportsPanel);
+document.getElementById('backFromInstantReports').addEventListener('click', closeInstantReportsPanel);
+document.getElementById('openInventoryAuditBtn').addEventListener('click', openInventoryAuditPanel);
+document.getElementById('backFromInventoryAudit').addEventListener('click', closeInventoryAuditPanel);
+document.getElementById('openDatewiseExpensesBtn').addEventListener('click', openDatewiseExpensesPanel);
+document.getElementById('backFromDatewiseExpenses').addEventListener('click', closeDatewiseExpensesPanel);
+document.getElementById('openBurnReportBtn').addEventListener('click', openBurnReportPanel);
+document.getElementById('backFromBurnReport').addEventListener('click', closeBurnReportPanel);
 
 document.getElementById('addInvoiceBtn').addEventListener('click', () => openInvoiceForm(null));
 document.getElementById('closeInvoiceForm').addEventListener('click', closeInvoiceForm);
@@ -5396,6 +5493,15 @@ async function renderPayrollView() {
     exportGroup.innerHTML = `<button id="payrollExportCSV" class="btn-secondary" style="padding:8px 16px;">📄 Export CSV</button>`;
     headerBar.appendChild(exportGroup);
 
+    // Release Payroll button (admin only)
+    if (currentUserPermissions.releasePayroll && !isAllMode) {
+        const releaseGroup = document.createElement('div');
+        releaseGroup.className = 'pending-filter-group';
+        releaseGroup.style.alignSelf = 'flex-end';
+        releaseGroup.innerHTML = `<button id="payrollReleaseBtn" class="btn-primary" style="padding:8px 16px;">🔓 Release Payroll</button>`;
+        headerBar.appendChild(releaseGroup);
+    }
+
     container.appendChild(headerBar);
 
     // Load payroll data for the month
@@ -5514,6 +5620,43 @@ async function renderPayrollView() {
     }
 
     container.querySelector('#payrollExportCSV').addEventListener('click', exportPayrollCSV);
+
+    const releaseBtn = container.querySelector('#payrollReleaseBtn');
+    if (releaseBtn) {
+        releaseBtn.addEventListener('click', async () => {
+            const monthSel = container.querySelector('#payrollMonthSelect');
+            const month = monthSel ? monthSel.value : new Date().toISOString().slice(0, 7);
+            showConfirm('Release Payroll', `Release payroll for ${month}? This requires all milestones to be verified.`, async () => {
+                try {
+                    const payrolls = await apiGet(`/api/payroll?venture_id=${encodeURIComponent(venture.id)}&month=${month}`);
+                    if (!payrolls || payrolls.length === 0) {
+                        showToast('No payroll entries found for this month', true);
+                        return;
+                    }
+                    let released = 0;
+                    let failed = 0;
+                    for (const p of payrolls) {
+                        if (p.status === 'pending') {
+                            try {
+                                await apiPost(`/api/payroll/${p.id}/release`, {});
+                                released++;
+                            } catch (err) {
+                                failed++;
+                            }
+                        }
+                    }
+                    if (failed > 0) {
+                        showToast(`Released ${released}, ${failed} failed (milestone not verified)`, true);
+                    } else {
+                        showToast(`Released ${released} payroll ${released === 1 ? 'entry' : 'entries'}`);
+                    }
+                    renderPayrollView();
+                } catch (err) {
+                    showToast('Failed to release payroll: ' + err.message, true);
+                }
+            });
+        });
+    }
 
     if (!isAllMode) {
         container.querySelectorAll('.payroll-edit-btn').forEach(btn => {
@@ -6495,3 +6638,536 @@ document.getElementById('saveMaterial').addEventListener('click', async () => {
     }
 });
 
+// ========================
+// Admin Panel Functions
+// ========================
+
+function hideAllMainPanels() {
+    ['venturesDashboard', 'invoicesPanel', 'poPanel', 'payrollPanel', 'inventoryPanel',
+     'instantReportsPanel', 'inventoryAuditPanel', 'datewiseExpensesPanel', 'burnReportPanel',
+     'trackerView'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+    });
+    const bc = document.getElementById('breadcrumbBar');
+    if (bc) bc.style.display = 'none';
+}
+
+function openInstantReportsPanel() {
+    hideAllMainPanels();
+    document.getElementById('instantReportsPanel').style.display = '';
+    renderInstantReports();
+}
+
+function closeInstantReportsPanel() {
+    document.getElementById('instantReportsPanel').style.display = 'none';
+    document.getElementById('venturesDashboard').style.display = '';
+    navigateTo('#/ventures');
+}
+
+function openInventoryAuditPanel() {
+    hideAllMainPanels();
+    document.getElementById('inventoryAuditPanel').style.display = '';
+    renderInventoryAudit();
+}
+
+function closeInventoryAuditPanel() {
+    document.getElementById('inventoryAuditPanel').style.display = 'none';
+    document.getElementById('venturesDashboard').style.display = '';
+    navigateTo('#/ventures');
+}
+
+function openDatewiseExpensesPanel() {
+    hideAllMainPanels();
+    document.getElementById('datewiseExpensesPanel').style.display = '';
+    renderDatewiseExpenses();
+}
+
+function closeDatewiseExpensesPanel() {
+    document.getElementById('datewiseExpensesPanel').style.display = 'none';
+    document.getElementById('venturesDashboard').style.display = '';
+    navigateTo('#/ventures');
+}
+
+function openBurnReportPanel() {
+    hideAllMainPanels();
+    document.getElementById('burnReportPanel').style.display = '';
+    renderBurnReport();
+}
+
+function closeBurnReportPanel() {
+    document.getElementById('burnReportPanel').style.display = 'none';
+    document.getElementById('venturesDashboard').style.display = '';
+    navigateTo('#/ventures');
+}
+
+// ========================
+// Instant Reports Renderer
+// ========================
+
+async function renderInstantReports() {
+    const container = document.getElementById('instantReportsContent');
+    if (!container) return;
+    container.innerHTML = '<div style="padding:24px;color:#888;">Loading instant reports...</div>';
+
+    const ventureSelect = document.createElement('select');
+    ventureSelect.className = 'pending-filter-group-select';
+    ventureSelect.style.cssText = 'padding:8px 12px;border:1px solid #ccc;border-radius:6px;font-size:0.9rem;margin:16px 24px;';
+    ventureSelect.innerHTML = '<option value="">-- Select Venture --</option>';
+    venturesList.forEach(v => {
+        ventureSelect.innerHTML += `<option value="${v.id}">${v.name}</option>`;
+    });
+    container.innerHTML = '';
+    container.appendChild(ventureSelect);
+
+    const outputDiv = document.createElement('div');
+    outputDiv.style.cssText = 'padding:0 24px;';
+    container.appendChild(outputDiv);
+
+    ventureSelect.addEventListener('change', async () => {
+        const vid = ventureSelect.value;
+        if (!vid) { outputDiv.innerHTML = ''; return; }
+        outputDiv.innerHTML = '<div style="padding:24px;color:#888;">Loading...</div>';
+        try {
+            const data = await apiGet(`/api/reports/instant?venture_id=${encodeURIComponent(vid)}`);
+            let html = '<div style="display:flex;gap:24px;flex-wrap:wrap;padding:16px 0;">';
+
+            // Spend summary
+            html += '<div style="flex:1;min-width:200px;background:#fff;border:1px solid #e0e4e8;border-radius:8px;padding:16px;">';
+            html += '<h4 style="margin:0 0 12px 0;font-size:0.9rem;">Total Spend</h4>';
+            html += `<div style="font-size:1.4rem;font-weight:700;">&#8377; ${(data.spend.invoices + data.spend.purchase_orders).toLocaleString('en-IN')}</div>`;
+            html += `<div style="font-size:0.8rem;color:#888;margin-top:4px;">Invoices: &#8377; ${data.spend.invoices.toLocaleString('en-IN')} | POs: &#8377; ${data.spend.purchase_orders.toLocaleString('en-IN')}</div>`;
+            html += '</div>';
+
+            // Block completion
+            if (data.blocks.length > 0) {
+                html += '<div style="flex:2;min-width:300px;background:#fff;border:1px solid #e0e4e8;border-radius:8px;padding:16px;">';
+                html += '<h4 style="margin:0 0 12px 0;font-size:0.9rem;">Block Completion</h4>';
+                html += '<table class="tracker-table" style="font-size:0.85rem;"><thead><tr><th>Block</th><th>Floor</th><th>Total</th><th>Done</th><th>%</th></tr></thead><tbody>';
+                data.blocks.forEach(b => {
+                    html += `<tr><td>${b.block}</td><td>${b.floor}</td><td>${b.total}</td><td>${b.completed}</td><td>${b.pct_complete}%</td></tr>`;
+                });
+                html += '</tbody></table></div>';
+            }
+
+            // Consumption
+            if (data.consumption.length > 0) {
+                html += '<div style="flex:1;min-width:200px;background:#fff;border:1px solid #e0e4e8;border-radius:8px;padding:16px;">';
+                html += '<h4 style="margin:0 0 12px 0;font-size:0.9rem;">Material Consumption</h4>';
+                data.consumption.forEach(c => {
+                    html += `<div style="font-size:0.8rem;padding:4px 0;">${c.material_id}: ${c.total_qty}</div>`;
+                });
+                html += '</div>';
+            }
+
+            html += '</div>';
+            outputDiv.innerHTML = html;
+        } catch (err) {
+            outputDiv.innerHTML = `<div style="padding:24px;color:#c0392b;">Error: ${err.message}</div>`;
+        }
+    });
+}
+
+// ========================
+// Inventory Audit Renderer
+// ========================
+
+async function renderInventoryAudit() {
+    const container = document.getElementById('inventoryAuditContent');
+    if (!container) return;
+    container.innerHTML = '';
+
+    const ventureSelect = document.createElement('select');
+    ventureSelect.style.cssText = 'padding:8px 12px;border:1px solid #ccc;border-radius:6px;font-size:0.9rem;margin:16px 24px;';
+    ventureSelect.innerHTML = '<option value="">-- Select Venture --</option>';
+    venturesList.forEach(v => {
+        ventureSelect.innerHTML += `<option value="${v.id}">${v.name}</option>`;
+    });
+    container.appendChild(ventureSelect);
+
+    const outputDiv = document.createElement('div');
+    outputDiv.style.cssText = 'padding:0 24px;';
+    container.appendChild(outputDiv);
+
+    ventureSelect.addEventListener('change', async () => {
+        const vid = ventureSelect.value;
+        if (!vid) { outputDiv.innerHTML = ''; return; }
+        outputDiv.innerHTML = '<div style="padding:24px;color:#888;">Loading audit...</div>';
+        try {
+            const rows = await apiGet(`/api/inventory/audit?venture_id=${encodeURIComponent(vid)}`);
+            if (!rows.length) {
+                outputDiv.innerHTML = '<div style="padding:24px;color:#888;">No materials found for this venture.</div>';
+                return;
+            }
+            let html = '<table class="tracker-table" style="font-size:0.85rem;margin-top:16px;">';
+            html += '<thead><tr><th>Material</th><th>Ordered</th><th>Received</th><th>Consumed</th><th>Expected Rem.</th><th>Actual Bal.</th><th>Short Del.</th><th>Flag</th></tr></thead><tbody>';
+            rows.forEach(r => {
+                const flagClass = r.discrepancy_flag ? ' style="background:#f5f5f5;font-weight:600;"' : '';
+                const flagText = r.discrepancy_flag ? '⚠ Discrepancy' : (r.short_delivery > 0 ? 'Short Delivery' : 'OK');
+                html += `<tr${flagClass}><td>${r.material_name}</td><td>${r.ordered_qty} ${r.unit}</td><td>${r.received_qty} ${r.unit}</td><td>${r.consumed_qty} ${r.unit}</td><td>${r.expected_remaining} ${r.unit}</td><td>${r.actual_balance} ${r.unit}</td><td>${r.short_delivery} ${r.unit}</td><td>${flagText}</td></tr>`;
+            });
+            html += '</tbody></table>';
+            outputDiv.innerHTML = html;
+        } catch (err) {
+            outputDiv.innerHTML = `<div style="padding:24px;color:#c0392b;">Error: ${err.message}</div>`;
+        }
+    });
+}
+
+// ========================
+// Date-wise Expenses Renderer
+// ========================
+
+async function renderDatewiseExpenses() {
+    const container = document.getElementById('datewiseExpensesContent');
+    if (!container) return;
+    container.innerHTML = '';
+
+    const bar = document.createElement('div');
+    bar.style.cssText = 'display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;padding:16px 24px;';
+    bar.innerHTML = `
+        <div class="pending-filter-group"><label>Venture</label><select id="dwExpVenture"></select></div>
+        <div class="pending-filter-group"><label>From</label><input type="date" id="dwExpFrom"></div>
+        <div class="pending-filter-group"><label>To</label><input type="date" id="dwExpTo"></div>
+        <div class="pending-filter-group"><button id="dwExpGo" class="btn-primary" style="padding:8px 16px;">Check</button></div>
+    `;
+    container.appendChild(bar);
+
+    const sel = bar.querySelector('#dwExpVenture');
+    sel.innerHTML = '<option value="">-- Select Venture --</option>';
+    venturesList.forEach(v => {
+        sel.innerHTML += `<option value="${v.id}">${v.name}</option>`;
+    });
+
+    const today = new Date().toISOString().slice(0, 10);
+    const monthAgo = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+    bar.querySelector('#dwExpFrom').value = monthAgo;
+    bar.querySelector('#dwExpTo').value = today;
+
+    const outputDiv = document.createElement('div');
+    outputDiv.style.cssText = 'padding:0 24px;';
+    container.appendChild(outputDiv);
+
+    bar.querySelector('#dwExpGo').addEventListener('click', async () => {
+        const vid = sel.value;
+        const from = bar.querySelector('#dwExpFrom').value;
+        const to = bar.querySelector('#dwExpTo').value;
+        if (!vid || !from || !to) { showToast('Please select venture and date range', true); return; }
+        outputDiv.innerHTML = '<div style="padding:24px;color:#888;">Loading...</div>';
+        try {
+            const rows = await apiGet(`/api/expenses/date-check?venture_id=${encodeURIComponent(vid)}&from=${from}&to=${to}`);
+            let total = 0;
+            let html = '<table class="tracker-table" style="font-size:0.85rem;margin-top:16px;">';
+            html += '<thead><tr><th>Date</th><th>Amount</th></tr></thead><tbody>';
+            rows.forEach(r => {
+                total += r.amount;
+                const isZero = r.amount === 0;
+                html += `<tr${isZero ? ' style="color:#ccc;"' : ''}><td>${r.date}</td><td>&#8377; ${r.amount.toLocaleString('en-IN')}</td></tr>`;
+            });
+            html += `</tbody><tfoot><tr style="font-weight:700;"><td>Total</td><td>&#8377; ${total.toLocaleString('en-IN')}</td></tr></tfoot></table>`;
+            outputDiv.innerHTML = html;
+        } catch (err) {
+            outputDiv.innerHTML = `<div style="padding:24px;color:#c0392b;">Error: ${err.message}</div>`;
+        }
+    });
+}
+
+// ========================
+// Cash Burn Report Renderer
+// ========================
+
+async function renderBurnReport() {
+    const container = document.getElementById('burnReportContent');
+    if (!container) return;
+    container.innerHTML = '';
+
+    const bar = document.createElement('div');
+    bar.style.cssText = 'display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;padding:16px 24px;';
+    bar.innerHTML = `
+        <div class="pending-filter-group"><label>Venture</label><select id="burnVenture"></select></div>
+        <div class="pending-filter-group"><label>From</label><input type="date" id="burnFrom"></div>
+        <div class="pending-filter-group"><label>To</label><input type="date" id="burnTo"></div>
+        <div class="pending-filter-group"><button id="burnGo" class="btn-primary" style="padding:8px 16px;">Generate</button></div>
+    `;
+    container.appendChild(bar);
+
+    const sel = bar.querySelector('#burnVenture');
+    sel.innerHTML = '<option value="">-- Select Venture --</option>';
+    venturesList.forEach(v => {
+        sel.innerHTML += `<option value="${v.id}">${v.name}</option>`;
+    });
+
+    const today = new Date().toISOString().slice(0, 10);
+    const monthAgo = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+    bar.querySelector('#burnFrom').value = monthAgo;
+    bar.querySelector('#burnTo').value = today;
+
+    const outputDiv = document.createElement('div');
+    outputDiv.style.cssText = 'padding:0 24px;';
+    container.appendChild(outputDiv);
+
+    bar.querySelector('#burnGo').addEventListener('click', async () => {
+        const vid = sel.value;
+        const from = bar.querySelector('#burnFrom').value;
+        const to = bar.querySelector('#burnTo').value;
+        if (!vid || !from || !to) { showToast('Please select venture and date range', true); return; }
+        outputDiv.innerHTML = '<div style="padding:24px;color:#888;">Loading burn report...</div>';
+        try {
+            const data = await apiGet(`/api/budgets/burn-report?venture_id=${encodeURIComponent(vid)}&from=${from}&to=${to}`);
+            let html = '<div style="display:flex;gap:16px;flex-wrap:wrap;padding:16px 0;">';
+            html += `<div style="background:#fff;border:1px solid #e0e4e8;border-radius:8px;padding:16px;flex:1;min-width:150px;"><h4 style="margin:0 0 8px;font-size:0.85rem;">MTD Budget</h4><div style="font-size:1.2rem;font-weight:700;">&#8377; ${data.mtd_budget.toLocaleString('en-IN')}</div></div>`;
+            html += `<div style="background:#fff;border:1px solid #e0e4e8;border-radius:8px;padding:16px;flex:1;min-width:150px;"><h4 style="margin:0 0 8px;font-size:0.85rem;">MTD Actual</h4><div style="font-size:1.2rem;font-weight:700;">&#8377; ${data.mtd_actual.toLocaleString('en-IN')}</div></div>`;
+            const varColor = data.mtd_variance >= 0 ? '#27ae60' : '#c0392b';
+            html += `<div style="background:#fff;border:1px solid #e0e4e8;border-radius:8px;padding:16px;flex:1;min-width:150px;"><h4 style="margin:0 0 8px;font-size:0.85rem;">MTD Variance</h4><div style="font-size:1.2rem;font-weight:700;color:${varColor};">&#8377; ${data.mtd_variance.toLocaleString('en-IN')}</div></div>`;
+            html += '</div>';
+
+            html += '<table class="tracker-table" style="font-size:0.85rem;margin-top:16px;">';
+            html += '<thead><tr><th>Date</th><th>Budget</th><th>Actual</th><th>Variance</th><th>Var %</th></tr></thead><tbody>';
+            data.days.forEach(d => {
+                const vColor = d.variance >= 0 ? '#27ae60' : '#c0392b';
+                html += `<tr><td>${d.date}</td><td>&#8377; ${d.budget.toLocaleString('en-IN')}</td><td>&#8377; ${d.actual.toLocaleString('en-IN')}</td><td style="color:${vColor};">&#8377; ${d.variance.toLocaleString('en-IN')}</td><td>${d.variance_pct}%</td></tr>`;
+            });
+            html += '</tbody></table>';
+            outputDiv.innerHTML = html;
+        } catch (err) {
+            outputDiv.innerHTML = `<div style="padding:24px;color:#c0392b;">Error: ${err.message}</div>`;
+        }
+    });
+}
+
+// ========================
+// Material Leakage Widget
+// ========================
+
+async function renderMaterialLeakageWidget(container, ventureId) {
+    if (!container || !ventureId) return;
+    container.innerHTML = '<div style="padding:16px;color:#888;">Loading leakage data...</div>';
+    try {
+        const rows = await apiGet(`/api/materials/leakage-check?venture_id=${encodeURIComponent(ventureId)}`);
+        if (!rows.length) {
+            container.innerHTML = '<div style="padding:16px;color:#888;">No materials data available.</div>';
+            return;
+        }
+        const flagged = rows.filter(r => r.discrepancy_flag || r.short_delivery_flag);
+        let html = `<div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">`;
+        html += `<h4 style="margin:0;font-size:0.95rem;">Material Leakage Detection</h4>`;
+        if (flagged.length > 0) {
+            html += `<span style="background:#f5f5f5;padding:2px 10px;border-radius:12px;font-size:0.78rem;font-weight:600;">${flagged.length} flagged</span>`;
+        }
+        html += '</div>';
+
+        html += '<table class="tracker-table" style="font-size:0.82rem;">';
+        html += '<thead><tr><th>Material</th><th>Ordered</th><th>Received</th><th>Consumed</th><th>Expected</th><th>Actual</th><th>Status</th></tr></thead><tbody>';
+        rows.forEach(r => {
+            const isFlagged = r.discrepancy_flag || r.short_delivery_flag;
+            const rowStyle = isFlagged ? ' style="background:#f5f5f5;"' : '';
+            let status = 'OK';
+            if (r.discrepancy_flag) status = '⚠ Discrepancy';
+            else if (r.short_delivery_flag) status = 'Short Delivery';
+            html += `<tr${rowStyle}><td>${r.material_name}</td><td>${r.ordered_qty} ${r.unit}</td><td>${r.received_qty} ${r.unit}</td><td>${r.consumed_qty} ${r.unit}</td><td>${r.expected_remaining} ${r.unit}</td><td>${r.actual_balance} ${r.unit}</td><td>${status}</td></tr>`;
+        });
+        html += '</tbody></table>';
+        container.innerHTML = html;
+    } catch (err) {
+        container.innerHTML = `<div style="padding:16px;color:#c0392b;">Error: ${err.message}</div>`;
+    }
+}
+
+// ========================
+// Milestone Verification Widget
+// ========================
+
+async function renderMilestoneWidget(container, ventureId) {
+    if (!container || !ventureId) return;
+    container.innerHTML = '<div style="padding:16px;color:#888;">Loading milestones...</div>';
+    try {
+        const milestones = await apiGet(`/api/milestones?venture_id=${encodeURIComponent(ventureId)}`);
+        let html = '<div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">';
+        html += '<h4 style="margin:0;font-size:0.95rem;">Milestone Verification</h4>';
+        html += `<button id="addMilestoneBtn" class="btn-secondary" style="padding:4px 12px;font-size:0.8rem;">+ Add Milestone</button>`;
+        html += '</div>';
+
+        if (!milestones.length) {
+            html += '<div style="padding:16px;color:#888;">No milestones yet.</div>';
+        } else {
+            html += '<div style="display:flex;flex-direction:column;gap:8px;">';
+            milestones.forEach(m => {
+                const statusColor = m.status === 'verified' ? '#27ae60' : m.status === 'submitted' ? '#f39c12' : m.status === 'rejected' ? '#e74c3c' : '#888';
+                const photos = m.milestone_photos || [];
+                const hasBefore = photos.some(p => p.photo_type === 'before');
+                const hasAfter = photos.some(p => p.photo_type === 'after');
+                html += `<div style="background:#fff;border:1px solid #e0e4e8;border-radius:8px;padding:12px;">`;
+                html += `<div style="display:flex;justify-content:space-between;align-items:center;">`;
+                html += `<div><strong>${m.work_item || 'Unknown'}</strong> — ${m.description || ''}</div>`;
+                html += `<span style="font-size:0.75rem;padding:2px 10px;border-radius:12px;color:#fff;background:${statusColor};">${m.status}</span>`;
+                html += `</div>`;
+                html += `<div style="font-size:0.8rem;color:#888;margin-top:6px;">Block: ${m.block || '-'} | Floor: ${m.floor || '-'} | Flat: ${m.flat || '-'}</div>`;
+                html += `<div style="font-size:0.78rem;margin-top:6px;">Photos: ${hasBefore ? '✓ Before' : '✗ Before'} | ${hasAfter ? '✓ After' : '✗ After'}</div>`;
+                if (m.status === 'pending') {
+                    html += `<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">`;
+                    html += `<label class="btn-secondary" style="padding:4px 12px;font-size:0.78rem;cursor:pointer;">📷 Before<input type="file" accept="image/*" class="ms-photo-input" data-ms-id="${m.id}" data-photo-type="before" style="display:none;"></label>`;
+                    html += `<label class="btn-secondary" style="padding:4px 12px;font-size:0.78rem;cursor:pointer;">📷 After<input type="file" accept="image/*" class="ms-photo-input" data-ms-id="${m.id}" data-photo-type="after" style="display:none;"></label>`;
+                    html += `<button class="ms-submit-btn btn-secondary" data-ms-id="${m.id}" style="padding:4px 12px;font-size:0.78rem;" ${(!hasBefore || !hasAfter) ? 'disabled' : ''}>Submit for Verification</button>`;
+                    html += `</div>`;
+                }
+                if (m.status === 'submitted' && currentUserPermissions.verifyMilestones) {
+                    html += `<div style="display:flex;gap:8px;margin-top:8px;">`;
+                    html += `<button class="ms-verify-btn btn-primary" data-ms-id="${m.id}" style="padding:4px 12px;font-size:0.78rem;">Verify</button>`;
+                    html += `<button class="ms-reject-btn btn-secondary" data-ms-id="${m.id}" style="padding:4px 12px;font-size:0.78rem;">Reject</button>`;
+                    html += `</div>`;
+                }
+                html += `</div>`;
+            });
+            html += '</div>';
+        }
+        container.innerHTML = html;
+
+        // Wire milestone buttons
+        container.querySelectorAll('.ms-photo-input').forEach(inp => {
+            inp.addEventListener('change', async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const msId = inp.dataset.msId;
+                const photoType = inp.dataset.photoType;
+                const reader = new FileReader();
+                reader.onload = async () => {
+                    try {
+                        const formData = new FormData();
+                        formData.append('photo', file);
+                        formData.append('photo_type', photoType);
+                        formData.append('taken_at', new Date().toISOString().slice(0, 10));
+                        await apiUpload(`/api/milestone/${msId}/photo`, formData);
+                        showToast(`${photoType} photo uploaded`);
+                        renderMilestoneWidget(container, ventureId);
+                    } catch (err) {
+                        showToast('Photo upload failed: ' + err.message, true);
+                    }
+                };
+                reader.readAsDataURL(file);
+            });
+        });
+        container.querySelectorAll('.ms-submit-btn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                try {
+                    await apiPost(`/api/milestone/${btn.dataset.msId}/submit`, {});
+                    showToast('Milestone submitted for verification');
+                    renderMilestoneWidget(container, ventureId);
+                } catch (err) {
+                    showToast(err.message, true);
+                }
+            });
+        });
+        container.querySelectorAll('.ms-verify-btn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                try {
+                    await apiPost(`/api/milestone/${btn.dataset.msId}/verify`, {});
+                    showToast('Milestone verified');
+                    renderMilestoneWidget(container, ventureId);
+                } catch (err) {
+                    showToast(err.message, true);
+                }
+            });
+        });
+        container.querySelectorAll('.ms-reject-btn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                try {
+                    await apiPost(`/api/milestone/${btn.dataset.msId}/reject`, {});
+                    showToast('Milestone rejected');
+                    renderMilestoneWidget(container, ventureId);
+                } catch (err) {
+                    showToast(err.message, true);
+                }
+            });
+        });
+
+        const addBtn = container.querySelector('#addMilestoneBtn');
+        if (addBtn) {
+            addBtn.addEventListener('click', () => {
+                const workItem = prompt('Work item name:');
+                if (!workItem) return;
+                const block = prompt('Block (optional):') || '';
+                const floor = prompt('Floor (optional):') || '';
+                const desc = prompt('Description (optional):') || '';
+                apiPost('/api/milestone', {
+                    venture_id: ventureId,
+                    work_item: workItem,
+                    block: block,
+                    floor: floor,
+                    description: desc
+                }).then(() => {
+                    showToast('Milestone created');
+                    renderMilestoneWidget(container, ventureId);
+                }).catch(err => showToast(err.message, true));
+            });
+        }
+    } catch (err) {
+        container.innerHTML = `<div style="padding:16px;color:#c0392b;">Error: ${err.message}</div>`;
+    }
+}
+
+// ========================
+// Inline Autosave Helper
+// ========================
+
+const autosaveTimers = new Map();
+
+function attachInlineAutosave(element, cellId, field, valueExtractor) {
+    if (!element) return;
+    const eventType = element.tagName === 'SELECT' ? 'change' : 'input';
+    element.addEventListener(eventType, () => {
+        const value = valueExtractor ? valueExtractor(element) : element.value;
+        const key = `${cellId}_${field}`;
+        if (autosaveTimers.has(key)) clearTimeout(autosaveTimers.get(key));
+        const timer = setTimeout(async () => {
+            try {
+                const existing = cellsCache[cacheKey(cellId)] || {};
+                const updated = { ...existing, [field]: value, updated_at: new Date().toISOString() };
+                await apiPost('/api/cells/batch', { cells: [{ id: cellId, data: updated }] });
+                cellsCache[cacheKey(cellId)] = updated;
+                showToast('Saved');
+            } catch (err) {
+                showToast('Save failed', true);
+            }
+            autosaveTimers.delete(key);
+        }, 800);
+        autosaveTimers.set(key, timer);
+    });
+}
+
+// ========================
+// Mobile Bottom Action Bar
+// ========================
+
+function ensureMobileActionBar() {
+    if (document.getElementById('mobileActionBar')) return;
+    const bar = document.createElement('div');
+    bar.id = 'mobileActionBar';
+    bar.className = 'mobile-action-bar';
+    bar.innerHTML = `
+        <button class="mobile-action-btn" id="maStatus" title="Set Status">&#9679;</button>
+        <button class="mobile-action-btn" id="maTimeline" title="Timeline">&#9776;</button>
+        <button class="mobile-action-btn" id="maPending" title="Pending">&#9888;</button>
+        <button class="mobile-action-btn" id="maReports" title="Reports">&#128202;</button>
+    `;
+    document.body.appendChild(bar);
+
+    bar.querySelector('#maStatus').addEventListener('click', () => {
+        if (selectedCellId) {
+            const btn = document.querySelector(`[data-cell-id="${selectedCellId}"]`);
+            if (btn) btn.click();
+        }
+    });
+    bar.querySelector('#maTimeline').addEventListener('click', () => {
+        if (selectedCellId && selectedWorkItem && selectedFlat) {
+            openTimelineModal(selectedCellId, selectedWorkItem, selectedFlat);
+        }
+    });
+    bar.querySelector('#maPending').addEventListener('click', () => {
+        const pendingBtn = document.querySelector('.view-tab[data-view="pending"]');
+        if (pendingBtn) pendingBtn.click();
+    });
+    bar.querySelector('#maReports').addEventListener('click', () => {
+        const reportsBtn = document.querySelector('.view-tab[data-view="reports"]');
+        if (reportsBtn) reportsBtn.click();
+    });
+}

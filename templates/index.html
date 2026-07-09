@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>VGrand Infra Tracking</title>
+    <link rel="stylesheet" href="/static/css/fonts.css">
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
@@ -41,36 +42,11 @@
                 <button id="openPayrollBtn" class="btn-secondary">&#128176; Payroll</button>
                 <button id="openInventoryBtn" class="btn-secondary">&#128230; Inventory</button>
                 <button id="openPOBtn" class="btn-secondary">&#128230; Purchase Orders</button>
-            </div>
-
-            <!-- Quick Reports Panel -->
-            <div class="home-quick-reports" id="homeQuickReports">
-                <h3>Quick Reports</h3>
-                <div class="home-quick-filters">
-                    <div class="pending-filter-group">
-                        <label>Venture</label>
-                        <select id="homeReportVenture"></select>
-                    </div>
-                    <div class="pending-filter-group">
-                        <label>Block</label>
-                        <select id="homeReportBlock"></select>
-                    </div>
-                    <div class="pending-filter-group">
-                        <label>Floor</label>
-                        <select id="homeReportFloor"></select>
-                    </div>
-                    <div class="pending-filter-group">
-                        <label>Flat</label>
-                        <select id="homeReportFlat"></select>
-                    </div>
-                    <button id="homeReportShowBtn" class="btn-primary">&#10003; Show</button>
-                </div>
-                <div class="home-quick-buttons">
-                    <button id="homePendingWorkBtn" class="btn-pending-filter" data-type="pending">Pending Work</button>
-                    <button id="homeReportsBtn" class="btn-pending-filter" data-type="reports">Reports</button>
-                    <button id="homePayrollBtn" class="btn-pending-filter" data-type="payroll">Payroll</button>
-                </div>
-                <div id="homeReportsOutput" class="home-reports-output"></div>
+                <button id="openReportsBtn" class="btn-secondary">&#128202; Reports</button>
+                <button id="openInstantReportsBtn" class="btn-secondary" style="display:none;">&#128202; Instant Reports</button>
+                <button id="openInventoryAuditBtn" class="btn-secondary" style="display:none;">&#128269; Inventory Audit</button>
+                <button id="openDatewiseExpensesBtn" class="btn-secondary" style="display:none;">&#128197; Date-wise Expenses</button>
+                <button id="openBurnReportBtn" class="btn-secondary" style="display:none;">&#128293; Cash Burn</button>
             </div>
 
             <div class="venture-grid" id="ventureCards"></div>
@@ -190,6 +166,15 @@
             <div class="po-cards-grid" id="poCardsGrid"></div>
         </div>
 
+        <!-- Reports Panel -->
+        <div id="reportsPanel" style="display:none;">
+            <div class="invoice-panel-header">
+                <button id="backFromReports" class="back-btn">&larr; Back to Ventures</button>
+                <h2 class="invoice-panel-title">&#128202; Reports</h2>
+            </div>
+            <div id="reportsPanelContent"></div>
+        </div>
+
         <!-- Payroll Panel -->
         <div id="payrollPanel" style="display:none;">
             <div class="invoice-panel-header">
@@ -206,6 +191,42 @@
                 <h2 class="invoice-panel-title">&#128230; Inventory</h2>
             </div>
             <div id="inventoryPanelContent"></div>
+        </div>
+
+        <!-- Instant Reports Panel (Admin-only) -->
+        <div id="instantReportsPanel" style="display:none;">
+            <div class="invoice-panel-header">
+                <button id="backFromInstantReports" class="back-btn">&larr; Back to Ventures</button>
+                <h2 class="invoice-panel-title">&#128202; Instant Reports</h2>
+            </div>
+            <div id="instantReportsContent"></div>
+        </div>
+
+        <!-- Inventory Audit Panel (Admin-only) -->
+        <div id="inventoryAuditPanel" style="display:none;">
+            <div class="invoice-panel-header">
+                <button id="backFromInventoryAudit" class="back-btn">&larr; Back to Ventures</button>
+                <h2 class="invoice-panel-title">&#128269; Inventory Audit</h2>
+            </div>
+            <div id="inventoryAuditContent"></div>
+        </div>
+
+        <!-- Date-wise Expenses Panel (Admin-only) -->
+        <div id="datewiseExpensesPanel" style="display:none;">
+            <div class="invoice-panel-header">
+                <button id="backFromDatewiseExpenses" class="back-btn">&larr; Back to Ventures</button>
+                <h2 class="invoice-panel-title">&#128197; Date-wise Expenses</h2>
+            </div>
+            <div id="datewiseExpensesContent"></div>
+        </div>
+
+        <!-- Cash Burn Panel (Admin-only) -->
+        <div id="burnReportPanel" style="display:none;">
+            <div class="invoice-panel-header">
+                <button id="backFromBurnReport" class="back-btn">&larr; Back to Ventures</button>
+                <h2 class="invoice-panel-title">&#128293; Daily Cash Burn</h2>
+            </div>
+            <div id="burnReportContent"></div>
         </div>
 
         <!-- Tracker View -->
@@ -289,6 +310,12 @@
 
             <!-- Payroll View -->
             <div id="payrollViewContainer" style="display:none;"></div>
+
+            <!-- Material Leakage Widget -->
+            <div id="materialLeakageWidget" style="display:none;padding:16px 24px;"></div>
+
+            <!-- Milestone Verification Widget -->
+            <div id="milestoneWidget" style="display:none;padding:16px 24px;"></div>
         </div>
     </div>
 
