@@ -585,6 +585,19 @@ async function ensureCellsInCache(requiredKeys) {
     }
 }
 
+async function ensureCellsInCache(requiredKeys) {
+    const missing = requiredKeys.filter(k => cellsCache[k] === undefined);
+    if (missing.length === 0) return;
+    try {
+        const allCells = await apiGet('/api/cells');
+        if (allCells) {
+            Object.assign(cellsCache, allCells);
+        }
+    } catch (e) {
+        console.error('Failed to bulk load cells:', e);
+    }
+}
+
 async function updateCellColor(cellId, color, workItem, flat) {
     const today = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
     const statusLabel = color ? COLOR_LABELS[color] : 'Cleared';
@@ -6473,5 +6486,4 @@ document.getElementById('saveMaterial').addEventListener('click', async () => {
         showToast('Failed to save material', true);
     }
 });
-
 

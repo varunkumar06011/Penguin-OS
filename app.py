@@ -1,17 +1,22 @@
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for
 import os
 import json
+import re
+import base64
+import io
 from datetime import timedelta
 from functools import wraps
 from dotenv import load_dotenv
 from supabase import create_client, Client
 from werkzeug.security import check_password_hash, generate_password_hash
+from PIL import Image
 
 load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'vgrand-secret-key-2025')
 app.permanent_session_lifetime = timedelta(days=30)
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
 
 SUPABASE_URL = os.environ.get('SUPABASE_URL', '')
 SUPABASE_ANON_KEY = os.environ.get('SUPABASE_ANON_KEY', '')
@@ -68,6 +73,45 @@ def requires_role(*allowed_roles):
             return f(*args, **kwargs)
         return wrapped
     return decorator
+
+
+def compress_image_data_url(data_url, max_size=(1024, 1024), quality=65):
+    m = re.match(r'^data:image/(jpeg|png|webp);base64,(.*)$', data_url, re.IGNORECASE)
+    if not m:
+        return data_url
+    try:
+        raw = base64.b64decode(m.group(2), validate=True)
+        img = Image.open(io.BytesIO(raw))
+        if img.mode in ('RGBA', 'P'):
+            rgb = Image.new('RGB', img.size, (255, 255, 255))
+            if img.mode == 'P':
+                img = img.convert('RGBA')
+            if img.mode == 'RGBA':
+                rgb.paste(img, mask=img.split()[3])
+            else:
+                rgb.paste(img)
+            img = rgb
+        elif img.mode != 'RGB':
+            img = img.convert('RGB')
+        img.thumbnail(max_size, Image.Resampling.LANCZOS)
+        out = io.BytesIO()
+        img.save(out, format='JPEG', quality=quality, optimize=True)
+        out.seek(0)
+        encoded = base64.b64encode(out.read()).decode('ascii')
+        return f'data:image/jpeg;base64,{encoded}'
+    except Exception as e:
+        app.logger.warning(f'Image compression failed: {e}')
+        return data_url
+
+
+def compress_images_in_data(data):
+    if isinstance(data, dict):
+        return {k: compress_images_in_data(v) for k, v in data.items()}
+    if isinstance(data, list):
+        return [compress_images_in_data(v) for v in data]
+    if isinstance(data, str) and data.startswith('data:image'):
+        return compress_image_data_url(data)
+    return data
 
 
 @app.route('/login', methods=['POST'])
@@ -185,6 +229,7 @@ def api_cell_post(cell_id):
     body = request.get_json() or {}
     if not supabase:
         return jsonify({'success': True, 'note': 'read-only local mode'})
+    body = compress_images_in_data(body)
     try:
         supabase.table('cell_data').upsert({
             'id': cell_id,
@@ -205,7 +250,7 @@ def api_cells_batch():
         return jsonify({'success': True})
     if not supabase:
         return jsonify({'success': True, 'count': len(cells), 'note': 'read-only local mode'})
-    rows = [{'id': c['id'], 'data': c.get('data', {})} for c in cells]
+    rows = [{'id': c['id'], 'data': compress_images_in_data(c.get('data', {}))} for c in cells]
     try:
         supabase.table('cell_data').upsert(rows, on_conflict='id').execute()
         return jsonify({'success': True, 'count': len(rows)})
@@ -486,6 +531,117 @@ def api_settings_post(key):
 
 
 # ========================
+# Inventory API
+# ========================
+
+@app.route('/api/materials')
+@login_required
+def api_materials():
+    if not supabase:
+        return jsonify([]), 500
+    venture_id = request.args.get('venture_id')
+    q = supabase.table('materials').select('*')
+    if venture_id:
+        q = q.eq('venture_id', venture_id)
+    res = q.execute()
+    return jsonify(res.data or [])
+
+
+@app.route('/api/material', methods=['POST'])
+@login_required
+def api_material_post():
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    m = request.get_json() or {}
+    supabase.table('materials').upsert(m, on_conflict='id').execute()
+    return jsonify({'success': True})
+
+
+@app.route('/api/material/<material_id>', methods=['DELETE'])
+@login_required
+def api_material_delete(material_id):
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    supabase.table('materials').delete().eq('id', material_id).execute()
+    return jsonify({'success': True})
+
+
+@app.route('/api/stock')
+@login_required
+def api_stock():
+    if not supabase:
+        return jsonify([]), 500
+    q = supabase.table('stock_ledger').select('*')
+    for f in ['venture_id', 'material_id', 'entry_type', 'block', 'floor', 'vendor_id']:
+        v = request.args.get(f)
+        if v:
+            q = q.eq(f, v)
+    from_date = request.args.get('from')
+    to_date = request.args.get('to')
+    if from_date:
+        q = q.gte('entry_date', from_date)
+    if to_date:
+        q = q.lte('entry_date', to_date)
+    res = q.execute()
+    return jsonify(res.data or [])
+
+
+@app.route('/api/stock', methods=['POST'])
+@login_required
+def api_stock_post():
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    entry = request.get_json() or {}
+    supabase.table('stock_ledger').upsert(entry, on_conflict='id').execute()
+    return jsonify({'success': True})
+
+
+@app.route('/api/stock/summary')
+@login_required
+def api_stock_summary():
+    if not supabase:
+        return jsonify([]), 500
+    venture_id = request.args.get('venture_id')
+    q = supabase.table('stock_balance').select('*')
+    if venture_id:
+        q = q.eq('venture_id', venture_id)
+    res = q.execute()
+    return jsonify(res.data or [])
+
+
+@app.route('/api/stock/location-report')
+@login_required
+def api_stock_location_report():
+    if not supabase:
+        return jsonify([]), 500
+    venture_id = request.args.get('venture_id')
+    material_id = request.args.get('material_id')
+    q = supabase.table('stock_ledger').select('*').eq('entry_type', 'OUT')
+    if venture_id:
+        q = q.eq('venture_id', venture_id)
+    if material_id:
+        q = q.eq('material_id', material_id)
+    res = q.execute()
+    return jsonify(res.data or [])
+
+
+@app.route('/api/stock/vendor-report')
+@login_required
+def api_stock_vendor_report():
+    if not supabase:
+        return jsonify([]), 500
+    vendor_id = request.args.get('vendor_id')
+    venture_id = request.args.get('venture_id')
+    q = supabase.table('stock_ledger').select('*').eq('entry_type', 'IN')
+    if vendor_id:
+        q = q.eq('vendor_id', vendor_id)
+    if venture_id:
+        q = q.eq('venture_id', venture_id)
+    res = q.execute()
+    return jsonify(res.data or [])
+
+
+# ========================
 # Test DB
 # ========================
 
@@ -502,4 +658,4 @@ def api_test_db():
 
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(debug=False, host='0.0.0.0', port=5000)
