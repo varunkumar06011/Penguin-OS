@@ -14,7 +14,7 @@ A web-based construction progress tracking system for VGrand projects.
 ## Tech Stack
 
 - **Backend**: Python Flask
-- **Database**: Firebase Firestore
+- **Database**: Supabase (Postgres)
 - **Authentication**: Flask Session-based (demo login)
 - **Frontend**: HTML, CSS, Vanilla JavaScript
 
@@ -25,37 +25,24 @@ A web-based construction progress tracking system for VGrand projects.
 
 ## Setup
 
-### 1. Firebase Configuration
+### 1. Supabase Configuration
 
-Create a Firebase project and enable Firestore. Then update `static/js/app.js` with your Firebase config:
+Create a Supabase project and add the connection details to a `.env` file in the repo root:
 
-```javascript
-const firebaseConfig = {
-    apiKey: "YOUR_API_KEY",
-    authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-    projectId: "YOUR_PROJECT_ID",
-    storageBucket: "YOUR_PROJECT_ID.appspot.com",
-    messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-    appId: "YOUR_APP_ID"
-};
+```env
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_ANON_KEY=your-anon-key
+SUPABASE_SERVICE_KEY=your-service-role-key
+SECRET_KEY=your-flask-secret-key
 ```
 
-### 2. Firestore Rules
+> For local development the app can run in read-only fallback mode when Supabase is not configured, but create/update/delete operations will be no-ops.
 
-Set your Firestore security rules to allow read/write (for demo/internal use):
+### 2. Database Setup
 
-```
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if true;
-    }
-  }
-}
-```
+Run the migrations in the Supabase SQL Editor in order (`migrations/001_fix_upsert_and_dedupe.sql` first). These add unique constraints and enable RLS on the core tables.
 
-> For production, restrict these rules to authenticated users only.
+> For production, replace the permissive "Allow all" policies with real RLS policies tied to the Flask authorization layer.
 
 ### 3. Run Locally
 
@@ -71,21 +58,21 @@ Open Chrome and navigate to `http://localhost:5000`
 
 ## Data Structure
 
-Each cell in the tracker grid is a Firestore document:
+Each cell in the tracker grid is stored as a row in the `cell_data` Supabase table:
 
 ```
-/projects/vgrand-infra/cells/{cellId}
-
-cellId format: {block}_floor{floor}_{flatNumber}_{workIndex}
+cell_data.id = {block}_floor{floor}_{flatNumber}_{workIndex}
 Example: A_floor1_101_3
 ```
 
-Fields:
+The `data` JSONB column holds:
 - `color`: string (red | yellow | blue | green | null)
 - `remarks`: string
 - `timeline`: array of `{ color, status_label, date, changed_by }`
 - `updated_at`: timestamp
 - `updated_by`: string (user email)
+
+Ventures, invoices, purchase orders, vendors, and settings are stored similarly as rows with a JSONB `data` payload.
 
 ## File Structure
 
