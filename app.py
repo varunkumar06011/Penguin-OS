@@ -72,7 +72,8 @@ def requires_role(*allowed_roles):
         @login_required
         def wrapped(*args, **kwargs):
             user = session.get('user')
-            if user.get('role') not in allowed_roles:
+            role = user.get('role') if isinstance(user, dict) else 'admin'
+            if role not in allowed_roles:
                 return jsonify({'error': 'Forbidden'}), 403
             return f(*args, **kwargs)
         return wrapped
@@ -162,8 +163,12 @@ def logout():
 
 @app.route('/api/me')
 def me():
-    if 'user' in session:
-        return jsonify({'user': session['user']['email'], 'role': session['user']['role']})
+    user = session.get('user')
+    if isinstance(user, str):
+        # Legacy session from before RBAC
+        return jsonify({'user': user, 'role': 'admin'})
+    if isinstance(user, dict):
+        return jsonify({'user': user.get('email'), 'role': user.get('role', 'supervisor')})
     return jsonify({'user': None, 'role': None})
 
 
