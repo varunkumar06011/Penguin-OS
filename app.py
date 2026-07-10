@@ -338,11 +338,12 @@ def generate_room_design(image_url, prompt, seed=0):
     encoded_prompt = quote(prompt)
     url = f"https://image.pollinations.ai/prompt/{encoded_prompt}"
     params = {
-        "model": "kontext",
+        "model": "flux",
         "image": image_url,
         "width": 1024,
         "height": 1024,
         "seed": seed,
+        "negative": "changed room layout, moved walls, removed windows, added windows, different camera angle, different perspective, altered room shape, different ceiling, exterior view",
     }
     if POLLINATIONS_API_TOKEN:
         params["nologo"] = "true"
