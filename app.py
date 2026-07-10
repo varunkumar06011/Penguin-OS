@@ -324,7 +324,7 @@ def enhance_design_prompt(room_type, style, budget_tier, area_sqft=120):
 
 
 def generate_room_design(image_url, prompt, seed=0):
-    """Calls Pollinations' fast image-to-image API to redesign a room photo."""
+    """Calls Pollinations' image-to-image API to redesign a room photo."""
     import requests
     from urllib.parse import quote
     from time import sleep
@@ -332,29 +332,28 @@ def generate_room_design(image_url, prompt, seed=0):
     encoded_prompt = quote(prompt)
     url = f"https://image.pollinations.ai/prompt/{encoded_prompt}"
     params = {
-        "model": "turbo",
+        "model": "kontext",
         "image": image_url,
-        "width": 768,
-        "height": 768,
+        "width": 1024,
+        "height": 1024,
         "seed": seed,
-        "negative": "changed room layout, moved walls, removed windows, added windows, different camera angle, different perspective, altered room shape, different ceiling, exterior view",
     }
     if POLLINATIONS_API_TOKEN:
         params["nologo"] = "true"
     headers = {"Authorization": f"Bearer {POLLINATIONS_API_TOKEN}"} if POLLINATIONS_API_TOKEN else {}
 
     last_error = "Unknown error"
-    for attempt in range(2):
+    for attempt in range(3):
         try:
-            resp = requests.get(url, params=params, headers=headers, timeout=30)
+            resp = requests.get(url, params=params, headers=headers, timeout=120)
             content_type = resp.headers.get('content-type', '')
             if resp.status_code == 200 and 'image' in content_type:
                 return True, resp.content
             last_error = f"Pollinations error {resp.status_code} ({content_type}): {resp.text[:200]}"
         except requests.exceptions.RequestException as e:
             last_error = f"Request failed: {e}"
-        if attempt < 1:
-            sleep(1)
+        if attempt < 2:
+            sleep(2 ** attempt)
     return False, last_error
 
 
