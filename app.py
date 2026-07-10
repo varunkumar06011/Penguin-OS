@@ -37,6 +37,11 @@ SUPABASE_SERVICE_KEY = os.environ.get('SUPABASE_SERVICE_KEY', '')
 _supabase_key = SUPABASE_SERVICE_KEY or SUPABASE_ANON_KEY
 supabase: Client = create_client(SUPABASE_URL, _supabase_key) if SUPABASE_URL and _supabase_key else None
 
+if supabase:
+    print(f'[OK] Supabase connected: {SUPABASE_URL}')
+else:
+    print('[WARN] Supabase not connected. Check SUPABASE_URL and SUPABASE_SERVICE_KEY in .env')
+
 # --- Pollinations AI (Feature 1: interior design) ---
 POLLINATIONS_API_TOKEN = os.environ.get('POLLINATIONS_API_TOKEN', '')
 
@@ -600,7 +605,7 @@ def visitor_security_login():
     if not email or not password:
         return jsonify({'error': 'Email and password required'}), 400
     try:
-        res = supabase.table('security_users').select('*').eq('email', email).eq('active', True).execute()
+        res = supabase.table('security_users').select('*').ilike('email', email).eq('active', True).execute()
         if not res.data:
             return jsonify({'error': 'Invalid credentials'}), 401
         row = res.data[0]
@@ -936,6 +941,21 @@ def visitor_portal_page():
     if not session.get('security_user') and not session.get('visitor_user') and not session.get('user'):
         return redirect(url_for('login_page'))
     return render_template('visitor_portal.html')
+
+
+@app.route('/api/health')
+def api_health():
+    """Public health check: reports Supabase connection and seeded user counts."""
+    result = {'supabase_connected': bool(supabase)}
+    if supabase:
+        try:
+            users = supabase.table('users').select('id', count='exact').execute()
+            security = supabase.table('security_users').select('id', count='exact').execute()
+            result['users_count'] = users.count if hasattr(users, 'count') else len(users.data or [])
+            result['security_users_count'] = security.count if hasattr(security, 'count') else len(security.data or [])
+        except Exception as e:
+            result['error'] = str(e)
+    return jsonify(result)
 
 
 # ========================
