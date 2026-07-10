@@ -93,8 +93,10 @@
         <div id="vpSecurityView" class="vp-category-section">
             <div class="vp-stats" id="vpSecurityStats"></div>
 
+            <!-- Quick Visitor Entry -->
             <div class="vp-card">
-                <h3 style="margin:0 0 16px;">New Visitor Entry</h3>
+                <h3 style="margin:0 0 8px;">Allow Visitor</h3>
+                <p style="color:#666;margin:0 0 16px;">Enter visitor details and generate a gate pass QR.</p>
                 <div class="vp-form-row">
                     <div class="vp-form-field" style="flex:2;">
                         <label>Resident Mobile Number</label>
@@ -121,10 +123,70 @@
                         <div class="vp-form-field"><label>Remarks</label><input type="text" id="vpRemarks"></div>
                     </div>
                     <div class="vp-actions">
-                        <button id="vpSendOtp" class="vp-btn vp-btn-primary">Send OTP to Resident</button>
+                        <button id="vpGenerateVisitorQr" class="vp-btn vp-btn-primary">Generate Visitor QR</button>
+                        <button id="vpSendOtp" class="vp-btn vp-btn-secondary">Send OTP Instead</button>
+                    </div>
+                    <div id="vpVisitorQrResult" style="margin-top:16px;display:none;">
+                        <p style="font-weight:600;margin:0 0 8px;">Visitor Gate Pass QR</p>
+                        <img id="vpVisitorQrImage" src="" alt="Visitor QR" style="max-width:220px;border:1px solid #e0e4e8;border-radius:8px;">
+                        <div style="margin-top:8px;">
+                            <a id="vpVisitorQrDownload" class="vp-btn vp-btn-secondary" style="padding:6px 12px;font-size:0.8rem;text-decoration:none;display:inline-block;" download="visitor-pass.png">Download QR</a>
+                        </div>
                     </div>
                 </div>
                 <div id="vpOtpResult" style="margin-top:14px;color:#27ae60;font-weight:600;display:none;"></div>
+            </div>
+
+            <!-- Quick Delivery Entry -->
+            <div class="vp-card">
+                <h3 style="margin:0 0 8px;">Allow Delivery</h3>
+                <p style="color:#666;margin:0 0 16px;">Enter delivery person, vehicle number and resident to generate a timed QR pass (20 min exit limit).</p>
+                <div class="vp-form-row">
+                    <div class="vp-form-field" style="flex:2;">
+                        <label>Resident Mobile Number</label>
+                        <input type="tel" id="vpDeliveryResidentMobile" placeholder="Enter registered mobile">
+                    </div>
+                    <div class="vp-form-field" style="align-self:flex-end;">
+                        <button id="vpFetchDeliveryResident" class="vp-btn vp-btn-primary">Fetch Resident</button>
+                    </div>
+                </div>
+                <div id="vpDeliveryResidentInfo" style="display:none;background:#f8f9fa;border-radius:10px;padding:14px;margin-bottom:16px;"></div>
+                <div id="vpDeliveryForm" style="display:none;">
+                    <div class="vp-form-row">
+                        <div class="vp-form-field" style="flex:2;"><label>Delivery Person Name</label><input type="text" id="vpDeliveryPersonName" placeholder="e.g. Ravi Kumar"></div>
+                        <div class="vp-form-field"><label>Vehicle Number</label><input type="text" id="vpDeliveryVehicle" placeholder="e.g. KA01AB1234"></div>
+                    </div>
+                    <div class="vp-form-row">
+                        <div class="vp-form-field" style="flex:2;"><label>Courier / Vendor Name</label><input type="text" id="vpDeliveryCourier" placeholder="e.g. Amazon, Swiggy"></div>
+                        <div class="vp-form-field" style="align-self:flex-end;">
+                            <button id="vpGenerateDeliveryQr" class="vp-btn vp-btn-primary">Generate Delivery QR</button>
+                        </div>
+                    </div>
+                    <div id="vpDeliveryQrResult" style="margin-top:16px;display:none;">
+                        <p style="font-weight:600;margin:0 0 8px;">Delivery Gate Pass QR</p>
+                        <img id="vpDeliveryQrImage" src="" alt="Delivery QR" style="max-width:220px;border:1px solid #e0e4e8;border-radius:8px;">
+                        <div style="margin-top:8px;">
+                            <a id="vpDeliveryQrDownload" class="vp-btn vp-btn-secondary" style="padding:6px 12px;font-size:0.8rem;text-decoration:none;display:inline-block;" download="delivery-pass.png">Download QR</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- QR Scanner -->
+            <div class="vp-card">
+                <h3 style="margin:0 0 16px;">Scan Gate Pass QR</h3>
+                <div id="vpGateQrReader" style="width:100%;max-width:400px;margin:0 auto;"></div>
+                <div id="vpGateScanResult" style="margin-top:12px;text-align:center;"></div>
+                <div style="text-align:center;margin-top:8px;">
+                    <button id="vpGateStartScan" class="vp-btn vp-btn-primary">Start Camera Scan</button>
+                    <button id="vpGateStopScan" class="vp-btn" style="display:none;">Stop Scan</button>
+                </div>
+            </div>
+
+            <!-- Delivery Alerts -->
+            <div class="vp-card" id="vpDeliveryAlertsCard" style="display:none;">
+                <h3 style="margin:0 0 16px;">Delivery Timer Alerts</h3>
+                <div id="vpDeliveryAlertsList"></div>
             </div>
 
             <div class="vp-card">
@@ -134,6 +196,13 @@
         </div>
 
         <div id="vpResidentView" class="vp-category-section">
+            <div class="vp-card">
+                <h3 style="margin:0 0 16px;">My Profile</h3>
+                <div id="vpResidentProfile" class="vp-resident-card" style="margin-bottom:0;">
+                    <div class="vp-empty">Loading profile...</div>
+                </div>
+            </div>
+
             <div class="vp-card">
                 <h3 style="margin:0 0 8px;">Pending Visitor Requests</h3>
                 <p style="color:#666;margin:0 0 16px;">Enter the OTP shared by security to approve entry.</p>
@@ -459,7 +528,9 @@
 
                 showCategory('home');
                 loadData();
-                vpPollTimer = setInterval(loadData, 3000);
+                loadResidentProfile();
+                loadDeliveryAlerts();
+                vpPollTimer = setInterval(() => { loadData(); loadDeliveryAlerts(); }, 3000);
             } catch (e) {
                 console.error(e);
                 window.location.href = '/login';
@@ -651,6 +722,60 @@
             } catch (e) { alert(e.message); }
         });
 
+        let vpDeliveryResident = null;
+        document.getElementById('vpFetchDeliveryResident').addEventListener('click', async () => {
+            const mobile = document.getElementById('vpDeliveryResidentMobile').value.trim();
+            if (!mobile) return;
+            try {
+                const r = await apiGet('/api/visitor/resident-by-mobile/' + encodeURIComponent(mobile));
+                if (!r) { alert('Resident not found'); return; }
+                vpDeliveryResident = r;
+                document.getElementById('vpDeliveryResidentInfo').style.display = '';
+                document.getElementById('vpDeliveryResidentInfo').innerHTML = `<strong>${r.name}</strong> · Block ${r.block}, Floor ${r.floor}, Flat ${r.flat}`;
+                document.getElementById('vpDeliveryForm').style.display = '';
+            } catch (e) { alert(e.message); }
+        });
+
+        document.getElementById('vpGenerateVisitorQr').addEventListener('click', async () => {
+            if (!vpResident) { alert('Fetch resident first'); return; }
+            const body = {
+                resident_id: vpResident.id,
+                visitor_name: document.getElementById('vpVisitorName').value.trim(),
+                visitor_mobile: document.getElementById('vpVisitorMobile').value.trim(),
+                purpose: document.getElementById('vpPurpose').value.trim(),
+                visitor_count: parseInt(document.getElementById('vpVisitorCount').value) || 1,
+                vehicle_number: document.getElementById('vpVehicleNumber').value.trim(),
+                id_proof_type: document.getElementById('vpIdProofType').value.trim(),
+                remarks: document.getElementById('vpRemarks').value.trim()
+            };
+            if (!body.visitor_name) { alert('Visitor name is required'); return; }
+            try {
+                const data = await apiPost('/api/visitor/request', body);
+                const imgUrl = '/api/rwa/visitor-pass/' + data.id + '/qr';
+                document.getElementById('vpVisitorQrImage').src = imgUrl;
+                document.getElementById('vpVisitorQrDownload').href = imgUrl;
+                document.getElementById('vpVisitorQrResult').style.display = '';
+            } catch (e) { alert(e.message); }
+        });
+
+        document.getElementById('vpGenerateDeliveryQr').addEventListener('click', async () => {
+            if (!vpDeliveryResident) { alert('Fetch resident first'); return; }
+            const body = {
+                resident_id: vpDeliveryResident.id,
+                courier_name: document.getElementById('vpDeliveryCourier').value.trim(),
+                delivery_person_name: document.getElementById('vpDeliveryPersonName').value.trim(),
+                vehicle_number: document.getElementById('vpDeliveryVehicle').value.trim()
+            };
+            if (!body.delivery_person_name) { alert('Delivery person name is required'); return; }
+            try {
+                const data = await apiPost('/api/rwa/delivery', body);
+                const imgUrl = '/api/rwa/delivery/' + data.id + '/qr';
+                document.getElementById('vpDeliveryQrImage').src = imgUrl;
+                document.getElementById('vpDeliveryQrDownload').href = imgUrl;
+                document.getElementById('vpDeliveryQrResult').style.display = '';
+            } catch (e) { alert(e.message); }
+        });
+
         document.getElementById('vpSendOtp').addEventListener('click', async () => {
             if (!vpResident) return;
             const body = {
@@ -679,6 +804,126 @@
         ['vpAdminSearch','vpAdminStatus','vpAdminDateFilter','vpAdminFrom','vpAdminTo'].forEach(id => {
             document.getElementById(id).addEventListener('input', renderAdmin);
         });
+
+        // --- Resident Profile ---
+        async function loadResidentProfile() {
+            if (vpRole !== 'resident') return;
+            try {
+                const p = await apiGet('/api/visitor/resident-profile');
+                const el = document.getElementById('vpResidentProfile');
+                el.innerHTML = `
+                    <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+                        <div style="width:64px;height:64px;border-radius:50%;background:#1a1a1a;color:#fff;display:flex;align-items:center;justify-content:center;font-size:1.5rem;font-weight:700;">${(p.name || 'R').charAt(0).toUpperCase()}</div>
+                        <div style="flex:1;min-width:200px;">
+                            <h4 style="margin:0 0 4px;">${p.name || '-'}</h4>
+                            <p style="margin:0 0 6px;color:#666;">Block ${p.block || '-'}, Floor ${p.floor || '-'}, Flat ${p.flat || '-'}</p>
+                            <p style="margin:0;color:#888;font-size:0.85rem;">${p.mobile || ''}${p.email ? ' · ' + p.email : ''}</p>
+                        </div>
+                        <div style="text-align:right;">
+                            <span class="vp-status ${p.active ? 'approved' : 'rejected'}">${p.active ? 'Active' : 'Inactive'}</span>
+                        </div>
+                    </div>
+                `;
+            } catch (e) { console.error('loadResidentProfile:', e); }
+        }
+
+        // --- Gate QR Scanner ---
+        let vpGateScanner = null;
+        async function startGateScan() {
+            if (!window.Html5Qrcode) { alert('QR scanner library not loaded'); return; }
+            const reader = document.getElementById('vpGateQrReader');
+            document.getElementById('vpGateStartScan').style.display = 'none';
+            document.getElementById('vpGateStopScan').style.display = '';
+            vpGateScanner = new Html5Qrcode('vpGateQrReader');
+            try {
+                await vpGateScanner.start(
+                    { facingMode: 'environment' },
+                    { fps: 10, qrbox: { width: 250, height: 250 } },
+                    async (decodedText) => {
+                        await handleGateScan(decodedText);
+                        stopGateScan();
+                    },
+                    () => {}
+                );
+            } catch (e) {
+                document.getElementById('vpGateScanResult').textContent = 'Camera error: ' + e.message;
+                document.getElementById('vpGateScanResult').style.color = '#c0392b';
+                document.getElementById('vpGateStartScan').style.display = '';
+                document.getElementById('vpGateStopScan').style.display = 'none';
+            }
+        }
+        function stopGateScan() {
+            if (vpGateScanner) {
+                vpGateScanner.stop().then(() => {
+                    vpGateScanner = null;
+                    document.getElementById('vpGateStartScan').style.display = '';
+                    document.getElementById('vpGateStopScan').style.display = 'none';
+                }).catch(() => {});
+            }
+        }
+        async function handleGateScan(decodedText) {
+            const resultEl = document.getElementById('vpGateScanResult');
+            resultEl.textContent = 'Processing...';
+            resultEl.style.color = '#888';
+            try {
+                const payload = decodedText;
+                let data;
+                try { data = JSON.parse(payload); } catch { data = payload; }
+                const type = (typeof data === 'object' && data.type) ? data.type : null;
+                if (type === 'rwa_visitor_pass') {
+                    const r = await apiPost('/api/rwa/visitor-pass/scan', { payload });
+                    resultEl.innerHTML = `<span style="color:#27ae60;font-weight:600;">Entry allowed: ${r.visitor_name} → ${r.flat}</span>`;
+                    loadData();
+                } else if (type === 'rwa_delivery_pass') {
+                    const r = await apiPost('/api/rwa/delivery/scan', { payload });
+                    if (r.action === 'entry') {
+                        resultEl.innerHTML = `<span style="color:#27ae60;font-weight:600;">Delivery entry started. Timer: 20 min</span><br><small>${r.delivery_person_name} · ${r.vehicle_number || 'No vehicle'} · ${r.flat}</small>`;
+                    } else {
+                        resultEl.innerHTML = `<span style="color:#1a1a1a;font-weight:600;">Delivery exit recorded.</span>`;
+                    }
+                    loadDeliveryAlerts();
+                } else {
+                    resultEl.textContent = 'Unknown QR code';
+                    resultEl.style.color = '#c0392b';
+                }
+            } catch (e) {
+                resultEl.textContent = e.message || 'Scan failed';
+                resultEl.style.color = '#c0392b';
+            }
+        }
+        document.getElementById('vpGateStartScan').addEventListener('click', startGateScan);
+        document.getElementById('vpGateStopScan').addEventListener('click', stopGateScan);
+
+        // --- Delivery Alerts ---
+        async function loadDeliveryAlerts() {
+            if (vpRole !== 'security' && vpRole !== 'admin' && vpRole !== 'manager') return;
+            try {
+                const alerts = await apiGet('/api/rwa/delivery/alerts');
+                const card = document.getElementById('vpDeliveryAlertsCard');
+                const el = document.getElementById('vpDeliveryAlertsList');
+                if (!alerts.length) { card.style.display = 'none'; return; }
+                card.style.display = '';
+                el.innerHTML = '<table class="vp-table"><thead><tr><th>Delivery Person</th><th>Vehicle</th><th>Resident</th><th>Flat</th><th>Overdue</th><th>Actions</th></tr></thead><tbody>' +
+                    alerts.map(a => {
+                        const overdue = a.expires_at ? Math.max(0, Math.ceil((Date.now() - new Date(a.expires_at).getTime()) / 60000)) : '?';
+                        return `<tr>
+                            <td data-label="Delivery Person">${a.delivery_person_name || '-'}</td>
+                            <td data-label="Vehicle">${a.vehicle_number || '-'}</td>
+                            <td data-label="Resident">${a.resident_name || '-'}<br><small>${a.resident_mobile || ''}</small></td>
+                            <td data-label="Flat">${a.block || ''}-${a.floor || ''}-${a.flat || ''}</td>
+                            <td data-label="Overdue"><span style="color:#c0392b;font-weight:700;">${overdue} min</span></td>
+                            <td data-label="Actions">
+                                <a href="tel:${a.resident_mobile || ''}" class="vp-btn vp-btn-primary" style="padding:4px 10px;font-size:0.75rem;text-decoration:none;display:inline-block;">Call Resident</a>
+                                <button class="vp-btn vp-btn-secondary" style="padding:4px 10px;font-size:0.75rem;" onclick="markDeliveryExit('${a.id}')">Mark Exit</button>
+                            </td>
+                        </tr>`;
+                    }).join('') + '</tbody></table>';
+            } catch (e) { console.error('loadDeliveryAlerts:', e); }
+        }
+        window.markDeliveryExit = async function(id) {
+            try { await apiPost('/api/rwa/delivery/' + id + '/exit', {}); loadDeliveryAlerts(); }
+            catch (e) { alert(e.message); }
+        };
 
         document.getElementById('vpAdminExport').addEventListener('click', () => {
             const rows = vpRequests.filter(r => true); // filtered already via render, re-apply if needed

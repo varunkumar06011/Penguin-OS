@@ -22,7 +22,8 @@ IST = timezone(timedelta(hours=5, minutes=30))
 def now_ist():
     return datetime.now(IST)
 
-app = Flask(__name__)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+app = Flask(__name__, static_folder=os.path.join(BASE_DIR, 'static'), template_folder=os.path.join(BASE_DIR, 'templates'))
 app.secret_key = os.environ.get('SECRET_KEY', 'vgrand-secret-key-2025')
 app.permanent_session_lifetime = timedelta(days=30)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
@@ -642,6 +643,46 @@ def visitor_login_required(f):
     return decorated
 
 
+@app.route('/api/visitor/resident-profile', methods=['GET', 'PATCH'])
+@visitor_login_required
+def api_visitor_resident_profile():
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    resident = session.get('visitor_user')
+    if not resident:
+        return jsonify({'error': 'Not logged in'}), 401
+    if request.method == 'GET':
+        try:
+            res = supabase.table('residents').select('*').eq('id', resident['id']).single().execute()
+            if not res.data:
+                return jsonify({'error': 'Resident not found'}), 404
+            r = res.data
+            return jsonify({
+                'id': r['id'], 'name': r['name'], 'mobile': r['mobile'],
+                'email': r.get('email'), 'photo_url': r.get('photo_url'),
+                'block': r['block'], 'floor': r['floor'], 'flat': r['flat'],
+                'directory_opt_in': r.get('directory_opt_in', False),
+                'active': r.get('active', True), 'created_at': r.get('created_at')
+            })
+        except Exception as e:
+            print(f'Error fetching resident profile: {e}')
+            return jsonify({'error': str(e)}), 500
+    else:
+        body = request.get_json() or {}
+        allowed = {k: v for k, v in body.items() if k in ('name', 'email', 'photo_url', 'directory_opt_in')}
+        if not allowed:
+            return jsonify({'error': 'Nothing to update'}), 400
+        try:
+            supabase.table('residents').update(allowed).eq('id', resident['id']).execute()
+            if 'name' in allowed:
+                resident['name'] = allowed['name']
+                session['visitor_user'] = resident
+            return jsonify({'success': True})
+        except Exception as e:
+            print(f'Error updating resident profile: {e}')
+            return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/visitor/resident-by-mobile/<mobile>')
 @visitor_login_required
 def api_visitor_resident_by_mobile(mobile):
@@ -829,14 +870,34 @@ def api_visitor_dashboard_stats():
         res = base.execute()
         rows = res.data or []
         today_rows = [r for r in rows if (r.get('created_at') or '').startswith(today)]
-        return jsonify({
+        # Overstay alert: visitors inside longer than 4 hours
+        overstay_threshold = now_ist() - timedelta(hours=4)
+        overstaying = []
+        for r in rows:
+            if r.get('status') == 'inside' and r.get('entry_time'):
+                try:
+                    entry = datetime.fromisoformat(r['entry_time'].replace('Z', '+00:00'))
+                    if entry.tzinfo is None:
+                        entry = entry.replace(tzinfo=IST)
+                    if entry < overstay_threshold:
+                        overstaying.append({
+                            'id': r['id'],
+                            'visitor_name': r.get('visitor_name'),
+                            'entry_time': r.get('entry_time'),
+                            'duration_hours': round((now_ist() - entry).total_seconds() / 3600, 1)
+                        })
+                except Exception:
+                    pass
+        result = {
             'total_today': len(today_rows),
             'pending': len([r for r in rows if r.get('status') == 'waiting']),
             'approved': len([r for r in rows if r.get('status') == 'approved']),
             'rejected': len([r for r in rows if r.get('status') == 'rejected']),
             'inside': len([r for r in rows if r.get('status') == 'inside']),
-            'completed': len([r for r in rows if r.get('status') == 'completed'])
-        })
+            'completed': len([r for r in rows if r.get('status') == 'completed']),
+            'overstaying': overstaying
+        }
+        return jsonify(result)
     except Exception as e:
         print(f'Error visitor dashboard stats: {e}')
         return jsonify({})
@@ -2137,6 +2198,1833 @@ def api_marketplace_seed():
     except Exception as e:
         print(f'Error seeding marketplace: {e}')
         return jsonify({'error': str(e)}), 500
+
+
+# ============================================================
+# RWA MODULE: Foundation (Phase 1)
+# ============================================================
+
+def sync_completed_flats_to_flats_table(venture_id=None, block=None, floor=None):
+    """Read cell_data for a given block/floor, check if all work items are green,
+    and upsert/update the corresponding row in flats to construction_status='completed'.
+    Does NOT touch any cell_data — reads only."""
+    if not supabase:
+        return {'error': 'Supabase not connected'}
+    try:
+        query = supabase.table('cell_data').select('*')
+        if venture_id:
+            query = query.filter('data->>venture_id', 'eq', venture_id)
+        if block:
+            query = query.filter('data->>block', 'eq', block)
+        if floor:
+            query = query.filter('data->>floor', 'eq', str(floor))
+        res = query.execute()
+        rows = res.data or []
+
+        # Group cells by block|floor|flat_number
+        flat_map = {}
+        for row in rows:
+            d = row.get('data') or {}
+            b = d.get('block', '')
+            f = d.get('floor', '')
+            flat_num = d.get('flat', '')
+            if not b or not f or not flat_num:
+                continue
+            key = (b, f, flat_num)
+            if key not in flat_map:
+                flat_map[key] = {'cells': [], 'all_green': True}
+            color = d.get('color', '')
+            flat_map[key]['cells'].append({'id': row['id'], 'color': color})
+            if color != 'green':
+                flat_map[key]['all_green'] = False
+
+        updated = []
+        for (b, f, flat_num), info in flat_map.items():
+            if not info['cells']:
+                continue
+            status = 'completed' if info['all_green'] else 'pending'
+            existing = supabase.table('flats').select('id, construction_status').eq(
+                'block', b).eq('floor', f).eq('flat_number', flat_num).execute()
+            if existing.data:
+                flat_row = existing.data[0]
+                if flat_row['construction_status'] != status:
+                    supabase.table('flats').update({
+                        'construction_status': status
+                    }).eq('id', flat_row['id']).execute()
+                    updated.append({'block': b, 'floor': f, 'flat': flat_num, 'status': status})
+            else:
+                supabase.table('flats').insert({
+                    'block': b, 'floor': f, 'flat_number': flat_num,
+                    'construction_status': status
+                }).execute()
+                updated.append({'block': b, 'floor': f, 'flat': flat_num, 'status': status, 'created': True})
+
+        return {'synced': len(updated), 'flats': updated}
+    except Exception as e:
+        print(f'Error syncing completed flats: {e}')
+        return {'error': str(e)}
+
+
+@app.route('/api/rwa/sync-completed-flats', methods=['POST'])
+@requires_role('admin', 'manager')
+def api_rwa_sync_completed_flats():
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    body = request.get_json() or {}
+    result = sync_completed_flats_to_flats_table(
+        venture_id=body.get('venture_id'),
+        block=body.get('block'),
+        floor=body.get('floor')
+    )
+    if 'error' in result:
+        return jsonify(result), 500
+    return jsonify(result)
+
+
+@app.route('/api/rwa/flats')
+@requires_role('admin', 'manager')
+def api_rwa_flats():
+    if not supabase:
+        return jsonify([]), 500
+    try:
+        res = supabase.table('flats').select('*').order('block', desc=False).order('floor', desc=False).order('flat_number', desc=False).execute()
+        return jsonify(res.data or [])
+    except Exception as e:
+        print(f'Error fetching flats: {e}')
+        return jsonify([]), 500
+
+
+@app.route('/api/rwa/emergency-contacts')
+@visitor_login_required
+def api_rwa_emergency_contacts():
+    if not supabase:
+        return jsonify([]), 500
+    try:
+        res = supabase.table('emergency_contacts').select('*').eq('active', True).order('label', desc=False).execute()
+        return jsonify(res.data or [])
+    except Exception as e:
+        print(f'Error fetching emergency contacts: {e}')
+        return jsonify([]), 500
+
+
+@app.route('/rwa-admin')
+@login_required
+def rwa_admin_page():
+    return render_template('rwa_admin.html')
+
+
+# ============================================================
+# RWA MODULE: Standard Tier (Phase 2)
+# ============================================================
+
+def _get_rwa_session_user():
+    """Return (user_dict, role_string) for the current session — works for
+    resident, security, and admin/manager sessions."""
+    resident = session.get('visitor_user')
+    if resident:
+        return resident, 'resident'
+    security = session.get('security_user')
+    if security:
+        return security, 'security'
+    user = session.get('user')
+    if user:
+        role = user.get('role', 'admin') if isinstance(user, dict) else 'admin'
+        return user, role
+    return None, None
+
+
+# --- Deliveries ---
+
+@app.route('/api/rwa/delivery', methods=['POST'])
+@visitor_login_required
+def api_rwa_delivery_create():
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    body = request.get_json() or {}
+    if not body.get('resident_id'):
+        return jsonify({'error': 'resident_id is required'}), 400
+    try:
+        user, role = _get_rwa_session_user()
+        security_id = user.get('id') if role == 'security' else None
+        import uuid as _uuid
+        row = {
+            'resident_id': body['resident_id'],
+            'security_id': security_id,
+            'courier_name': body.get('courier_name', ''),
+            'delivery_person_name': body.get('delivery_person_name', ''),
+            'vehicle_number': body.get('vehicle_number', ''),
+            'qr_code': str(_uuid.uuid4()),
+            'parcel_photo_url': body.get('parcel_photo_url', ''),
+            'status': 'arrived',
+        }
+        res = supabase.table('deliveries').insert(row).execute()
+        data = res.data[0] if res.data else None
+        return jsonify({'success': True, 'id': data['id'] if data else None, 'qr_code': data.get('qr_code') if data else None})
+    except Exception as e:
+        print(f'Error creating delivery: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/rwa/delivery/<delivery_id>', methods=['PATCH'])
+@visitor_login_required
+def api_rwa_delivery_patch(delivery_id):
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    body = request.get_json() or {}
+    allowed = {}
+    if 'status' in body and body['status'] in ('arrived', 'inside', 'collected', 'returned', 'expired'):
+        allowed['status'] = body['status']
+        if body['status'] == 'collected':
+            allowed['collected_at'] = now_ist().isoformat()
+            allowed['exit_time'] = now_ist().isoformat()
+            allowed['expires_at'] = None
+        if body['status'] == 'returned':
+            allowed['exit_time'] = now_ist().isoformat()
+            allowed['expires_at'] = None
+        if body['status'] == 'inside':
+            allowed['entry_time'] = now_ist().isoformat()
+            allowed['expires_at'] = (now_ist() + timedelta(minutes=20)).isoformat()
+    if 'alerted' in body:
+        allowed['alerted'] = bool(body['alerted'])
+    if not allowed:
+        return jsonify({'error': 'Nothing to update'}), 400
+    try:
+        supabase.table('deliveries').update(allowed).eq('id', delivery_id).execute()
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f'Error updating delivery: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/rwa/deliveries')
+@visitor_login_required
+def api_rwa_deliveries():
+    if not supabase:
+        return jsonify([]), 500
+    try:
+        user, role = _get_rwa_session_user()
+        q = supabase.table('deliveries').select('*, residents(name, mobile, block, floor, flat)')
+        if role == 'resident':
+            q = q.eq('resident_id', user['id'])
+        res = q.order('arrived_at', desc=True).execute()
+        rows = []
+        for r in res.data or []:
+            rd = r.get('residents') or {}
+            rows.append({
+                'id': r['id'], 'resident_id': r['resident_id'],
+                'resident_name': rd.get('name'), 'resident_mobile': rd.get('mobile'),
+                'block': rd.get('block'), 'floor': rd.get('floor'), 'flat': rd.get('flat'),
+                'courier_name': r.get('courier_name'), 'delivery_person_name': r.get('delivery_person_name'),
+                'vehicle_number': r.get('vehicle_number'), 'qr_code': r.get('qr_code'),
+                'status': r.get('status'), 'arrived_at': r.get('arrived_at'),
+                'collected_at': r.get('collected_at'), 'entry_time': r.get('entry_time'),
+                'exit_time': r.get('exit_time'), 'expires_at': r.get('expires_at'),
+                'alerted': r.get('alerted', False)
+            })
+        return jsonify(rows)
+    except Exception as e:
+        print(f'Error fetching deliveries: {e}')
+        return jsonify([]), 500
+
+
+@app.route('/api/rwa/delivery/<delivery_id>/qr')
+@visitor_login_required
+def api_rwa_delivery_qr(delivery_id):
+    """Generate a QR code image for a delivery entry pass.
+    Scanning the QR at the gate starts the 20-minute collection timer."""
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    try:
+        res = supabase.table('deliveries').select(
+            '*, residents(name, mobile, block, floor, flat)'
+        ).eq('id', delivery_id).execute()
+        if not res.data:
+            return jsonify({'error': 'Delivery not found'}), 404
+        d = res.data[0]
+        if d.get('status') in ('collected', 'returned'):
+            return jsonify({'error': 'Delivery already completed'}), 400
+        if not d.get('qr_code'):
+            return jsonify({'error': 'No QR code assigned'}), 400
+
+        import qrcode as _qrcode
+        import io as _io
+        import json as _json
+
+        rd = d.get('residents') or {}
+        qr_payload = _json.dumps({
+            'type': 'rwa_delivery_pass',
+            'id': d['id'],
+            'qr_code': d.get('qr_code'),
+            'resident_name': rd.get('name', ''),
+            'flat': f"{rd.get('block','')}-{rd.get('floor','')}-{rd.get('flat','')}",
+            'delivery_person_name': d.get('delivery_person_name', ''),
+            'vehicle_number': d.get('vehicle_number', ''),
+            'issued_at': now_ist().isoformat(),
+        })
+
+        qr = _qrcode.QRCode(version=1, error_correction=_qrcode.constants.ERROR_CORRECT_M, box_size=10, border=4)
+        qr.add_data(qr_payload)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color='black', back_color='white')
+        buf = _io.BytesIO()
+        img.save(buf, format='PNG')
+        buf.seek(0)
+
+        from flask import send_file as _send_file
+        return _send_file(buf, mimetype='image/png')
+    except Exception as e:
+        print(f'Error generating delivery QR: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/rwa/delivery/scan', methods=['POST'])
+@visitor_login_required
+def api_rwa_delivery_scan():
+    """Security scans a delivery QR pass at the gate.
+    If status is 'arrived', mark 'inside' and start 20-minute timer.
+    If status is 'inside', mark exit/collected."""
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    user, role = _get_rwa_session_user()
+    if role not in ('security', 'admin', 'manager'):
+        return jsonify({'error': 'Security only'}), 403
+    body = request.get_json() or {}
+    payload = body.get('payload')
+    if not payload:
+        return jsonify({'error': 'payload is required'}), 400
+
+    import json as _json
+    try:
+        data = _json.loads(payload) if isinstance(payload, str) else payload
+    except Exception:
+        return jsonify({'error': 'Invalid QR payload'}), 400
+
+    if data.get('type') != 'rwa_delivery_pass':
+        return jsonify({'error': 'Not a delivery pass QR'}), 400
+
+    delivery_id = data.get('id')
+    qr_code = data.get('qr_code')
+    if not delivery_id or not qr_code:
+        return jsonify({'error': 'Missing delivery ID or QR code'}), 400
+
+    try:
+        res = supabase.table('deliveries').select(
+            '*, residents(name, mobile, block, floor, flat)'
+        ).eq('id', delivery_id).execute()
+        if not res.data:
+            return jsonify({'error': 'Delivery not found'}), 404
+        d = res.data[0]
+        if d.get('qr_code') != qr_code:
+            return jsonify({'error': 'Invalid QR code'}), 400
+        rd = d.get('residents') or {}
+
+        if d.get('status') in ('collected', 'returned'):
+            return jsonify({'error': 'Delivery already completed', 'status': d.get('status')}), 409
+
+        now = now_ist().isoformat()
+        if d.get('status') == 'inside':
+            supabase.table('deliveries').update({
+                'status': 'collected',
+                'exit_time': now,
+                'expires_at': None,
+                'alerted': False
+            }).eq('id', delivery_id).execute()
+            return jsonify({
+                'success': True,
+                'action': 'exit',
+                'status': 'collected',
+                'delivery_person_name': d.get('delivery_person_name'),
+                'resident_name': rd.get('name'),
+                'flat': f"{rd.get('block','')}-{rd.get('floor','')}-{rd.get('flat','')}",
+            })
+
+        supabase.table('deliveries').update({
+            'status': 'inside',
+            'entry_time': now,
+            'expires_at': (now_ist() + timedelta(minutes=20)).isoformat(),
+            'security_id': user.get('id') if role == 'security' else None,
+            'alerted': False
+        }).eq('id', delivery_id).execute()
+
+        return jsonify({
+            'success': True,
+            'action': 'entry',
+            'status': 'inside',
+            'delivery_person_name': d.get('delivery_person_name'),
+            'vehicle_number': d.get('vehicle_number'),
+            'resident_name': rd.get('name'),
+            'resident_mobile': rd.get('mobile'),
+            'flat': f"{rd.get('block','')}-{rd.get('floor','')}-{rd.get('flat','')}",
+            'expires_at': (now_ist() + timedelta(minutes=20)).isoformat(),
+        })
+    except Exception as e:
+        print(f'Error scanning delivery QR: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/rwa/delivery/alerts')
+@visitor_login_required
+def api_rwa_delivery_alerts():
+    """Return active deliveries whose 20-minute timer has expired.
+    Security dashboard polls this and can call the resident."""
+    if not supabase:
+        return jsonify([]), 500
+    user, role = _get_rwa_session_user()
+    if role not in ('security', 'admin', 'manager'):
+        return jsonify([]), 403
+    try:
+        now = now_ist().isoformat()
+        res = supabase.table('deliveries').select(
+            '*, residents(name, mobile, block, floor, flat)'
+        ).eq('status', 'inside').lt('expires_at', now).order('expires_at').execute()
+        rows = []
+        for r in res.data or []:
+            rd = r.get('residents') or {}
+            rows.append({
+                'id': r['id'], 'resident_name': rd.get('name'), 'resident_mobile': rd.get('mobile'),
+                'block': rd.get('block'), 'floor': rd.get('floor'), 'flat': rd.get('flat'),
+                'delivery_person_name': r.get('delivery_person_name'), 'vehicle_number': r.get('vehicle_number'),
+                'entry_time': r.get('entry_time'), 'expires_at': r.get('expires_at'),
+                'alerted': r.get('alerted', False)
+            })
+        return jsonify(rows)
+    except Exception as e:
+        print(f'Error fetching delivery alerts: {e}')
+        return jsonify([]), 500
+
+
+@app.route('/api/rwa/delivery/<delivery_id>/exit', methods=['POST'])
+@visitor_login_required
+def api_rwa_delivery_exit(delivery_id):
+    """Manually mark a delivery as exited/collected."""
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    user, role = _get_rwa_session_user()
+    if role not in ('security', 'admin', 'manager', 'resident'):
+        return jsonify({'error': 'Not allowed'}), 403
+    try:
+        supabase.table('deliveries').update({
+            'status': 'collected',
+            'exit_time': now_ist().isoformat(),
+            'expires_at': None,
+            'alerted': False
+        }).eq('id', delivery_id).execute()
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f'Error marking delivery exit: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+# --- Daily Help ---
+
+@app.route('/api/rwa/daily-help', methods=['GET', 'POST'])
+@visitor_login_required
+def api_rwa_daily_help():
+    if not supabase:
+        return jsonify([]), 500
+    if request.method == 'GET':
+        try:
+            res = supabase.table('daily_help').select('*').eq('active', True).order('name').execute()
+            return jsonify(res.data or [])
+        except Exception as e:
+            print(f'Error fetching daily help: {e}')
+            return jsonify([]), 500
+    else:
+        body = request.get_json() or {}
+        if not body.get('name'):
+            return jsonify({'error': 'name is required'}), 400
+        try:
+            row = {
+                'name': body['name'],
+                'mobile': body.get('mobile', ''),
+                'role_type': body.get('role_type', ''),
+                'photo_url': body.get('photo_url', ''),
+            }
+            res = supabase.table('daily_help').insert(row).execute()
+            return jsonify({'success': True, 'id': res.data[0]['id'] if res.data else None})
+        except Exception as e:
+            print(f'Error creating daily help: {e}')
+            return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/rwa/daily-help/<help_id>', methods=['PATCH', 'DELETE'])
+@visitor_login_required
+def api_rwa_daily_help_patch(help_id):
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    try:
+        if request.method == 'DELETE':
+            supabase.table('daily_help').update({'active': False}).eq('id', help_id).execute()
+            return jsonify({'success': True})
+        else:
+            body = request.get_json() or {}
+            allowed = {k: v for k, v in body.items() if k in ('name', 'mobile', 'role_type', 'photo_url', 'active')}
+            if not allowed:
+                return jsonify({'error': 'Nothing to update'}), 400
+            supabase.table('daily_help').update(allowed).eq('id', help_id).execute()
+            return jsonify({'success': True})
+    except Exception as e:
+        print(f'Error updating daily help: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/rwa/daily-help/<help_id>/attendance', methods=['POST', 'GET'])
+@visitor_login_required
+def api_rwa_daily_help_attendance(help_id):
+    if not supabase:
+        return jsonify([]), 500
+    if request.method == 'GET':
+        try:
+            res = supabase.table('daily_help_attendance').select('*').eq(
+                'daily_help_id', help_id).order('check_in', desc=True).limit(50).execute()
+            return jsonify(res.data or [])
+        except Exception as e:
+            print(f'Error fetching attendance: {e}')
+            return jsonify([]), 500
+    else:
+        body = request.get_json() or {}
+        action = body.get('action', 'check_in')
+        try:
+            user, role = _get_rwa_session_user()
+            security_id = user.get('id') if role == 'security' else None
+            if action == 'check_in':
+                row = {
+                    'daily_help_id': help_id,
+                    'check_in': now_ist().isoformat(),
+                    'verified_by': security_id,
+                }
+                res = supabase.table('daily_help_attendance').insert(row).execute()
+                return jsonify({'success': True, 'id': res.data[0]['id'] if res.data else None})
+            elif action == 'check_out':
+                att_id = body.get('attendance_id')
+                if not att_id:
+                    open_att = supabase.table('daily_help_attendance').select('id').eq(
+                        'daily_help_id', help_id).is_('check_out', 'null').order('check_in', desc=True).limit(1).execute()
+                    if not open_att.data:
+                        return jsonify({'error': 'No open check-in found'}), 404
+                    att_id = open_att.data[0]['id']
+                supabase.table('daily_help_attendance').update({
+                    'check_out': now_ist().isoformat()
+                }).eq('id', att_id).execute()
+                return jsonify({'success': True})
+            return jsonify({'error': 'Invalid action'}), 400
+        except Exception as e:
+            print(f'Error recording attendance: {e}')
+            return jsonify({'error': str(e)}), 500
+
+
+# --- Resident Vehicles ---
+
+@app.route('/api/rwa/vehicles', methods=['GET', 'POST'])
+@visitor_login_required
+def api_rwa_vehicles():
+    if not supabase:
+        return jsonify([]), 500
+    user, role = _get_rwa_session_user()
+    if request.method == 'GET':
+        try:
+            q = supabase.table('resident_vehicles').select('*, residents(name, block, floor, flat)')
+            if role == 'resident':
+                q = q.eq('resident_id', user['id'])
+            res = q.order('created_at', desc=True).execute()
+            rows = []
+            for r in res.data or []:
+                rd = r.get('residents') or {}
+                rows.append({
+                    'id': r['id'], 'resident_id': r['resident_id'],
+                    'resident_name': rd.get('name'), 'block': rd.get('block'),
+                    'floor': rd.get('floor'), 'flat': rd.get('flat'),
+                    'vehicle_number': r['vehicle_number'], 'vehicle_type': r.get('vehicle_type')
+                })
+            return jsonify(rows)
+        except Exception as e:
+            print(f'Error fetching vehicles: {e}')
+            return jsonify([]), 500
+    else:
+        if role != 'resident':
+            return jsonify({'error': 'Only residents can add vehicles'}), 403
+        body = request.get_json() or {}
+        if not body.get('vehicle_number'):
+            return jsonify({'error': 'vehicle_number is required'}), 400
+        try:
+            row = {
+                'resident_id': user['id'],
+                'vehicle_number': body['vehicle_number'].upper().strip(),
+                'vehicle_type': body.get('vehicle_type', ''),
+            }
+            res = supabase.table('resident_vehicles').insert(row).execute()
+            return jsonify({'success': True, 'id': res.data[0]['id'] if res.data else None})
+        except Exception as e:
+            if 'duplicate' in str(e).lower() or 'unique' in str(e).lower():
+                return jsonify({'error': 'Vehicle number already registered'}), 409
+            print(f'Error adding vehicle: {e}')
+            return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/rwa/vehicle-search')
+@visitor_login_required
+def api_rwa_vehicle_search():
+    if not supabase:
+        return jsonify([]), 500
+    number = request.args.get('number', '').strip().upper()
+    if not number:
+        return jsonify([]), 400
+    try:
+        results = []
+        # Search resident_vehicles
+        rv_res = supabase.table('resident_vehicles').select(
+            '*, residents(name, mobile, block, floor, flat)'
+        ).ilike('vehicle_number', f'%{number}%').execute()
+        for r in rv_res.data or []:
+            rd = r.get('residents') or {}
+            results.append({
+                'source': 'resident', 'vehicle_number': r['vehicle_number'],
+                'vehicle_type': r.get('vehicle_type'),
+                'resident_name': rd.get('name'), 'mobile': rd.get('mobile'),
+                'block': rd.get('block'), 'floor': rd.get('floor'), 'flat': rd.get('flat')
+            })
+        # Search visitor_requests
+        vr_res = supabase.table('visitor_requests').select(
+            '*, residents(name, mobile, block, floor, flat)'
+        ).ilike('vehicle_number', f'%{number}%').order('created_at', desc=True).limit(20).execute()
+        for r in vr_res.data or []:
+            rd = r.get('residents') or {}
+            results.append({
+                'source': 'visitor', 'vehicle_number': r.get('vehicle_number', ''),
+                'visitor_name': r.get('visitor_name'), 'visitor_mobile': r.get('visitor_mobile'),
+                'status': r.get('status'), 'purpose': r.get('purpose'),
+                'resident_name': rd.get('name'), 'mobile': rd.get('mobile'),
+                'block': rd.get('block'), 'floor': rd.get('floor'), 'flat': rd.get('flat'),
+                'entry_time': r.get('entry_time'), 'exit_time': r.get('exit_time')
+            })
+        return jsonify(results)
+    except Exception as e:
+        print(f'Error searching vehicles: {e}')
+        return jsonify([]), 500
+
+
+# --- Kids Checkout ---
+
+@app.route('/api/rwa/kids-checkout', methods=['POST', 'GET'])
+@visitor_login_required
+def api_rwa_kids_checkout():
+    if not supabase:
+        return jsonify([]), 500
+    user, role = _get_rwa_session_user()
+    if request.method == 'GET':
+        try:
+            q = supabase.table('kids_checkout').select('*, residents(name, block, floor, flat)')
+            if role == 'resident':
+                q = q.eq('resident_id', user['id'])
+            res = q.order('created_at', desc=True).limit(50).execute()
+            rows = []
+            for r in res.data or []:
+                rd = r.get('residents') or {}
+                rows.append({
+                    'id': r['id'], 'resident_id': r['resident_id'],
+                    'resident_name': rd.get('name'), 'block': rd.get('block'),
+                    'floor': rd.get('floor'), 'flat': rd.get('flat'),
+                    'child_name': r['child_name'], 'picked_up_by': r['picked_up_by'],
+                    'otp_verified_at': r.get('otp_verified_at'),
+                    'created_at': r.get('created_at')
+                })
+            return jsonify(rows)
+        except Exception as e:
+            print(f'Error fetching kids checkout: {e}')
+            return jsonify([]), 500
+    else:
+        body = request.get_json() or {}
+        if not body.get('resident_id') or not body.get('child_name') or not body.get('picked_up_by'):
+            return jsonify({'error': 'resident_id, child_name, and picked_up_by are required'}), 400
+        try:
+            code = generate_otp()
+            row = {
+                'resident_id': body['resident_id'],
+                'child_name': body['child_name'],
+                'picked_up_by': body['picked_up_by'],
+                'otp_code': code,
+            }
+            res = supabase.table('kids_checkout').insert(row).execute()
+            kid_id = res.data[0]['id']
+            # Send OTP to resident
+            r_res = supabase.table('residents').select('mobile').eq('id', body['resident_id']).execute()
+            mobile = r_res.data[0]['mobile'] if r_res.data else ''
+            if mobile:
+                send_otp(mobile, code)
+            return jsonify({'success': True, 'id': kid_id, 'otp': code})
+        except Exception as e:
+            print(f'Error creating kids checkout: {e}')
+            return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/rwa/kids-checkout/<kid_id>/verify', methods=['POST'])
+@visitor_login_required
+def api_rwa_kids_checkout_verify(kid_id):
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    body = request.get_json() or {}
+    code = body.get('otp', '').strip()
+    if not code:
+        return jsonify({'error': 'otp is required'}), 400
+    try:
+        res = supabase.table('kids_checkout').select('*').eq('id', kid_id).execute()
+        if not res.data:
+            return jsonify({'error': 'Record not found'}), 404
+        row = res.data[0]
+        if row.get('otp_verified_at'):
+            return jsonify({'error': 'Already verified'}), 400
+        if row.get('otp_code') != code:
+            return jsonify({'error': 'Invalid OTP'}), 400
+        user, role = _get_rwa_session_user()
+        security_id = user.get('id') if role == 'security' else None
+        supabase.table('kids_checkout').update({
+            'otp_verified_at': now_ist().isoformat(),
+            'security_id': security_id
+        }).eq('id', kid_id).execute()
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f'Error verifying kids checkout: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+# --- Directory ---
+
+@app.route('/api/rwa/directory')
+@visitor_login_required
+def api_rwa_directory():
+    if not supabase:
+        return jsonify([]), 500
+    try:
+        res = supabase.table('residents').select(
+            'id, name, mobile, block, floor, flat, directory_opt_in'
+        ).eq('active', True).order('block').order('floor').order('flat').execute()
+        rows = []
+        for r in res.data or []:
+            row = {
+                'id': r['id'], 'name': r['name'],
+                'block': r['block'], 'floor': r['floor'], 'flat': r['flat'],
+            }
+            if r.get('directory_opt_in'):
+                row['mobile'] = r['mobile']
+            else:
+                row['mobile'] = '****' + r['mobile'][-4:] if r.get('mobile') and len(r['mobile']) >= 4 else 'Hidden'
+            rows.append(row)
+        return jsonify(rows)
+    except Exception as e:
+        print(f'Error fetching directory: {e}')
+        return jsonify([]), 500
+
+
+@app.route('/api/rwa/directory/opt-in', methods=['POST'])
+@visitor_login_required
+def api_rwa_directory_opt_in():
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    user, role = _get_rwa_session_user()
+    if role != 'resident':
+        return jsonify({'error': 'Only residents can update opt-in'}), 403
+    body = request.get_json() or {}
+    try:
+        supabase.table('residents').update({
+            'directory_opt_in': body.get('opt_in', False)
+        }).eq('id', user['id']).execute()
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f'Error updating directory opt-in: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+# --- Pre-approved visitor requests ---
+
+@app.route('/api/rwa/pre-approve', methods=['POST'])
+@visitor_login_required
+def api_rwa_pre_approve():
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    user, role = _get_rwa_session_user()
+    if role != 'resident':
+        return jsonify({'error': 'Only residents can pre-approve'}), 403
+    body = request.get_json() or {}
+    if not body.get('visitor_name'):
+        return jsonify({'error': 'visitor_name is required'}), 400
+    try:
+        row = {
+            'resident_id': user['id'],
+            'visitor_name': body['visitor_name'],
+            'visitor_mobile': body.get('visitor_mobile', ''),
+            'purpose': body.get('purpose', ''),
+            'visitor_count': int(body.get('visitor_count', 1) or 1),
+            'vehicle_number': body.get('vehicle_number', ''),
+            'status': 'approved',
+            'is_pre_approved': True,
+            'otp_code': generate_otp(),
+            'entry_time': now_ist().isoformat()
+        }
+        res = supabase.table('visitor_requests').insert(row).execute()
+        visitor_id = res.data[0]['id'] if res.data else None
+        return jsonify({'success': True, 'id': visitor_id})
+    except Exception as e:
+        print(f'Error pre-approving visitor: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+# --- QR: Visitor Pass Generation & Scanning ---
+
+@app.route('/api/rwa/visitor-pass/<visitor_id>/qr')
+@visitor_login_required
+def api_rwa_visitor_pass_qr(visitor_id):
+    """Generate a QR code image for a pre-approved visitor pass.
+    The QR encodes a JSON payload with the visitor_request ID and a verification URL."""
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    try:
+        res = supabase.table('visitor_requests').select(
+            '*, residents(name, block, floor, flat)'
+        ).eq('id', visitor_id).execute()
+        if not res.data:
+            return jsonify({'error': 'Visitor pass not found'}), 404
+        vr = res.data[0]
+        if vr.get('status') in ('rejected', 'completed'):
+            return jsonify({'error': 'Pass is no longer valid'}), 400
+
+        import qrcode as _qrcode
+        import io as _io
+        import json as _json
+
+        qr_payload = _json.dumps({
+            'type': 'rwa_visitor_pass',
+            'id': vr['id'],
+            'visitor_name': vr.get('visitor_name', ''),
+            'resident_name': (vr.get('residents') or {}).get('name', ''),
+            'flat': f"{(vr.get('residents') or {}).get('block','')}-{(vr.get('residents') or {}).get('floor','')}-{(vr.get('residents') or {}).get('flat','')}",
+            'status': vr.get('status', ''),
+            'issued_at': now_ist().isoformat(),
+        })
+
+        qr = _qrcode.QRCode(version=1, error_correction=_qrcode.constants.ERROR_CORRECT_M, box_size=10, border=4)
+        qr.add_data(qr_payload)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color='black', back_color='white')
+        buf = _io.BytesIO()
+        img.save(buf, format='PNG')
+        buf.seek(0)
+
+        from flask import send_file as _send_file
+        return _send_file(buf, mimetype='image/png')
+    except Exception as e:
+        print(f'Error generating visitor QR: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/rwa/visitor-pass/scan', methods=['POST'])
+@visitor_login_required
+def api_rwa_visitor_pass_scan():
+    """Security scans a visitor QR pass at the gate.
+    Accepts the QR payload JSON, verifies the visitor_request exists and is pre-approved,
+    and marks entry if status is 'approved' (not yet inside)."""
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    user, role = _get_rwa_session_user()
+    if role not in ('security', 'admin', 'manager'):
+        return jsonify({'error': 'Security only'}), 403
+    body = request.get_json() or {}
+    payload = body.get('payload')
+    if not payload:
+        return jsonify({'error': 'payload is required'}), 400
+
+    import json as _json
+    try:
+        data = _json.loads(payload) if isinstance(payload, str) else payload
+    except Exception:
+        return jsonify({'error': 'Invalid QR payload'}), 400
+
+    if data.get('type') != 'rwa_visitor_pass':
+        return jsonify({'error': 'Not a visitor pass QR'}), 400
+
+    visitor_id = data.get('id')
+    if not visitor_id:
+        return jsonify({'error': 'No pass ID in QR'}), 400
+
+    try:
+        res = supabase.table('visitor_requests').select(
+            '*, residents(name, block, floor, flat)'
+        ).eq('id', visitor_id).execute()
+        if not res.data:
+            return jsonify({'error': 'Pass not found'}), 404
+        vr = res.data[0]
+        rd = vr.get('residents') or {}
+
+        if vr.get('status') in ('rejected', 'completed'):
+            return jsonify({'error': 'Pass is no longer valid'}), 409
+
+        if vr.get('status') == 'inside':
+            return jsonify({'error': 'Visitor already inside', 'visitor_name': vr.get('visitor_name')}), 409
+
+        if vr.get('status') == 'completed':
+            return jsonify({'error': 'Pass already used / completed'}), 409
+
+        # Mark entry
+        supabase.table('visitor_requests').update({
+            'status': 'inside',
+            'entry_time': now_ist().isoformat(),
+            'security_id': user.get('id') if role == 'security' else None,
+        }).eq('id', visitor_id).execute()
+
+        return jsonify({
+            'success': True,
+            'visitor_name': vr.get('visitor_name'),
+            'visitor_mobile': vr.get('visitor_mobile'),
+            'purpose': vr.get('purpose'),
+            'vehicle_number': vr.get('vehicle_number'),
+            'resident_name': rd.get('name'),
+            'flat': f"{rd.get('block','')}-{rd.get('floor','')}-{rd.get('flat','')}",
+            'visitor_count': vr.get('visitor_count', 1),
+        })
+    except Exception as e:
+        print(f'Error scanning visitor pass: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/rwa/pre-approved-passes')
+@visitor_login_required
+def api_rwa_pre_approved_passes():
+    """List pre-approved visitor passes for QR pass display (resident view)."""
+    if not supabase:
+        return jsonify([]), 500
+    user, role = _get_rwa_session_user()
+    try:
+        q = supabase.table('visitor_requests').select(
+            '*, residents(name, block, floor, flat)'
+        ).eq('is_pre_approved', True)
+        if role == 'resident':
+            q = q.eq('resident_id', user['id'])
+        res = q.order('created_at', desc=True).limit(20).execute()
+        rows = []
+        for r in res.data or []:
+            rd = r.get('residents') or {}
+            rows.append({
+                'id': r['id'], 'visitor_name': r.get('visitor_name'),
+                'visitor_mobile': r.get('visitor_mobile'), 'purpose': r.get('purpose'),
+                'vehicle_number': r.get('vehicle_number'), 'status': r.get('status'),
+                'resident_name': rd.get('name'),
+                'flat': f"{rd.get('block','')}-{rd.get('floor','')}-{rd.get('flat','')}",
+                'created_at': r.get('created_at'),
+            })
+        return jsonify(rows)
+    except Exception as e:
+        print(f'Error fetching pre-approved passes: {e}')
+        return jsonify([]), 500
+
+
+# ============================================================
+# RWA MODULE: Prime Tier (Phase 3)
+# ============================================================
+
+# --- Complaints ---
+
+@app.route('/api/rwa/complaints', methods=['GET', 'POST'])
+@visitor_login_required
+def api_rwa_complaints():
+    if not supabase:
+        return jsonify([]), 500
+    user, role = _get_rwa_session_user()
+    if request.method == 'GET':
+        try:
+            q = supabase.table('complaints').select('*, residents(name, block, floor, flat)')
+            if role == 'resident':
+                q = q.eq('resident_id', user['id'])
+            res = q.order('created_at', desc=True).execute()
+            rows = []
+            for r in res.data or []:
+                rd = r.get('residents') or {}
+                rows.append({
+                    'id': r['id'], 'resident_id': r['resident_id'],
+                    'resident_name': rd.get('name'), 'block': rd.get('block'),
+                    'floor': rd.get('floor'), 'flat': rd.get('flat'),
+                    'category': r.get('category'), 'description': r.get('description'),
+                    'photo_url': r.get('photo_url'), 'status': r.get('status'),
+                    'assigned_to': r.get('assigned_to'), 'created_at': r.get('created_at'),
+                    'updated_at': r.get('updated_at')
+                })
+            return jsonify(rows)
+        except Exception as e:
+            print(f'Error fetching complaints: {e}')
+            return jsonify([]), 500
+    else:
+        body = request.get_json() or {}
+        if not body.get('description'):
+            return jsonify({'error': 'description is required'}), 400
+        if role != 'resident':
+            return jsonify({'error': 'Only residents can create complaints'}), 403
+        try:
+            row = {
+                'resident_id': user['id'],
+                'category': body.get('category', ''),
+                'description': body['description'],
+                'photo_url': body.get('photo_url', ''),
+            }
+            res = supabase.table('complaints').insert(row).execute()
+            return jsonify({'success': True, 'id': res.data[0]['id'] if res.data else None})
+        except Exception as e:
+            print(f'Error creating complaint: {e}')
+            return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/rwa/complaints/<complaint_id>', methods=['PATCH'])
+@visitor_login_required
+def api_rwa_complaints_patch(complaint_id):
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    body = request.get_json() or {}
+    allowed = {}
+    if 'status' in body and body['status'] in ('open', 'in_progress', 'resolved', 'closed'):
+        allowed['status'] = body['status']
+    if 'assigned_to' in body:
+        allowed['assigned_to'] = body['assigned_to']
+    if not allowed:
+        return jsonify({'error': 'Nothing to update'}), 400
+    allowed['updated_at'] = now_ist().isoformat()
+    try:
+        supabase.table('complaints').update(allowed).eq('id', complaint_id).execute()
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f'Error updating complaint: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+# --- Amenities ---
+
+@app.route('/api/rwa/amenities', methods=['GET', 'POST', 'DELETE'])
+@visitor_login_required
+def api_rwa_amenities():
+    if not supabase:
+        return jsonify([]), 500
+    if request.method == 'GET':
+        try:
+            res = supabase.table('amenities').select('*').eq('active', True).order('name').execute()
+            return jsonify(res.data or [])
+        except Exception as e:
+            print(f'Error fetching amenities: {e}')
+            return jsonify([]), 500
+    elif request.method == 'DELETE':
+        user, role = _get_rwa_session_user()
+        if role not in ('admin', 'manager'):
+            return jsonify({'error': 'Admin only'}), 403
+        amenity_id = request.args.get('id')
+        if not amenity_id:
+            return jsonify({'error': 'id required'}), 400
+        try:
+            supabase.table('amenities').update({'active': False}).eq('id', amenity_id).execute()
+            return jsonify({'success': True})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+    else:
+        user, role = _get_rwa_session_user()
+        if role not in ('admin', 'manager'):
+            return jsonify({'error': 'Admin only'}), 403
+        body = request.get_json() or {}
+        if not body.get('name'):
+            return jsonify({'error': 'name is required'}), 400
+        try:
+            res = supabase.table('amenities').insert({
+                'name': body['name'], 'description': body.get('description', '')
+            }).execute()
+            return jsonify({'success': True, 'id': res.data[0]['id'] if res.data else None})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/rwa/amenity-bookings', methods=['GET', 'POST'])
+@visitor_login_required
+def api_rwa_amenity_bookings():
+    if not supabase:
+        return jsonify([]), 500
+    user, role = _get_rwa_session_user()
+    if request.method == 'GET':
+        try:
+            q = supabase.table('amenity_bookings').select('*, amenities(name), residents(name)')
+            if role == 'resident':
+                q = q.eq('resident_id', user['id'])
+            amenity_id = request.args.get('amenity_id')
+            if amenity_id:
+                q = q.eq('amenity_id', amenity_id)
+            res = q.order('booking_date', desc=True).execute()
+            rows = []
+            for r in res.data or []:
+                a = r.get('amenities') or {}
+                rd = r.get('residents') or {}
+                rows.append({
+                    'id': r['id'], 'amenity_id': r['amenity_id'],
+                    'amenity_name': a.get('name'), 'resident_name': rd.get('name'),
+                    'booking_date': r.get('booking_date'), 'slot': r.get('slot'),
+                    'status': r.get('status'), 'created_at': r.get('created_at')
+                })
+            return jsonify(rows)
+        except Exception as e:
+            print(f'Error fetching bookings: {e}')
+            return jsonify([]), 500
+    else:
+        if role != 'resident':
+            return jsonify({'error': 'Only residents can book'}), 403
+        body = request.get_json() or {}
+        if not body.get('amenity_id') or not body.get('booking_date') or not body.get('slot'):
+            return jsonify({'error': 'amenity_id, booking_date, and slot are required'}), 400
+        try:
+            row = {
+                'amenity_id': body['amenity_id'],
+                'resident_id': user['id'],
+                'booking_date': body['booking_date'],
+                'slot': body['slot'],
+            }
+            res = supabase.table('amenity_bookings').insert(row).execute()
+            return jsonify({'success': True, 'id': res.data[0]['id'] if res.data else None})
+        except Exception as e:
+            err = str(e).lower()
+            if 'duplicate' in err or 'unique' in err or 'violates' in err:
+                return jsonify({'error': 'Slot already booked for this date'}), 409
+            print(f'Error booking amenity: {e}')
+            return jsonify({'error': str(e)}), 500
+
+
+# --- Notices ---
+
+@app.route('/api/rwa/notices', methods=['GET', 'POST'])
+@visitor_login_required
+def api_rwa_notices():
+    if not supabase:
+        return jsonify([]), 500
+    if request.method == 'GET':
+        try:
+            user, role = _get_rwa_session_user()
+            res = supabase.table('notices').select('*').order('pinned', desc=True).order('created_at', desc=True).execute()
+            rows = res.data or []
+            # Filter by scope for residents
+            if role == 'resident' and user:
+                ub, uf = user.get('block', ''), user.get('floor', '')
+                filtered = []
+                for n in rows:
+                    scope = n.get('target_scope', 'all')
+                    if scope == 'all':
+                        filtered.append(n)
+                    elif scope == 'block' and n.get('target_value') == ub:
+                        filtered.append(n)
+                    elif scope == 'floor' and n.get('target_value') == uf:
+                        filtered.append(n)
+                rows = filtered
+            return jsonify(rows)
+        except Exception as e:
+            print(f'Error fetching notices: {e}')
+            return jsonify([]), 500
+    else:
+        user, role = _get_rwa_session_user()
+        if role not in ('admin', 'manager', 'security'):
+            return jsonify({'error': 'Admin/security only'}), 403
+        body = request.get_json() or {}
+        if not body.get('title') or not body.get('body'):
+            return jsonify({'error': 'title and body are required'}), 400
+        try:
+            row = {
+                'title': body['title'],
+                'body': body['body'],
+                'target_scope': body.get('target_scope', 'all'),
+                'target_value': body.get('target_value', ''),
+                'posted_by': user.get('name', '') or user.get('email', ''),
+                'pinned': body.get('pinned', False),
+            }
+            res = supabase.table('notices').insert(row).execute()
+            return jsonify({'success': True, 'id': res.data[0]['id'] if res.data else None})
+        except Exception as e:
+            print(f'Error creating notice: {e}')
+            return jsonify({'error': str(e)}), 500
+
+
+# --- Home Planner ---
+
+@app.route('/api/rwa/home-planner', methods=['GET', 'POST', 'PATCH'])
+@visitor_login_required
+def api_rwa_home_planner():
+    if not supabase:
+        return jsonify([]), 500
+    user, role = _get_rwa_session_user()
+    if role != 'resident':
+        return jsonify({'error': 'Resident only'}), 403
+    if request.method == 'GET':
+        try:
+            res = supabase.table('home_planner_tasks').select('*').eq(
+                'resident_id', user['id']).order('done').order('due_date').execute()
+            return jsonify(res.data or [])
+        except Exception as e:
+            print(f'Error fetching planner: {e}')
+            return jsonify([]), 500
+    elif request.method == 'POST':
+        body = request.get_json() or {}
+        if not body.get('title'):
+            return jsonify({'error': 'title is required'}), 400
+        try:
+            res = supabase.table('home_planner_tasks').insert({
+                'resident_id': user['id'],
+                'title': body['title'],
+                'due_date': body.get('due_date'),
+            }).execute()
+            return jsonify({'success': True, 'id': res.data[0]['id'] if res.data else None})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+    else:
+        task_id = request.args.get('id')
+        if not task_id:
+            return jsonify({'error': 'id required'}), 400
+        body = request.get_json() or {}
+        allowed = {k: v for k, v in body.items() if k in ('title', 'due_date', 'done')}
+        if not allowed:
+            return jsonify({'error': 'Nothing to update'}), 400
+        try:
+            supabase.table('home_planner_tasks').update(allowed).eq('id', task_id).execute()
+            return jsonify({'success': True})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
+
+# --- Parking ---
+
+@app.route('/api/rwa/parking', methods=['GET', 'POST'])
+@visitor_login_required
+def api_rwa_parking():
+    if not supabase:
+        return jsonify([]), 500
+    if request.method == 'GET':
+        try:
+            res = supabase.table('parking_slots').select('*, residents(name, mobile)').order('slot_number').execute()
+            rows = []
+            for r in res.data or []:
+                rd = r.get('residents') or {}
+                rows.append({
+                    'id': r['id'], 'slot_number': r['slot_number'],
+                    'owner_name': rd.get('name'), 'owner_mobile': rd.get('mobile'),
+                    'status': r['status']
+                })
+            return jsonify(rows)
+        except Exception as e:
+            print(f'Error fetching parking: {e}')
+            return jsonify([]), 500
+    else:
+        user, role = _get_rwa_session_user()
+        if role not in ('admin', 'manager'):
+            return jsonify({'error': 'Admin only'}), 403
+        body = request.get_json() or {}
+        if not body.get('slot_number'):
+            return jsonify({'error': 'slot_number is required'}), 400
+        try:
+            row = {
+                'slot_number': body['slot_number'],
+                'status': body.get('status', 'owned'),
+            }
+            if body.get('owner_resident_id'):
+                row['owner_resident_id'] = body['owner_resident_id']
+            res = supabase.table('parking_slots').insert(row).execute()
+            return jsonify({'success': True, 'id': res.data[0]['id'] if res.data else None})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/rwa/parking/rent', methods=['POST'])
+@visitor_login_required
+def api_rwa_parking_rent():
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    user, role = _get_rwa_session_user()
+    if role != 'resident':
+        return jsonify({'error': 'Resident only'}), 403
+    body = request.get_json() or {}
+    if not body.get('slot_id') or not body.get('start_date'):
+        return jsonify({'error': 'slot_id and start_date are required'}), 400
+    try:
+        res = supabase.table('parking_rentals').insert({
+            'slot_id': body['slot_id'],
+            'renter_resident_id': user['id'],
+            'start_date': body['start_date'],
+            'end_date': body.get('end_date'),
+        }).execute()
+        supabase.table('parking_slots').update({'status': 'rented'}).eq('id', body['slot_id']).execute()
+        return jsonify({'success': True, 'id': res.data[0]['id'] if res.data else None})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# --- SOS ---
+
+@app.route('/api/rwa/sos', methods=['POST'])
+@visitor_login_required
+def api_rwa_sos_create():
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    user, role = _get_rwa_session_user()
+    if role != 'resident':
+        return jsonify({'error': 'Resident only'}), 403
+    try:
+        res = supabase.table('sos_alerts').insert({
+            'resident_id': user['id'],
+            'triggered_at': now_ist().isoformat(),
+        }).execute()
+        return jsonify({'success': True, 'id': res.data[0]['id'] if res.data else None})
+    except Exception as e:
+        print(f'Error creating SOS: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/rwa/sos/active')
+@visitor_login_required
+def api_rwa_sos_active():
+    if not supabase:
+        return jsonify([]), 500
+    try:
+        res = supabase.table('sos_alerts').select('*, residents(name, mobile, block, floor, flat)').is_(
+            'acknowledged_at', 'null').order('triggered_at', desc=True).execute()
+        rows = []
+        for r in res.data or []:
+            rd = r.get('residents') or {}
+            rows.append({
+                'id': r['id'], 'resident_id': r['resident_id'],
+                'resident_name': rd.get('name'), 'mobile': rd.get('mobile'),
+                'block': rd.get('block'), 'floor': rd.get('floor'), 'flat': rd.get('flat'),
+                'triggered_at': r.get('triggered_at'), 'notes': r.get('notes')
+            })
+        return jsonify(rows)
+    except Exception as e:
+        print(f'Error fetching active SOS: {e}')
+        return jsonify([]), 500
+
+
+@app.route('/api/rwa/sos/<sos_id>/acknowledge', methods=['PATCH'])
+@visitor_login_required
+def api_rwa_sos_acknowledge(sos_id):
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    user, role = _get_rwa_session_user()
+    if role not in ('security', 'admin', 'manager'):
+        return jsonify({'error': 'Security/admin only'}), 403
+    body = request.get_json() or {}
+    try:
+        supabase.table('sos_alerts').update({
+            'acknowledged_by': user.get('id'),
+            'acknowledged_at': now_ist().isoformat(),
+            'notes': body.get('notes', '')
+        }).eq('id', sos_id).execute()
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f'Error acknowledging SOS: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+# --- e-Intercom (v1: call request ping) ---
+
+@app.route('/api/rwa/intercom', methods=['POST', 'GET'])
+@visitor_login_required
+def api_rwa_intercom():
+    if not supabase:
+        return jsonify([]), 500
+    user, role = _get_rwa_session_user()
+    if request.method == 'GET':
+        try:
+            q = supabase.table('intercom_calls').select('*').order('created_at', desc=True).limit(20)
+            if role == 'resident':
+                q = q.eq('caller_id', user['id']).or_(f'target_type.eq.security,target_type.eq.gate')
+            res = q.execute()
+            return jsonify(res.data or [])
+        except Exception as e:
+            print(f'Error fetching intercom calls: {e}')
+            return jsonify([]), 500
+    else:
+        body = request.get_json() or {}
+        if not body.get('target_type'):
+            return jsonify({'error': 'target_type is required'}), 400
+        try:
+            row = {
+                'caller_id': user['id'],
+                'caller_type': 'resident' if role == 'resident' else 'security',
+                'target_type': body['target_type'],
+                'target_id': body.get('target_id'),
+                'status': 'ringing',
+            }
+            res = supabase.table('intercom_calls').insert(row).execute()
+            return jsonify({'success': True, 'id': res.data[0]['id'] if res.data else None})
+        except Exception as e:
+            print(f'Error creating intercom call: {e}')
+            return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/rwa/intercom/<call_id>/answer', methods=['PATCH'])
+@visitor_login_required
+def api_rwa_intercom_answer(call_id):
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    try:
+        supabase.table('intercom_calls').update({
+            'status': 'answered',
+            'answered_at': now_ist().isoformat()
+        }).eq('id', call_id).execute()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================================
+# RWA MODULE: Elite Tier (Phase 4)
+# ============================================================
+
+# --- Patrol ---
+
+@app.route('/api/rwa/patrol/checkpoints', methods=['GET', 'POST'])
+@visitor_login_required
+def api_rwa_patrol_checkpoints():
+    if not supabase:
+        return jsonify([]), 500
+    if request.method == 'GET':
+        try:
+            res = supabase.table('patrol_checkpoints').select('*').eq('active', True).order('name').execute()
+            return jsonify(res.data or [])
+        except Exception as e:
+            print(f'Error fetching checkpoints: {e}')
+            return jsonify([]), 500
+    else:
+        user, role = _get_rwa_session_user()
+        if role not in ('admin', 'manager'):
+            return jsonify({'error': 'Admin only'}), 403
+        body = request.get_json() or {}
+        if not body.get('name'):
+            return jsonify({'error': 'name is required'}), 400
+        try:
+            res = supabase.table('patrol_checkpoints').insert({
+                'name': body['name'],
+                'qr_code': body.get('qr_code', ''),
+            }).execute()
+            return jsonify({'success': True, 'id': res.data[0]['id'] if res.data else None})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/rwa/patrol/log', methods=['POST', 'GET'])
+@visitor_login_required
+def api_rwa_patrol_log():
+    if not supabase:
+        return jsonify([]), 500
+    if request.method == 'GET':
+        try:
+            res = supabase.table('patrol_logs').select(
+                '*, patrol_checkpoints(name), security_users(name)'
+            ).order('scanned_at', desc=True).limit(100).execute()
+            rows = []
+            for r in res.data or []:
+                cp = r.get('patrol_checkpoints') or {}
+                sec = r.get('security_users') or {}
+                rows.append({
+                    'id': r['id'], 'checkpoint_id': r['checkpoint_id'],
+                    'checkpoint_name': cp.get('name'), 'security_name': sec.get('name'),
+                    'scanned_at': r.get('scanned_at'), 'notes': r.get('notes')
+                })
+            return jsonify(rows)
+        except Exception as e:
+            print(f'Error fetching patrol logs: {e}')
+            return jsonify([]), 500
+    else:
+        user, role = _get_rwa_session_user()
+        if role not in ('security', 'admin', 'manager'):
+            return jsonify({'error': 'Security only'}), 403
+        body = request.get_json() or {}
+        if not body.get('checkpoint_id'):
+            return jsonify({'error': 'checkpoint_id is required'}), 400
+        try:
+            res = supabase.table('patrol_logs').insert({
+                'checkpoint_id': body['checkpoint_id'],
+                'security_id': user.get('id'),
+                'notes': body.get('notes', ''),
+            }).execute()
+            return jsonify({'success': True, 'id': res.data[0]['id'] if res.data else None})
+        except Exception as e:
+            print(f'Error logging patrol: {e}')
+            return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/rwa/patrol/checkpoints/<cp_id>/qr')
+@visitor_login_required
+def api_rwa_patrol_checkpoint_qr(cp_id):
+    """Generate a QR code image for a patrol checkpoint.
+    The QR encodes a JSON payload with the checkpoint ID and name.
+    Print and laminate at the physical checkpoint location."""
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    try:
+        res = supabase.table('patrol_checkpoints').select('*').eq('id', cp_id).execute()
+        if not res.data:
+            return jsonify({'error': 'Checkpoint not found'}), 404
+        cp = res.data[0]
+
+        import qrcode as _qrcode
+        import io as _io
+        import json as _json
+
+        qr_payload = _json.dumps({
+            'type': 'rwa_patrol_checkpoint',
+            'id': cp['id'],
+            'name': cp.get('name', ''),
+            'qr_code': cp.get('qr_code', ''),
+        })
+
+        qr = _qrcode.QRCode(version=1, error_correction=_qrcode.constants.ERROR_CORRECT_M, box_size=10, border=4)
+        qr.add_data(qr_payload)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color='black', back_color='white')
+        buf = _io.BytesIO()
+        img.save(buf, format='PNG')
+        buf.seek(0)
+
+        from flask import send_file as _send_file
+        return _send_file(buf, mimetype='image/png')
+    except Exception as e:
+        print(f'Error generating patrol QR: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/rwa/patrol/scan', methods=['POST'])
+@visitor_login_required
+def api_rwa_patrol_scan():
+    """Security scans a patrol checkpoint QR code.
+    Parses the QR payload, verifies the checkpoint exists, and logs the patrol scan."""
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    user, role = _get_rwa_session_user()
+    if role not in ('security', 'admin', 'manager'):
+        return jsonify({'error': 'Security only'}), 403
+    body = request.get_json() or {}
+    payload = body.get('payload')
+    if not payload:
+        return jsonify({'error': 'payload is required'}), 400
+
+    import json as _json
+    try:
+        data = _json.loads(payload) if isinstance(payload, str) else payload
+    except Exception:
+        return jsonify({'error': 'Invalid QR payload'}), 400
+
+    if data.get('type') != 'rwa_patrol_checkpoint':
+        return jsonify({'error': 'Not a patrol checkpoint QR'}), 400
+
+    checkpoint_id = data.get('id')
+    if not checkpoint_id:
+        return jsonify({'error': 'No checkpoint ID in QR'}), 400
+
+    try:
+        cp_res = supabase.table('patrol_checkpoints').select('*').eq('id', checkpoint_id).execute()
+        if not cp_res.data:
+            return jsonify({'error': 'Checkpoint not found'}), 404
+        cp = cp_res.data[0]
+
+        log_res = supabase.table('patrol_logs').insert({
+            'checkpoint_id': checkpoint_id,
+            'security_id': user.get('id'),
+            'scanned_at': now_ist().isoformat(),
+            'notes': body.get('notes', ''),
+        }).execute()
+
+        return jsonify({
+            'success': True,
+            'checkpoint_name': cp.get('name', ''),
+            'scanned_at': now_ist().isoformat(),
+            'log_id': log_res.data[0]['id'] if log_res.data else None,
+        })
+    except Exception as e:
+        print(f'Error scanning patrol QR: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+# --- Maintenance Invoices ---
+
+@app.route('/api/rwa/invoices', methods=['GET', 'POST'])
+@visitor_login_required
+def api_rwa_invoices():
+    if not supabase:
+        return jsonify([]), 500
+    user, role = _get_rwa_session_user()
+    if request.method == 'GET':
+        try:
+            q = supabase.table('rwa_invoices').select('*, flats(block, floor, flat_number), residents(name, mobile)')
+            if role == 'resident':
+                q = q.eq('resident_id', user['id'])
+            res = q.order('created_at', desc=True).execute()
+            rows = []
+            for r in res.data or []:
+                f = r.get('flats') or {}
+                rd = r.get('residents') or {}
+                rows.append({
+                    'id': r['id'], 'invoice_number': r['invoice_number'],
+                    'billing_month': r.get('billing_month'), 'amount': r.get('amount'),
+                    'due_date': r.get('due_date'), 'status': r.get('status'),
+                    'flat': f"{f.get('block','')}-{f.get('floor','')}-{f.get('flat_number','')}" if f else '-',
+                    'resident_name': rd.get('name'), 'resident_mobile': rd.get('mobile'),
+                    'created_at': r.get('created_at')
+                })
+            return jsonify(rows)
+        except Exception as e:
+            print(f'Error fetching RWA invoices: {e}')
+            return jsonify([]), 500
+    else:
+        if role not in ('admin', 'manager'):
+            return jsonify({'error': 'Admin only'}), 403
+        body = request.get_json() or {}
+        if not body.get('billing_month') or body.get('amount') is None:
+            return jsonify({'error': 'billing_month and amount are required'}), 400
+        try:
+            import uuid as _uuid
+            invoice_number = f'RWA-{body["billing_month"].replace("-", "")}-{_uuid.uuid4().hex[:6].upper()}'
+            row = {
+                'invoice_number': invoice_number,
+                'billing_month': body['billing_month'],
+                'amount': body['amount'],
+                'due_date': body.get('due_date'),
+                'status': 'unpaid',
+            }
+            if body.get('flat_id'):
+                row['flat_id'] = body['flat_id']
+            if body.get('resident_id'):
+                row['resident_id'] = body['resident_id']
+            res = supabase.table('rwa_invoices').insert(row).execute()
+            return jsonify({'success': True, 'id': res.data[0]['id'] if res.data else None, 'invoice_number': invoice_number})
+        except Exception as e:
+            print(f'Error creating invoice: {e}')
+            return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/rwa/invoices/<invoice_id>', methods=['PATCH'])
+@visitor_login_required
+def api_rwa_invoices_patch(invoice_id):
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    user, role = _get_rwa_session_user()
+    if role not in ('admin', 'manager'):
+        return jsonify({'error': 'Admin only'}), 403
+    body = request.get_json() or {}
+    allowed = {k: v for k, v in body.items() if k in ('amount', 'due_date', 'status')}
+    if not allowed:
+        return jsonify({'error': 'Nothing to update'}), 400
+    try:
+        supabase.table('rwa_invoices').update(allowed).eq('id', invoice_id).execute()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# --- Payments ---
+
+@app.route('/api/rwa/payments', methods=['GET', 'POST'])
+@visitor_login_required
+def api_rwa_payments():
+    if not supabase:
+        return jsonify([]), 500
+    user, role = _get_rwa_session_user()
+    if request.method == 'GET':
+        try:
+            q = supabase.table('rwa_payments').select('*, rwa_invoices(invoice_number, billing_month, resident_id)')
+            if role == 'resident':
+                q = q.filter('rwa_invoices.resident_id', 'eq', user['id'])
+            res = q.order('created_at', desc=True).execute()
+            rows = []
+            for r in res.data or []:
+                inv = r.get('rwa_invoices') or {}
+                rows.append({
+                    'id': r['id'], 'invoice_id': r['invoice_id'],
+                    'invoice_number': inv.get('invoice_number'), 'billing_month': inv.get('billing_month'),
+                    'amount': r.get('amount'), 'method': r.get('method'),
+                    'status': r.get('status'), 'razorpay_payment_id': r.get('razorpay_payment_id'),
+                    'created_at': r.get('created_at')
+                })
+            return jsonify(rows)
+        except Exception as e:
+            print(f'Error fetching payments: {e}')
+            return jsonify([]), 500
+    else:
+        body = request.get_json() or {}
+        if not body.get('invoice_id') or body.get('amount') is None:
+            return jsonify({'error': 'invoice_id and amount are required'}), 400
+        try:
+            row = {
+                'invoice_id': body['invoice_id'],
+                'amount': body['amount'],
+                'method': body.get('method', 'manual'),
+                'status': body.get('status', 'success'),
+            }
+            if body.get('razorpay_order_id'):
+                row['razorpay_order_id'] = body['razorpay_order_id']
+            if body.get('razorpay_payment_id'):
+                row['razorpay_payment_id'] = body['razorpay_payment_id']
+            res = supabase.table('rwa_payments').insert(row).execute()
+            if body.get('status', 'success') == 'success':
+                supabase.table('rwa_invoices').update({'status': 'paid'}).eq('id', body['invoice_id']).execute()
+            return jsonify({'success': True, 'id': res.data[0]['id'] if res.data else None})
+        except Exception as e:
+            print(f'Error recording payment: {e}')
+            return jsonify({'error': str(e)}), 500
+
+
+# --- Razorpay order creation (stub) ---
+
+@app.route('/api/rwa/razorpay/create-order', methods=['POST'])
+@visitor_login_required
+def api_rwa_razorpay_create_order():
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    body = request.get_json() or {}
+    if not body.get('invoice_id'):
+        return jsonify({'error': 'invoice_id is required'}), 400
+    try:
+        inv_res = supabase.table('rwa_invoices').select('*').eq('id', body['invoice_id']).execute()
+        if not inv_res.data:
+            return jsonify({'error': 'Invoice not found'}), 404
+        inv = inv_res.data[0]
+        amount_paise = int(float(inv['amount']) * 100)
+        # TODO: integrate actual Razorpay SDK when keys are available
+        import uuid as _uuid
+        order_id = f'order_{_uuid.uuid4().hex[:16]}'
+        supabase.table('rwa_payments').insert({
+            'invoice_id': body['invoice_id'],
+            'amount': inv['amount'],
+            'method': 'razorpay',
+            'razorpay_order_id': order_id,
+            'status': 'pending',
+        }).execute()
+        return jsonify({
+            'order_id': order_id,
+            'amount': amount_paise,
+            'currency': 'INR',
+            'invoice_number': inv['invoice_number'],
+            'note': 'Razorpay integration pending — set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET env vars'
+        })
+    except Exception as e:
+        print(f'Error creating Razorpay order: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+# --- Vendor Ledger ---
+
+@app.route('/api/rwa/vendor-ledger', methods=['GET', 'POST'])
+@visitor_login_required
+def api_rwa_vendor_ledger():
+    if not supabase:
+        return jsonify([]), 500
+    user, role = _get_rwa_session_user()
+    if request.method == 'GET':
+        try:
+            res = supabase.table('rwa_vendor_ledger').select('*').order('created_at', desc=True).execute()
+            return jsonify(res.data or [])
+        except Exception as e:
+            print(f'Error fetching vendor ledger: {e}')
+            return jsonify([]), 500
+    else:
+        if role not in ('admin', 'manager'):
+            return jsonify({'error': 'Admin only'}), 403
+        body = request.get_json() or {}
+        if not body.get('vendor_name') or body.get('invoice_amount') is None:
+            return jsonify({'error': 'vendor_name and invoice_amount are required'}), 400
+        try:
+            paid = float(body.get('paid_amount', 0) or 0)
+            total = float(body['invoice_amount'])
+            status = 'paid' if paid >= total else ('partially_paid' if paid > 0 else 'unpaid')
+            res = supabase.table('rwa_vendor_ledger').insert({
+                'vendor_name': body['vendor_name'],
+                'category': body.get('category', ''),
+                'invoice_amount': total,
+                'paid_amount': paid,
+                'status': status,
+                'notes': body.get('notes', ''),
+            }).execute()
+            return jsonify({'success': True, 'id': res.data[0]['id'] if res.data else None})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/rwa/vendor-ledger/<entry_id>', methods=['PATCH'])
+@visitor_login_required
+def api_rwa_vendor_ledger_patch(entry_id):
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    user, role = _get_rwa_session_user()
+    if role not in ('admin', 'manager'):
+        return jsonify({'error': 'Admin only'}), 403
+    body = request.get_json() or {}
+    allowed = {k: v for k, v in body.items() if k in ('paid_amount', 'status', 'notes')}
+    if not allowed:
+        return jsonify({'error': 'Nothing to update'}), 400
+    try:
+        if 'paid_amount' in allowed:
+            paid = float(allowed['paid_amount'])
+            cur = supabase.table('rwa_vendor_ledger').select('invoice_amount').eq('id', entry_id).execute()
+            if cur.data:
+                total = float(cur.data[0]['invoice_amount'])
+                allowed['status'] = 'paid' if paid >= total else ('partially_paid' if paid > 0 else 'unpaid')
+        supabase.table('rwa_vendor_ledger').update(allowed).eq('id', entry_id).execute()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# --- Reports ---
+
+@app.route('/api/rwa/reports/summary')
+@requires_role('admin', 'manager')
+def api_rwa_reports_summary():
+    if not supabase:
+        return jsonify({}), 500
+    try:
+        inv_res = supabase.table('rwa_invoices').select('amount, status').execute()
+        invoices = inv_res.data or []
+        total_billed = sum(float(i.get('amount', 0)) for i in invoices)
+        total_paid = sum(float(i.get('amount', 0)) for i in invoices if i.get('status') == 'paid')
+        total_unpaid = total_billed - total_paid
+
+        pay_res = supabase.table('rwa_payments').select('amount, status').execute()
+        payments = pay_res.data or []
+        total_collected = sum(float(p.get('amount', 0)) for p in payments if p.get('status') == 'success')
+
+        vl_res = supabase.table('rwa_vendor_ledger').select('invoice_amount, paid_amount, status').execute()
+        vl = vl_res.data or []
+        vendor_total = sum(float(v.get('invoice_amount', 0)) for v in vl)
+        vendor_paid = sum(float(v.get('paid_amount', 0)) for v in vl)
+
+        comp_res = supabase.table('complaints').select('status').execute()
+        complaints = comp_res.data or []
+        open_complaints = len([c for c in complaints if c.get('status') in ('open', 'in_progress')])
+
+        patrol_res = supabase.table('patrol_logs').select('scanned_at').execute()
+        patrol_logs = patrol_res.data or []
+        cutoff = (now_ist() - timedelta(hours=24)).isoformat()
+        recent_patrols = len([p for p in patrol_logs if (p.get('scanned_at') or '') > cutoff])
+
+        return jsonify({
+            'invoices': {
+                'total_billed': total_billed,
+                'total_paid': total_paid,
+                'total_unpaid': total_unpaid,
+                'count': len(invoices),
+            },
+            'payments': {
+                'total_collected': total_collected,
+                'count': len(payments),
+            },
+            'vendor_ledger': {
+                'total_invoiced': vendor_total,
+                'total_paid': vendor_paid,
+                'outstanding': vendor_total - vendor_paid,
+            },
+            'complaints': {
+                'open': open_complaints,
+                'total': len(complaints),
+            },
+            'patrol': {
+                'last_24h': recent_patrols,
+                'total': len(patrol_logs),
+            }
+        })
+    except Exception as e:
+        print(f'Error generating report: {e}')
+        return jsonify({}), 500
 
 
 if __name__ == '__main__':

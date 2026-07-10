@@ -2171,6 +2171,7 @@ function applyRoleBasedUI() {
     hide('openExpenditureBtn');
     hide('openDesignGeneratorBtn');
     hide('openStockPurchasesBtn');
+    hide('openRWABtn');
 
     if (currentUserPermissions.viewInvoices) show('openInvoicesBtn');
     if (currentUserPermissions.viewPayroll) show('openPayrollBtn');
@@ -2182,6 +2183,7 @@ function applyRoleBasedUI() {
     if (currentUserPermissions.viewExpenditures) show('openExpenditureBtn');
     if (currentUserPermissions.viewDesignGenerator) show('openDesignGeneratorBtn');
     if (currentUserPermissions.viewStockPurchases) show('openStockPurchasesBtn');
+    if (currentUserRole === 'admin' || currentUserRole === 'manager') show('openRWABtn');
     if (currentUserPermissions.editWorkItems || currentUserPermissions.editVentures) {
         show('settingsBtn');
         show('editModeBtn');
