@@ -212,8 +212,14 @@ h1, h2, h3, h4, .venture-title, .dashboard-header h2, .section-header {
 .sidebar-nav-item .nav-icon {
     font-size: 1.1rem;
     flex-shrink: 0;
-    width: 20px;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     text-align: center;
+    background: rgba(255,255,255,0.15);
+    border-radius: 6px;
 }
 
 /* Collapsed state: show a small dot indicator since icons are removed */
@@ -305,16 +311,16 @@ h1, h2, h3, h4, .venture-title, .dashboard-header h2, .section-header {
         transform: translateX(-100%);
         width: var(--sidebar-w);
     }
-    .app.sidebar-open .app-sidebar {
+    #app.sidebar-open .app-sidebar {
         transform: translateX(0);
     }
-    .app.sidebar-open .sidebar-scrim {
+    #app.sidebar-open .sidebar-scrim {
         display: block;
     }
     .sidebar-toggle {
         display: flex;
     }
-    .app.sidebar-open .sidebar-toggle {
+    #app.sidebar-open .sidebar-toggle {
         display: none;
     }
     .sidebar-collapse-btn {
@@ -323,7 +329,7 @@ h1, h2, h3, h4, .venture-title, .dashboard-header h2, .section-header {
     #appMain {
         margin-left: 0 !important;
     }
-    .app.sidebar-open #appMain {
+    #app.sidebar-open #appMain {
         margin-left: 0;
     }
 }
@@ -1976,11 +1982,22 @@ h1, h2, h3, h4, .venture-title, .dashboard-header h2, .section-header {
 }
 
 .sp-supplier-drawer {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(420px, 90vw);
     background: #fff;
-    border-radius: var(--card-radius);
     box-shadow: var(--card-shadow);
     padding: 20px;
-    align-self: start;
+    z-index: 250;
+    overflow-y: auto;
+    transform: translateX(100%);
+    transition: transform 0.25s ease;
+}
+
+.sp-supplier-drawer.open {
+    transform: translateX(0);
 }
 
 .sp-drawer-header {
@@ -1992,6 +2009,19 @@ h1, h2, h3, h4, .venture-title, .dashboard-header h2, .section-header {
 
 .sp-drawer-header h3 {
     font-size: 1.1rem;
+    color: #1a1a1a;
+}
+
+.sp-close-detail {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    line-height: 1;
+    color: #888;
+    cursor: pointer;
+    padding: 4px;
+}
+.sp-close-detail:hover {
     color: #1a1a1a;
 }
 
@@ -2116,18 +2146,7 @@ h1, h2, h3, h4, .venture-title, .dashboard-header h2, .section-header {
         grid-template-columns: 1fr;
     }
     .sp-supplier-drawer {
-        position: fixed;
-        top: 0;
-        right: 0;
-        bottom: 0;
         width: min(360px, 90vw);
-        z-index: 250;
         border-radius: 0;
-        overflow-y: auto;
-        transform: translateX(100%);
-        transition: transform 0.25s ease;
-    }
-    .sp-supplier-drawer.open {
-        transform: translateX(0);
     }
 }

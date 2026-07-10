@@ -7815,18 +7815,67 @@ function renderSPMaterials() {
     filtered.forEach(m => {
         const card = document.createElement('div');
         card.className = 'sp-material-card';
+        card.style.cursor = 'pointer';
         card.innerHTML = `
             <div class="sp-material-category">${escapeHtml(m.category || '')}</div>
             <div class="sp-material-name">${escapeHtml(m.name || '')}</div>
             <div class="sp-material-unit">${escapeHtml(m.unit || '')}</div>
             ${m.description ? `<div class="sp-material-desc">${escapeHtml(m.description)}</div>` : ''}
+            <div class="sp-material-hint" style="font-size:0.75rem;color:#888;margin-top:8px;">Click to see suppliers & prices</div>
         `;
+        card.addEventListener('click', () => openSPSupplierDrawer(m));
         grid.appendChild(card);
     });
 }
 
+async function openSPSupplierDrawer(material) {
+    const drawer = document.getElementById('spSupplierDrawer');
+    const title = document.getElementById('spDrawerTitle');
+    const list = document.getElementById('spSuppliersList');
+    if (!drawer || !title || !list) return;
+
+    title.textContent = `${escapeHtml(material.name || '')} — Suppliers`;
+    list.innerHTML = '<div style="padding:20px;color:#888;">Loading suppliers...</div>';
+    drawer.style.display = '';
+    drawer.classList.add('open');
+
+    try {
+        const suppliers = await apiGet(`/api/marketplace/materials/${material.id}/suppliers`);
+        if (!suppliers.length) {
+            list.innerHTML = '<div style="padding:20px;color:#888;">No suppliers found for this material.</div>';
+            return;
+        }
+        list.innerHTML = suppliers.map(s => `
+            <div class="sp-supplier-card">
+                <div class="sp-supplier-brand">${escapeHtml(s.brand_name || '—')}</div>
+                <div class="sp-supplier-company">${escapeHtml(s.company_name || '')}</div>
+                <div class="sp-supplier-price">₹${s.price_low || 0} – ₹${s.price_high || 0}</div>
+                <div class="sp-supplier-trust">${escapeHtml(s.trust_level || '')}</div>
+                <div class="sp-supplier-contact">
+                    ${s.phone ? `<div>📞 ${escapeHtml(s.phone)}</div>` : ''}
+                    ${s.email ? `<div>✉ ${escapeHtml(s.email)}</div>` : ''}
+                </div>
+            </div>
+        `).join('');
+    } catch (err) {
+        list.innerHTML = '<div style="padding:20px;color:#c0392b;">Failed to load suppliers.</div>';
+    }
+}
+
+function closeSPSupplierDrawer() {
+    const drawer = document.getElementById('spSupplierDrawer');
+    if (!drawer) return;
+    drawer.classList.remove('open');
+    drawer.style.display = 'none';
+}
+
 function initStockPurchases() {
     // Filter interactions are wired in renderSPCategories per role.
+    const closeBtn = document.getElementById('spCloseDrawer');
+    if (closeBtn && !closeBtn._bound) {
+        closeBtn.addEventListener('click', closeSPSupplierDrawer);
+        closeBtn._bound = true;
+    }
 }
 
 // ========================

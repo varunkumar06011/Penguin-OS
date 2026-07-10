@@ -7,12 +7,12 @@
     <link rel="icon" href="/static/images/favicon.jpg" type="image/jpeg">
     <link rel="stylesheet" href="/static/css/fonts.css">
     <link rel="stylesheet" href="/static/css/style.css">
-    <link rel="stylesheet" href="/static/css/theme.css">
+    <link rel="stylesheet" href="/static/css/theme.css?v=4">
     <style>
         .rwa-body { background: var(--content-bg); min-height: 100vh; }
-        .rwa-header { background: #1a1a1a; color: #fff; padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; }
+        .rwa-header { background: #1a1a1a; color: #fff; padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; position: fixed; top: 0; left: 0; right: 0; z-index: 210; height: 60px; box-sizing: border-box; }
         .rwa-header-brand { display: flex; align-items: center; gap: 10px; font-weight: 700; }
-        .rwa-main { max-width: 1200px; margin: 0 auto; padding: 24px; }
+        .rwa-main { max-width: 1200px; margin: 0 auto; padding: 84px 24px 24px 24px; }
         .rwa-card { background: #fff; border-radius: var(--card-radius); box-shadow: var(--card-shadow); padding: 20px; margin-bottom: 20px; }
         .rwa-card h3 { margin: 0 0 16px; }
         .rwa-btn { padding: 10px 18px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; font-size: 0.9rem; }
@@ -33,11 +33,32 @@
         .rwa-form-field input, .rwa-form-field select { padding: 10px 12px; border: 1.5px solid #e0e4e8; border-radius: 8px; font-size: 0.95rem; }
         .rwa-back { color: #1a1a1a; text-decoration: none; font-size: 0.9rem; font-weight: 600; }
         .rwa-section-title { font-size: 1.1rem; font-weight: 700; margin: 0 0 12px; padding-bottom: 8px; border-bottom: 2px solid #f0f0f0; }
-        .rwa-tab-bar { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 2px solid #e0e4e8; }
-        .rwa-tab { padding: 10px 18px; border: none; background: none; cursor: pointer; font-weight: 600; font-size: 0.88rem; color: #888; border-bottom: 3px solid transparent; margin-bottom: -2px; }
-        .rwa-tab.active { color: #1a1a1a; border-bottom-color: #1a1a1a; }
-        .rwa-tab-content { display: none; }
-        .rwa-tab-content.active { display: block; }
+
+        /* Sidebar nav for RWA Admin */
+        #rwaApp { display: flex; min-height: 100vh; }
+        #rwaSidebar { position: fixed; top: 60px; left: 0; bottom: 0; width: 240px; background: #1a1a1a; color: rgba(255,255,255,0.7); overflow-y: auto; z-index: 200; transform: translateX(-100%); transition: transform 0.25s ease; }
+        #rwaApp.sidebar-open #rwaSidebar { transform: translateX(0); }
+        #rwaSidebarHeader { padding: 16px; border-bottom: 1px solid rgba(255,255,255,0.1); font-weight: 700; color: #fff; }
+        #rwaSidebarNav { padding: 8px 0; }
+        .rwa-sidebar-section { padding: 14px 16px 6px; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.06em; color: rgba(255,255,255,0.4); }
+        .rwa-sidebar-item { display: block; width: 100%; text-align: left; padding: 12px 16px; border: none; background: transparent; color: rgba(255,255,255,0.7); font-size: 0.9rem; font-weight: 600; cursor: pointer; border-left: 4px solid transparent; }
+        .rwa-sidebar-item:hover { background: rgba(255,255,255,0.05); color: #fff; }
+        .rwa-sidebar-item.active { background: rgba(255,255,255,0.1); color: #fff; border-left-color: #fff; }
+        #rwaSidebarToggle { display: none; position: fixed; top: 74px; left: 14px; z-index: 999; background: #1a1a1a; color: #fff; border: none; width: 40px; height: 40px; border-radius: 8px; align-items: center; justify-content: center; font-size: 1.2rem; cursor: pointer; }
+        #rwaSidebarScrim { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 199; }
+        #rwaApp.sidebar-open #rwaSidebarScrim { display: block; }
+        #rwaMain { flex: 1; margin-left: 0; min-width: 0; width: 100%; }
+        @media (min-width: 901px) {
+            #rwaSidebar { transform: translateX(0); position: fixed; }
+            #rwaMain { margin-left: 240px; }
+            #rwaSidebarToggle { display: none !important; }
+            #rwaSidebarScrim { display: none !important; }
+            .rwa-header { padding-left: 264px; }
+        }
+        @media (max-width: 900px) {
+            #rwaSidebarToggle { display: flex; }
+            .rwa-main { padding-top: 84px; }
+        }
     </style>
 </head>
 <body class="rwa-body">
@@ -52,17 +73,25 @@
         </div>
     </header>
 
-    <main class="rwa-main">
-        <div class="rwa-tab-bar">
-            <button class="rwa-tab active" data-tab="flats">Flats</button>
-            <button class="rwa-tab" data-tab="emergency">Emergency Contacts</button>
-            <button class="rwa-tab" data-tab="sync">Sync</button>
-            <button class="rwa-tab" data-tab="patrol">Patrol</button>
-            <button class="rwa-tab" data-tab="invoices">Invoices</button>
-            <button class="rwa-tab" data-tab="payments">Payments</button>
-            <button class="rwa-tab" data-tab="vendor">Vendor Ledger</button>
-            <button class="rwa-tab" data-tab="reports">Reports</button>
-        </div>
+    <div id="rwaApp">
+        <aside id="rwaSidebar">
+            <div id="rwaSidebarHeader">RWA Admin</div>
+            <nav id="rwaSidebarNav">
+                <div class="rwa-sidebar-section">Modules</div>
+                <button class="rwa-sidebar-item active" data-tab="flats">Flats</button>
+                <button class="rwa-sidebar-item" data-tab="emergency">Emergency Contacts</button>
+                <button class="rwa-sidebar-item" data-tab="sync">Sync</button>
+                <button class="rwa-sidebar-item" data-tab="patrol">Patrol</button>
+                <button class="rwa-sidebar-item" data-tab="invoices">Invoices</button>
+                <button class="rwa-sidebar-item" data-tab="payments">Payments</button>
+                <button class="rwa-sidebar-item" data-tab="vendor">Vendor Ledger</button>
+                <button class="rwa-sidebar-item" data-tab="reports">Reports</button>
+            </nav>
+        </aside>
+        <div id="rwaSidebarScrim"></div>
+        <button id="rwaSidebarToggle">&#9776;</button>
+
+        <main id="rwaMain" class="rwa-main">
 
         <!-- Flats Tab -->
         <div class="rwa-tab-content active" id="tab-flats">
@@ -173,6 +202,7 @@
             </div>
         </div>
     </main>
+    </div>
 
     <script>
         async function apiGet(path) {
@@ -187,14 +217,34 @@
             return data;
         }
 
-        document.querySelectorAll('.rwa-tab').forEach(tab => {
-            tab.addEventListener('click', () => {
-                document.querySelectorAll('.rwa-tab').forEach(t => t.classList.remove('active'));
-                document.querySelectorAll('.rwa-tab-content').forEach(c => c.classList.remove('active'));
-                tab.classList.add('active');
-                document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
-            });
+        function showRWATab(tabName) {
+            document.querySelectorAll('.rwa-sidebar-item').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.rwa-tab-content').forEach(c => c.classList.remove('active'));
+            const sidebarItem = document.querySelector('.rwa-sidebar-item[data-tab="' + tabName + '"]');
+            if (sidebarItem) sidebarItem.classList.add('active');
+            const tabContent = document.getElementById('tab-' + tabName);
+            if (tabContent) tabContent.classList.add('active');
+            if (window.innerWidth <= 900) {
+                document.getElementById('rwaApp').classList.remove('sidebar-open');
+            }
+        }
+
+        document.querySelectorAll('.rwa-sidebar-item').forEach(item => {
+            item.addEventListener('click', () => showRWATab(item.dataset.tab));
         });
+
+        const rwaSidebarToggle = document.getElementById('rwaSidebarToggle');
+        const rwaSidebarScrim = document.getElementById('rwaSidebarScrim');
+        if (rwaSidebarToggle) {
+            rwaSidebarToggle.addEventListener('click', () => {
+                document.getElementById('rwaApp').classList.toggle('sidebar-open');
+            });
+        }
+        if (rwaSidebarScrim) {
+            rwaSidebarScrim.addEventListener('click', () => {
+                document.getElementById('rwaApp').classList.remove('sidebar-open');
+            });
+        }
 
         async function loadFlats() {
             try {

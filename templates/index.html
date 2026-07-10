@@ -7,7 +7,7 @@
     <link rel="icon" href="/static/images/favicon.jpg" type="image/jpeg">
     <link rel="stylesheet" href="/static/css/fonts.css">
     <link rel="stylesheet" href="/static/css/style.css">
-    <link rel="stylesheet" href="/static/css/theme.css">
+    <link rel="stylesheet" href="/static/css/theme.css?v=4">
 </head>
 <body>
     <div id="app">
@@ -20,7 +20,9 @@
             </div>
             <nav class="sidebar-nav">
                 <div class="sidebar-nav-section">Main</div>
-                <button id="sidebarDashboard" class="sidebar-nav-item"><span class="nav-label">Dashboard</span></button>
+                <button id="sidebarDashboard" class="sidebar-nav-item"><span class="nav-icon">&#127968;</span><span class="nav-label">Dashboard</span></button>
+                <button id="openDesignGeneratorBtn" class="sidebar-nav-item" style="display:none;"><span class="nav-icon">&#127968;</span><span class="nav-label">Design Generator</span></button>
+                <button id="openStockPurchasesBtn" class="sidebar-nav-item" style="display:none;"><span class="nav-icon">&#128230;</span><span class="nav-label">Stock Purchases</span></button>
                 <button id="openInvoicesBtn" class="sidebar-nav-item" style="display:none;"><span class="nav-label">Invoices</span></button>
                 <button id="openPayrollBtn" class="sidebar-nav-item" style="display:none;"><span class="nav-label">Payroll</span></button>
                 <button id="openInventoryBtn" class="sidebar-nav-item" style="display:none;"><span class="nav-label">Inventory</span></button>
@@ -30,9 +32,7 @@
                 <div class="sidebar-nav-section">Admin</div>
                 <button id="openInstantReportsBtn" class="sidebar-nav-item" style="display:none;"><span class="nav-label">Instant Reports</span></button>
                 <button id="openInventoryAuditBtn" class="sidebar-nav-item" style="display:none;"><span class="nav-label">Inventory Audit</span></button>
-                <button id="openDesignGeneratorBtn" class="sidebar-nav-item" style="display:none;"><span class="nav-icon">&#127968;</span><span class="nav-label">Design Generator</span></button>
-                <button id="openStockPurchasesBtn" class="sidebar-nav-item" style="display:none;"><span class="nav-icon">&#128230;</span><span class="nav-label">Stock Purchases</span></button>
-                <a href="/rwa-admin" id="openRWABtn" class="sidebar-nav-item" style="display:none;text-decoration:none;color:inherit;"><span class="nav-icon">&#127968;</span><span class="nav-label">RWA Module</span></a>
+                <a href="/rwa-admin" id="openRWABtn" class="sidebar-nav-item" style="display:none;text-decoration:none;color:#fff;"><span class="nav-icon">&#127968;</span><span class="nav-label">RWA Module</span></a>
             </nav>
             <div class="sidebar-footer">
                 <button id="editModeBtn" class="sidebar-nav-item" style="display:none;"><span class="nav-label">Edit Structure</span></button>
@@ -322,6 +322,13 @@
             <div id="stockPurchasesContent">
                 <div class="sp-category-bar" id="spCategoryBar"></div>
                 <div class="sp-materials-grid" id="spMaterialsGrid"></div>
+                <div id="spSupplierDrawer" class="sp-supplier-drawer" style="display:none;">
+                    <div class="sp-drawer-header">
+                        <h3 id="spDrawerTitle">Suppliers</h3>
+                        <button id="spCloseDrawer" class="sp-close-detail">&times;</button>
+                    </div>
+                    <div id="spSuppliersList" class="sp-suppliers-list"></div>
+                </div>
             </div>
         </div>
 
@@ -1083,7 +1090,7 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-    <script src="/static/js/app.js"></script>
-    <script src="/static/js/theme-ui.js"></script>
+    <script src="/static/js/app.js?v=2"></script>
+    <script src="/static/js/theme-ui.js?v=2"></script>
 </body>
 </html>
