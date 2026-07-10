@@ -4,61 +4,204 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>VGrand Infra Tracking - Login</title>
+    <link rel="icon" href="/static/images/image.png" type="image/png">
     <link rel="stylesheet" href="/static/css/fonts.css">
     <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/theme.css">
 </head>
 <body class="login-body">
-    <div class="login-container">
-        <div class="login-box">
+    <div class="login-wrapper">
+        <div class="login-hero">
+            <img src="/static/images/image.png" alt="VGrand" class="login-logo">
             <h1>VGrand Infra Tracking</h1>
             <p>Construction Site Progress Tracker</p>
-            <form id="loginForm">
-                <div class="login-portals">
-                    <button type="button" class="portal-btn active" data-username="Vgrand01" data-password="Infra1234" data-role="supervisor">Supervisor Portal</button>
-                    <button type="button" class="portal-btn" data-username="vgrand02" data-password="infra 123" data-role="manager">Manager Portal</button>
-                    <button type="button" class="portal-btn" data-username="vgrand03" data-password="infra 12345" data-role="admin">Admin Portal</button>
+        </div>
+
+        <div id="portalStep" class="login-portals">
+            <button type="button" class="portal-btn" data-role="supervisor">
+                <span class="portal-icon">S</span>
+                <span class="portal-name">Supervisor</span>
+                <span class="portal-desc">Update cell status & track progress</span>
+            </button>
+            <button type="button" class="portal-btn" data-role="manager">
+                <span class="portal-icon">M</span>
+                <span class="portal-name">Manager</span>
+                <span class="portal-desc">Invoices, POs, payroll & inventory</span>
+            </button>
+            <button type="button" class="portal-btn" data-role="admin">
+                <span class="portal-icon">A</span>
+                <span class="portal-name">Admin</span>
+                <span class="portal-desc">Full access, reports & settings</span>
+            </button>
+            <button type="button" class="portal-btn" data-role="security">
+                <span class="portal-icon">SG</span>
+                <span class="portal-name">Security</span>
+                <span class="portal-desc">Visitor entry & resident verification</span>
+            </button>
+            <button type="button" class="portal-btn" data-role="resident">
+                <span class="portal-icon">R</span>
+                <span class="portal-name">Resident</span>
+                <span class="portal-desc">Approve visitors & view history</span>
+            </button>
+        </div>
+
+        <form id="loginForm" class="login-form" style="display:none;">
+            <div class="login-fields">
+                <div class="login-role-indicator">
+                    <span class="portal-icon small" id="loginRoleIcon">S</span>
+                    <span id="selectedRoleName">Supervisor</span>
+                    <button type="button" id="backToPortals" class="back-to-portals">Change role</button>
                 </div>
-                <div class="form-group">
-                    <label for="username">Username</label>
-                    <input type="text" id="username" name="username" value="Vgrand01" required>
+                <div id="mainLoginFields">
+                    <div class="form-group">
+                        <label for="username">Username</label>
+                        <input type="text" id="username" name="username" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="password">Password</label>
+                        <input type="password" id="password" name="password" required>
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label for="password">Password</label>
-                    <input type="password" id="password" name="password" value="Infra1234" required>
+                <div id="securityLoginFields" style="display:none;">
+                    <div class="form-group">
+                        <label for="securityEmail">Email</label>
+                        <input type="email" id="securityEmail" name="securityEmail" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="securityPassword">Password</label>
+                        <input type="password" id="securityPassword" name="securityPassword" required>
+                    </div>
+                </div>
+                <div id="residentLoginFields" style="display:none;">
+                    <div class="form-group">
+                        <label for="residentMobile">Mobile Number</label>
+                        <input type="tel" id="residentMobile" name="residentMobile" placeholder="Registered mobile number" required>
+                    </div>
                 </div>
                 <div class="error-msg" id="loginError"></div>
-                <button type="submit" class="btn-primary">Sign In</button>
-            </form>
+                <button type="submit" class="btn-primary" id="loginSubmitBtn">Sign In</button>
+            </div>
+        </form>
+
+        <div class="login-get-started">
+            <span>New construction?</span>
+            <a href="#" id="getStartedLink">Get started</a>
+            <span id="comingSoonMsg" class="coming-soon-msg">Coming soon</span>
+        </div>
+
+        <div class="login-footer">
+            Powered by <strong>VTechnologies</strong>
         </div>
     </div>
     <script>
+        let selectedPortalRole = 'supervisor';
+
+        function getPortalInitial(role, text) {
+            if (role === 'security') return 'SG';
+            return text.charAt(0).toUpperCase();
+        }
+
         document.querySelectorAll('.portal-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 document.querySelectorAll('.portal-btn').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
-                document.getElementById('username').value = btn.dataset.username;
-                document.getElementById('password').value = btn.dataset.password;
+                selectedPortalRole = btn.dataset.role;
+
+                // Clear forms
+                document.getElementById('username').value = '';
+                document.getElementById('password').value = '';
+                document.getElementById('securityEmail').value = '';
+                document.getElementById('securityPassword').value = '';
+                document.getElementById('residentMobile').value = '';
+                document.getElementById('loginError').textContent = '';
+
+                // Show correct fields
+                const isMain = ['supervisor','manager','admin'].includes(selectedPortalRole);
+                const isSecurity = selectedPortalRole === 'security';
+                const isResident = selectedPortalRole === 'resident';
+
+                document.getElementById('mainLoginFields').style.display = isMain ? '' : 'none';
+                document.getElementById('securityLoginFields').style.display = isSecurity ? '' : 'none';
+                document.getElementById('residentLoginFields').style.display = isResident ? '' : 'none';
+
+                // Focus first field
+                if (isMain) document.getElementById('username').focus();
+                else if (isSecurity) document.getElementById('securityEmail').focus();
+                else if (isResident) document.getElementById('residentMobile').focus();
+
+                // Update role indicator
+                const indicator = document.querySelector('.login-role-indicator');
+                if (indicator) {
+                    indicator.querySelector('#loginRoleIcon').textContent = getPortalInitial(selectedPortalRole, btn.querySelector('.portal-name').textContent);
+                    indicator.querySelector('#selectedRoleName').textContent = btn.querySelector('.portal-name').textContent;
+                }
+
+                // Show form, hide portal cards
+                document.getElementById('portalStep').style.display = 'none';
+                document.getElementById('loginForm').style.display = '';
             });
+        });
+
+        document.getElementById('backToPortals').addEventListener('click', () => {
+            document.getElementById('loginForm').style.display = 'none';
+            document.getElementById('portalStep').style.display = '';
+            document.querySelectorAll('.portal-btn').forEach(b => b.classList.remove('active'));
+        });
+
+        document.getElementById('getStartedLink').addEventListener('click', (e) => {
+            e.preventDefault();
+            const msg = document.getElementById('comingSoonMsg');
+            msg.style.display = 'inline';
+            setTimeout(() => { msg.style.display = 'none'; }, 2000);
         });
 
         document.getElementById('loginForm').addEventListener('submit', async function(e) {
             e.preventDefault();
-            const username = document.getElementById('username').value;
-            const password = document.getElementById('password').value;
             const errorDiv = document.getElementById('loginError');
-            
+            errorDiv.textContent = '';
+
             try {
-                const resp = await fetch('/login', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, password })
-                });
-                const data = await resp.json();
-                if (data.success) {
-                    window.location.href = '/';
-                } else {
-                    errorDiv.textContent = data.error || 'Login failed';
+                let resp, data;
+                if (['supervisor','manager','admin'].includes(selectedPortalRole)) {
+                    const username = document.getElementById('username').value;
+                    const password = document.getElementById('password').value;
+                    resp = await fetch('/login', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ username, password })
+                    });
+                    data = await resp.json();
+                    if (data.success) {
+                        window.location.href = '/';
+                        return;
+                    }
+                } else if (selectedPortalRole === 'security') {
+                    const email = document.getElementById('securityEmail').value;
+                    const password = document.getElementById('securityPassword').value;
+                    resp = await fetch('/api/visitor/security-login', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email, password })
+                    });
+                    data = await resp.json();
+                    if (data.success) {
+                        window.location.href = '/visitor-portal';
+                        return;
+                    }
+                } else if (selectedPortalRole === 'resident') {
+                    const mobile = document.getElementById('residentMobile').value;
+                    resp = await fetch('/api/visitor/resident-login', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ mobile })
+                    });
+                    data = await resp.json();
+                    if (data.success) {
+                        window.location.href = '/visitor-portal';
+                        return;
+                    }
                 }
+                errorDiv.textContent = data && data.error ? data.error : 'Login failed';
             } catch (err) {
                 errorDiv.textContent = 'Network error. Please try again.';
             }

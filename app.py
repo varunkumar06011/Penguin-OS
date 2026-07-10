@@ -4,7 +4,7 @@ import json
 import re
 import base64
 import io
-from datetime import timedelta, datetime, date
+from datetime import timedelta, datetime, date, timezone
 from functools import wraps
 from dotenv import load_dotenv
 from supabase import create_client, Client
@@ -16,6 +16,11 @@ except ImportError:  # Pillow may not be installed in every environment
     Image = None
 
 load_dotenv()
+
+IST = timezone(timedelta(hours=5, minutes=30))
+
+def now_ist():
+    return datetime.now(IST)
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'vgrand-secret-key-2025')
@@ -40,16 +45,6 @@ def load_json_fallback(filename):
     except Exception as e:
         print(f'Error loading JSON fallback {filename}: {e}')
         return None
-
-DEMO_USERNAME = 'Vgrand@123'
-DEMO_PASSWORD = 'Vgrand1234'
-
-# Role-based fallback accounts (used when Supabase users table is not populated)
-FALLBACK_USERS = {
-    'Vgrand01': {'password': 'Infra1234',   'role': 'supervisor', 'full_name': 'VGrand Supervisor'},
-    'vgrand02': {'password': 'infra 123',   'role': 'manager',    'full_name': 'VGrand Manager'},
-    'vgrand03': {'password': 'infra 12345', 'role': 'admin',      'full_name': 'VGrand Admin'},
-}
 
 DEFAULT_WORK_ITEMS = [
     "BRICK WORK", "ELECTRICAL PIPES", "MESH", "PLASTERING",
@@ -150,7 +145,7 @@ def login():
     username = data.get('username', '')
     password = data.get('password', '')
 
-    # Try the real users table first.
+    # Authenticate against the Supabase users table only.
     user_obj = None
     if supabase:
         try:
@@ -158,24 +153,10 @@ def login():
             if res.data:
                 row = res.data[0]
                 pw_hash = row.get('password_hash', '')
-                # Legacy/sentinel hash: allow the demo password and update the hash.
-                if pw_hash == 'LEGACY' or not pw_hash:
-                    if username == DEMO_USERNAME and password == DEMO_PASSWORD:
-                        user_obj = {'id': row['id'], 'email': row['email'], 'role': row['role'], 'org_id': row['org_id']}
-                elif check_password_hash(pw_hash, password):
-                    user_obj = {'id': row['id'], 'email': row['email'], 'role': row['role'], 'org_id': row['org_id']}
+                if pw_hash and check_password_hash(pw_hash, password):
+                    user_obj = {'id': row['id'], 'email': row['email'], 'role': row['role'], 'org_id': row.get('org_id')}
         except Exception as e:
             print(f'Error loading user from Supabase: {e}')
-
-    # Fallback to the hardcoded demo credentials when the users table is not populated.
-    if not user_obj and username == DEMO_USERNAME and password == DEMO_PASSWORD:
-        user_obj = {'id': 'demo', 'email': DEMO_USERNAME, 'role': 'admin', 'org_id': None}
-
-    # Fallback to role-based accounts (supervisor, manager, admin)
-    if not user_obj and username in FALLBACK_USERS:
-        fb = FALLBACK_USERS[username]
-        if password == fb['password']:
-            user_obj = {'id': f'fb_{username}', 'email': username, 'role': fb['role'], 'org_id': None}
 
     if user_obj:
         session['user'] = user_obj
@@ -187,8 +168,315 @@ def login():
 @app.route('/logout', methods=['POST'])
 def logout():
     session.pop('user', None)
+    session.pop('visitor_user', None)
+    session.pop('security_user', None)
     return jsonify({'success': True})
 
+
+# ============================================================
+# OTP Service Abstraction
+# ============================================================
+
+def send_otp(mobile, code):
+    """Send OTP to a mobile number. Replace this with Twilio/MSG91/etc.
+    For development, the code is simply logged."""
+    print(f'[OTP] Sending code {code} to {mobile}')
+    return True
+
+
+def generate_otp():
+    """Generate a 4-digit OTP. In dev, always 1234."""
+    return '1234'
+
+
+# ============================================================
+# Visitor Management API
+# ============================================================
+
+@app.route('/api/visitor/resident-login', methods=['POST'])
+def visitor_resident_login():
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    body = request.get_json() or {}
+    mobile = body.get('mobile', '').strip()
+    if not mobile:
+        return jsonify({'error': 'Mobile number required'}), 400
+    try:
+        res = supabase.table('residents').select('*').eq('mobile', mobile).eq('active', True).execute()
+        if not res.data:
+            return jsonify({'error': 'Resident not found'}), 404
+        row = res.data[0]
+        session['visitor_user'] = {
+            'id': row['id'],
+            'name': row['name'],
+            'mobile': row['mobile'],
+            'block': row['block'],
+            'floor': row['floor'],
+            'flat': row['flat'],
+            'role': 'resident'
+        }
+        return jsonify({'success': True, 'resident': session['visitor_user']})
+    except Exception as e:
+        print(f'Error resident login: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/visitor/security-login', methods=['POST'])
+def visitor_security_login():
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    body = request.get_json() or {}
+    email = body.get('email', '').strip()
+    password = body.get('password', '')
+    if not email or not password:
+        return jsonify({'error': 'Email and password required'}), 400
+    try:
+        res = supabase.table('security_users').select('*').eq('email', email).eq('active', True).execute()
+        if not res.data:
+            return jsonify({'error': 'Invalid credentials'}), 401
+        row = res.data[0]
+        if not check_password_hash(row.get('password_hash', ''), password):
+            return jsonify({'error': 'Invalid credentials'}), 401
+        session['security_user'] = {
+            'id': row['id'],
+            'name': row['name'],
+            'email': row['email'],
+            'role': 'security'
+        }
+        return jsonify({'success': True, 'security': session['security_user']})
+    except Exception as e:
+        print(f'Error security login: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/visitor/me')
+def visitor_me():
+    return jsonify({
+        'resident': session.get('visitor_user'),
+        'security': session.get('security_user')
+    })
+
+
+@app.route('/api/visitor/resident')
+def api_visitor_resident():
+    resident = session.get('visitor_user')
+    if not resident:
+        return jsonify({'error': 'Not logged in'}), 401
+    return jsonify(resident)
+
+
+def visitor_login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if 'user' not in session and 'security_user' not in session and 'visitor_user' not in session:
+            return redirect(url_for('login_page'))
+        return f(*args, **kwargs)
+    return decorated
+
+
+@app.route('/api/visitor/resident-by-mobile/<mobile>')
+@visitor_login_required
+def api_visitor_resident_by_mobile(mobile):
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    try:
+        res = supabase.table('residents').select('*').eq('mobile', mobile).eq('active', True).execute()
+        if not res.data:
+            return jsonify(None)
+        row = res.data[0]
+        return jsonify({
+            'id': row['id'],
+            'name': row['name'],
+            'mobile': row['mobile'],
+            'block': row['block'],
+            'floor': row['floor'],
+            'flat': row['flat']
+        })
+    except Exception as e:
+        print(f'Error fetching resident by mobile: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/visitor/request', methods=['POST'])
+@visitor_login_required
+def api_visitor_request_create():
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    body = request.get_json() or {}
+    required = ['resident_id', 'visitor_name']
+    for field in required:
+        if field not in body or not body[field]:
+            return jsonify({'error': f'{field} is required'}), 400
+    try:
+        security = session.get('security_user') or session.get('user') or {}
+        security_id = security.get('id') if security.get('role') == 'security' else None
+        code = generate_otp()
+        data = {
+            'resident_id': body['resident_id'],
+            'security_id': security_id,
+            'visitor_name': body['visitor_name'],
+            'visitor_mobile': body.get('visitor_mobile', ''),
+            'purpose': body.get('purpose', ''),
+            'visitor_count': int(body.get('visitor_count', 1) or 1),
+            'vehicle_number': body.get('vehicle_number', ''),
+            'id_proof_type': body.get('id_proof_type', ''),
+            'remarks': body.get('remarks', ''),
+            'status': 'waiting',
+            'otp_code': code,
+            'entry_time': now_ist().isoformat()
+        }
+        res = supabase.table('visitor_requests').insert(data).execute()
+        visitor_id = res.data[0]['id']
+
+        # Get resident mobile to send OTP
+        resident_res = supabase.table('residents').select('mobile').eq('id', body['resident_id']).execute()
+        mobile = resident_res.data[0]['mobile'] if resident_res.data else ''
+        if mobile:
+            send_otp(mobile, code)
+            supabase.table('otp_log').insert({
+                'visitor_id': visitor_id,
+                'mobile': mobile,
+                'otp_code': code,
+                'status': 'pending'
+            }).execute()
+
+        return jsonify({'success': True, 'id': visitor_id, 'otp': code})
+    except Exception as e:
+        print(f'Error creating visitor request: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/visitor/verify-otp', methods=['POST'])
+def api_visitor_verify_otp():
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    body = request.get_json() or {}
+    visitor_id = body.get('visitor_id')
+    mobile = body.get('mobile', '').strip()
+    code = body.get('otp', '').strip()
+    if not visitor_id or not mobile or not code:
+        return jsonify({'error': 'visitor_id, mobile, and otp are required'}), 400
+    try:
+        # Find the latest pending OTP log
+        res = supabase.table('otp_log').select('*').eq('visitor_id', visitor_id).eq('mobile', mobile).order('created_at', desc=True).limit(1).execute()
+        if not res.data:
+            return jsonify({'error': 'OTP request not found'}), 404
+        log = res.data[0]
+        if log['status'] != 'pending':
+            return jsonify({'error': 'OTP already used or expired'}), 400
+        if log['otp_code'] != code:
+            return jsonify({'error': 'Invalid OTP'}), 400
+
+        now = now_ist().isoformat()
+        supabase.table('otp_log').update({'status': 'verified', 'verified_at': now}).eq('id', log['id']).execute()
+        supabase.table('visitor_requests').update({
+            'status': 'approved',
+            'otp_verified_at': now
+        }).eq('id', visitor_id).execute()
+
+        return jsonify({'success': True, 'status': 'approved'})
+    except Exception as e:
+        print(f'Error verifying OTP: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/visitor/requests')
+@visitor_login_required
+def api_visitor_requests():
+    if not supabase:
+        return jsonify([])
+    try:
+        resident = session.get('visitor_user')
+        security = session.get('security_user')
+        user = session.get('user')
+
+        query = supabase.table('visitor_requests').select('*, residents(name, mobile, block, floor, flat), security_users(name)')
+        if resident:
+            query = query.eq('resident_id', resident['id'])
+        # Admin/manager/supervisor from main app can see all
+        res = query.order('created_at', desc=True).execute()
+
+        rows = []
+        for r in res.data or []:
+            resident_data = r.get('residents') or {}
+            security_data = r.get('security_users') or {}
+            rows.append({
+                'id': r['id'],
+                'resident_id': r['resident_id'],
+                'resident_name': resident_data.get('name'),
+                'resident_mobile': resident_data.get('mobile'),
+                'block': resident_data.get('block'),
+                'floor': resident_data.get('floor'),
+                'flat': resident_data.get('flat'),
+                'security_name': security_data.get('name'),
+                'visitor_name': r['visitor_name'],
+                'visitor_mobile': r.get('visitor_mobile'),
+                'purpose': r.get('purpose'),
+                'visitor_count': r.get('visitor_count', 1),
+                'vehicle_number': r.get('vehicle_number'),
+                'id_proof_type': r.get('id_proof_type'),
+                'remarks': r.get('remarks'),
+                'status': r.get('status'),
+                'entry_time': r.get('entry_time'),
+                'exit_time': r.get('exit_time'),
+                'created_at': r.get('created_at')
+            })
+        return jsonify(rows)
+    except Exception as e:
+        print(f'Error fetching visitor requests: {e}')
+        return jsonify([])
+
+
+@app.route('/api/visitor/request/<req_id>', methods=['PATCH'])
+@visitor_login_required
+def api_visitor_request_patch(req_id):
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    body = request.get_json() or {}
+    allowed = {}
+    if 'status' in body and body['status'] in ('waiting','approved','rejected','inside','completed'):
+        allowed['status'] = body['status']
+        if body['status'] == 'inside':
+            allowed['entry_time'] = now_ist().isoformat()
+        if body['status'] == 'completed':
+            allowed['exit_time'] = now_ist().isoformat()
+    if not allowed:
+        return jsonify({'error': 'Nothing to update'}), 400
+    try:
+        supabase.table('visitor_requests').update(allowed).eq('id', req_id).execute()
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f'Error updating visitor request: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/visitor/dashboard-stats')
+@visitor_login_required
+def api_visitor_dashboard_stats():
+    if not supabase:
+        return jsonify({})
+    try:
+        today = now_ist().date().isoformat()
+        base = supabase.table('visitor_requests').select('*')
+        res = base.execute()
+        rows = res.data or []
+        today_rows = [r for r in rows if (r.get('created_at') or '').startswith(today)]
+        return jsonify({
+            'total_today': len(today_rows),
+            'pending': len([r for r in rows if r.get('status') == 'waiting']),
+            'approved': len([r for r in rows if r.get('status') == 'approved']),
+            'rejected': len([r for r in rows if r.get('status') == 'rejected']),
+            'inside': len([r for r in rows if r.get('status') == 'inside']),
+            'completed': len([r for r in rows if r.get('status') == 'completed'])
+        })
+    except Exception as e:
+        print(f'Error visitor dashboard stats: {e}')
+        return jsonify({})
+
+
+# ============================================================
+# Main App Login & Me
+# ============================================================
 
 @app.route('/api/me')
 def me():
@@ -209,9 +497,16 @@ def index():
 
 @app.route('/login')
 def login_page():
-    if 'user' in session:
+    if 'user' in session or 'security_user' in session or 'visitor_user' in session:
         return redirect(url_for('index'))
     return render_template('login.html')
+
+
+@app.route('/visitor-portal')
+def visitor_portal_page():
+    if not session.get('security_user') and not session.get('visitor_user') and not session.get('user'):
+        return redirect(url_for('login_page'))
+    return render_template('visitor_portal.html')
 
 
 # ========================
@@ -1000,6 +1295,79 @@ def api_expenses_date_check():
         return jsonify(result)
     except Exception as e:
         print(f'Error in date-check expenses: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+# ========================
+# Expenditure API
+# ========================
+
+@app.route('/api/expenditures')
+@login_required
+def api_expenditures():
+    if not supabase:
+        return jsonify([])
+    venture_id = request.args.get('venture_id')
+    try:
+        if venture_id:
+            res = supabase.table('expenditures').select('*').eq('venture_id', venture_id).order('created_at', desc=True).execute()
+        else:
+            res = supabase.table('expenditures').select('*').order('created_at', desc=True).execute()
+        rows = []
+        for r in res.data or []:
+            data = r.get('data') or {}
+            data['id'] = r['id']
+            data['created_by'] = r.get('created_by')
+            data['created_at'] = r.get('created_at')
+            rows.append(data)
+        return jsonify(rows)
+    except Exception as e:
+        print(f'Error fetching expenditures: {e}')
+        return jsonify([])
+
+
+@app.route('/api/expenditure', methods=['POST'])
+@login_required
+def api_expenditure_post():
+    if not supabase:
+        return jsonify({'success': True, 'note': 'read-only local mode'})
+    body = request.get_json() or {}
+    required = ['venture_id', 'paid_to', 'amount', 'reason', 'date']
+    for field in required:
+        if field not in body or body[field] in (None, ''):
+            return jsonify({'error': f'{field} is required'}), 400
+    try:
+        entry = {
+            'venture_id': body['venture_id'],
+            'paid_to': body['paid_to'],
+            'amount': float(body['amount']),
+            'reason': body['reason'],
+            'approved_by': body.get('approved_by', ''),
+            'date': body['date']
+        }
+        user = session.get('user')
+        created_by = user.get('email') if isinstance(user, dict) else user
+        res = supabase.table('expenditures').insert({
+            'venture_id': entry['venture_id'],
+            'data': entry,
+            'created_by': created_by
+        }).execute()
+        return jsonify({'success': True, 'id': res.data[0]['id'] if res.data else None})
+    except Exception as e:
+        print(f'Error creating expenditure: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/expenditure/<exp_id>', methods=['DELETE'])
+@login_required
+def api_expenditure_delete(exp_id):
+    if not supabase:
+        return jsonify({'success': True, 'note': 'read-only local mode'})
+    try:
+        supabase.table('expenditures').delete().eq('id', exp_id).execute()
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f'Error deleting expenditure: {e}')
         return jsonify({'error': str(e)}), 500
 
 

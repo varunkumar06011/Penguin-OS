@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visitor Portal - VGrand</title>
+    <link rel="icon" href="/static/images/image.png" type="image/png">
+    <link rel="stylesheet" href="/static/css/fonts.css">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/theme.css">
+    <style>
+        .vp-body { background: var(--content-bg); min-height: 100vh; }
+        .vp-header { background: #1a1a1a; color: #fff; padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; }
+        .vp-header-brand { display: flex; align-items: center; gap: 10px; font-weight: 700; }
+        .vp-header-logo { max-height: 32px; }
+        .vp-main { max-width: 1100px; margin: 0 auto; padding: 24px; }
+        .vp-card { background: #fff; border-radius: var(--card-radius); box-shadow: var(--card-shadow); padding: 20px; margin-bottom: 20px; }
+        .vp-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; margin-bottom: 24px; }
+        .vp-stat { background: #fff; border-radius: var(--card-radius); box-shadow: var(--card-shadow); padding: 16px; text-align: center; }
+        .vp-stat-value { font-size: 1.6rem; font-weight: 700; color: #1a1a1a; }
+        .vp-stat-label { font-size: 0.75rem; color: #888; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 4px; }
+        .vp-form-row { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 14px; }
+        .vp-form-field { flex: 1; min-width: 160px; display: flex; flex-direction: column; gap: 5px; }
+        .vp-form-field label { font-size: 0.78rem; font-weight: 600; color: #555; text-transform: uppercase; letter-spacing: 0.04em; }
+        .vp-form-field input, .vp-form-field select { padding: 10px 12px; border: 1.5px solid #e0e4e8; border-radius: 8px; font-size: 0.95rem; }
+        .vp-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+        .vp-btn { padding: 10px 18px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; font-size: 0.9rem; }
+        .vp-btn-primary { background: #1a1a1a; color: #fff; }
+        .vp-btn-secondary { background: #f0f2f5; color: #1a1a1a; }
+        .vp-btn-success { background: #27ae60; color: #fff; }
+        .vp-btn-danger { background: #c0392b; color: #fff; }
+        .vp-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+        .vp-table th, .vp-table td { text-align: left; padding: 12px 10px; border-bottom: 1px solid #f0f0f0; }
+        .vp-table th { font-size: 0.72rem; text-transform: uppercase; color: #888; letter-spacing: 0.04em; }
+        .vp-status { display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 700; text-transform: capitalize; }
+        .vp-status.waiting { background: #fff3cd; color: #856404; }
+        .vp-status.approved { background: #d4edda; color: #155724; }
+        .vp-status.rejected { background: #f8d7da; color: #721c24; }
+        .vp-status.inside { background: #cce5ff; color: #004085; }
+        .vp-status.completed { background: #e2e3e5; color: #383d41; }
+        .vp-empty { color: #888; text-align: center; padding: 32px; }
+        .vp-otp-input { letter-spacing: 0.4em; font-size: 1.3rem; text-align: center; max-width: 140px; }
+        .vp-resident-card { background: #fff; border-radius: var(--card-radius); box-shadow: var(--card-shadow); padding: 24px; margin-bottom: 16px; }
+        .vp-resident-card h4 { margin: 0 0 6px; }
+        .vp-resident-card p { margin: 0 0 14px; color: #666; }
+        .vp-search-bar { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+        .vp-search-bar input, .vp-search-bar select { padding: 10px 12px; border: 1.5px solid #e0e4e8; border-radius: 8px; }
+        @media (max-width: 700px) {
+            .vp-main { padding: 16px; }
+            .vp-form-row { flex-direction: column; }
+            .vp-form-field { min-width: 100%; }
+            .vp-table thead { display: none; }
+            .vp-table, .vp-table tbody, .vp-table tr, .vp-table td { display: block; width: 100%; }
+            .vp-table tr { background: #fff; border: 1px solid #e8ecf0; border-radius: 10px; margin-bottom: 12px; padding: 10px; }
+            .vp-table td { border: none; padding: 6px 8px; display: flex; justify-content: space-between; }
+            .vp-table td::before { content: attr(data-label); font-weight: 600; color: #888; font-size: 0.78rem; }
+        }
+    </style>
+</head>
+<body class="vp-body">
+    <header class="vp-header">
+        <div class="vp-header-brand">
+            <img src="/static/images/image.png" alt="VGrand" class="vp-header-logo">
+            <span>Visitor Portal</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:16px;">
+            <span id="vpUserName"></span>
+            <button id="vpLogout" class="vp-btn vp-btn-secondary" style="padding:6px 12px;font-size:0.8rem;">Logout</button>
+        </div>
+    </header>
+
+    <main class="vp-main">
+        <div id="vpSecurityView" style="display:none;">
+            <div class="vp-stats" id="vpSecurityStats"></div>
+
+            <div class="vp-card">
+                <h3 style="margin:0 0 16px;">New Visitor Entry</h3>
+                <div class="vp-form-row">
+                    <div class="vp-form-field" style="flex:2;">
+                        <label>Resident Mobile Number</label>
+                        <input type="tel" id="vpResidentMobile" placeholder="Enter registered mobile">
+                    </div>
+                    <div class="vp-form-field" style="align-self:flex-end;">
+                        <button id="vpFetchResident" class="vp-btn vp-btn-primary">Fetch Resident</button>
+                    </div>
+                </div>
+                <div id="vpResidentInfo" style="display:none;background:#f8f9fa;border-radius:10px;padding:14px;margin-bottom:16px;"></div>
+
+                <div id="vpVisitorForm" style="display:none;">
+                    <div class="vp-form-row">
+                        <div class="vp-form-field" style="flex:2;"><label>Visitor Name</label><input type="text" id="vpVisitorName"></div>
+                        <div class="vp-form-field"><label>Visitor Mobile</label><input type="tel" id="vpVisitorMobile"></div>
+                    </div>
+                    <div class="vp-form-row">
+                        <div class="vp-form-field" style="flex:2;"><label>Purpose</label><input type="text" id="vpPurpose"></div>
+                        <div class="vp-form-field"><label>No. of Visitors</label><input type="number" id="vpVisitorCount" value="1" min="1"></div>
+                    </div>
+                    <div class="vp-form-row">
+                        <div class="vp-form-field"><label>Vehicle Number</label><input type="text" id="vpVehicleNumber"></div>
+                        <div class="vp-form-field"><label>ID Proof Type</label><input type="text" id="vpIdProofType"></div>
+                        <div class="vp-form-field"><label>Remarks</label><input type="text" id="vpRemarks"></div>
+                    </div>
+                    <div class="vp-actions">
+                        <button id="vpSendOtp" class="vp-btn vp-btn-primary">Send OTP to Resident</button>
+                    </div>
+                </div>
+                <div id="vpOtpResult" style="margin-top:14px;color:#27ae60;font-weight:600;display:none;"></div>
+            </div>
+
+            <div class="vp-card">
+                <h3 style="margin:0 0 16px;">Today's Visitors</h3>
+                <div id="vpSecurityList"></div>
+            </div>
+        </div>
+
+        <div id="vpResidentView" style="display:none;">
+            <div class="vp-card">
+                <h3 style="margin:0 0 8px;">Pending Visitor Requests</h3>
+                <p style="color:#666;margin:0 0 16px;">Enter the OTP shared by security to approve entry.</p>
+                <div id="vpResidentPending"></div>
+            </div>
+            <div class="vp-card">
+                <h3 style="margin:0 0 16px;">Visitor History</h3>
+                <div id="vpResidentHistory"></div>
+            </div>
+        </div>
+
+        <div id="vpAdminView" style="display:none;">
+            <div class="vp-stats" id="vpAdminStats"></div>
+            <div class="vp-card">
+                <div class="vp-search-bar">
+                    <input type="text" id="vpAdminSearch" placeholder="Search visitor, resident, mobile, flat..." style="flex:2;min-width:220px;">
+                    <select id="vpAdminStatus"><option value="">All Status</option><option value="waiting">Waiting</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="inside">Inside</option><option value="completed">Completed</option></select>
+                    <select id="vpAdminDateFilter"><option value="all">All Time</option><option value="today">Today</option><option value="yesterday">Yesterday</option><option value="week">This Week</option><option value="month">This Month</option></select>
+                    <input type="date" id="vpAdminFrom" title="Custom from">
+                    <input type="date" id="vpAdminTo" title="Custom to">
+                    <button id="vpAdminExport" class="vp-btn vp-btn-secondary">Export CSV</button>
+                </div>
+                <div id="vpAdminList"></div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        let vpRole = null;
+        let vpUser = null;
+        let vpResident = null;
+        let vpRequests = [];
+        let vpPollTimer = null;
+
+        async function apiGet(path) {
+            const r = await fetch(path);
+            if (!r.ok) throw new Error(await r.text());
+            return r.json();
+        }
+        async function apiPost(path, body) {
+            const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok) throw new Error(data.error || 'Request failed');
+            return data;
+        }
+        async function apiPatch(path, body) {
+            const r = await fetch(path, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok) throw new Error(data.error || 'Request failed');
+            return data;
+        }
+
+        function formatDate(d) {
+            if (!d) return '-';
+            return new Date(d).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' });
+        }
+
+        async function init() {
+            try {
+                const me = await apiGet('/api/visitor/me');
+                if (me.resident) { vpRole = 'resident'; vpUser = me.resident; }
+                else if (me.security) { vpRole = 'security'; vpUser = me.security; }
+                else {
+                    const main = await apiGet('/api/me');
+                    if (main.user) vpRole = 'admin';
+                }
+
+                if (!vpRole) { window.location.href = '/login'; return; }
+
+                document.getElementById('vpUserName').textContent = vpUser ? (vpUser.name || vpUser.email || vpUser.mobile) : 'Admin';
+
+                document.getElementById('vpSecurityView').style.display = vpRole === 'security' ? '' : 'none';
+                document.getElementById('vpResidentView').style.display = vpRole === 'resident' ? '' : 'none';
+                document.getElementById('vpAdminView').style.display = (vpRole === 'admin' || vpRole === 'manager' || vpRole === 'supervisor') ? '' : 'none';
+
+                loadData();
+                vpPollTimer = setInterval(loadData, 3000);
+            } catch (e) {
+                console.error(e);
+                window.location.href = '/login';
+            }
+        }
+
+        async function loadData() {
+            try {
+                const [requests, stats] = await Promise.all([apiGet('/api/visitor/requests'), apiGet('/api/visitor/dashboard-stats')]);
+                vpRequests = requests;
+                if (vpRole === 'security') renderSecurity(stats);
+                if (vpRole === 'resident') renderResident();
+                if (vpRole === 'admin') renderAdmin(stats);
+            } catch (e) { console.error(e); }
+        }
+
+        function renderStats(containerId, stats) {
+            const el = document.getElementById(containerId);
+            if (!el || !stats) return;
+            el.innerHTML = `
+                <div class="vp-stat"><div class="vp-stat-value">${stats.total_today || 0}</div><div class="vp-stat-label">Today</div></div>
+                <div class="vp-stat"><div class="vp-stat-value">${stats.pending || 0}</div><div class="vp-stat-label">Pending</div></div>
+                <div class="vp-stat"><div class="vp-stat-value">${stats.approved || 0}</div><div class="vp-stat-label">Approved</div></div>
+                <div class="vp-stat"><div class="vp-stat-value">${stats.rejected || 0}</div><div class="vp-stat-label">Rejected</div></div>
+                <div class="vp-stat"><div class="vp-stat-value">${stats.inside || 0}</div><div class="vp-stat-label">Inside</div></div>
+                <div class="vp-stat"><div class="vp-stat-value">${stats.completed || 0}</div><div class="vp-stat-label">Completed</div></div>
+            `;
+        }
+
+        function renderSecurity(stats) {
+            renderStats('vpSecurityStats', stats);
+            const list = document.getElementById('vpSecurityList');
+            if (!vpRequests.length) { list.innerHTML = '<div class="vp-empty">No visitor requests yet.</div>'; return; }
+            let html = '<table class="vp-table"><thead><tr><th>Time</th><th>Resident</th><th>Flat</th><th>Visitor</th><th>Purpose</th><th>Status</th><th>Actions</th></tr></thead><tbody>';
+            vpRequests.forEach(r => {
+                const actions = [];
+                if (r.status === 'approved') actions.push(`<button class="vp-btn vp-btn-success" style="padding:4px 10px;font-size:0.75rem;" onclick="updateStatus('${r.id}', 'inside')">Mark Inside</button>`);
+                if (r.status === 'inside') actions.push(`<button class="vp-btn vp-btn-secondary" style="padding:4px 10px;font-size:0.75rem;" onclick="updateStatus('${r.id}', 'completed')">Mark Exit</button>`);
+                if (r.status === 'waiting') actions.push(`<span style="color:#888;font-size:0.8rem;">Waiting OTP</span>`);
+                if (r.status === 'rejected') actions.push(`<span style="color:#888;font-size:0.8rem;">Rejected</span>`);
+                html += `<tr>
+                    <td data-label="Time">${formatDate(r.created_at)}</td>
+                    <td data-label="Resident">${r.resident_name}</td>
+                    <td data-label="Flat">${r.block}-${r.floor}-${r.flat}</td>
+                    <td data-label="Visitor">${r.visitor_name}</td>
+                    <td data-label="Purpose">${r.purpose || '-'}</td>
+                    <td data-label="Status"><span class="vp-status ${r.status}">${r.status}</span></td>
+                    <td data-label="Actions">${actions.join('')}</td>
+                </tr>`;
+            });
+            html += '</tbody></table>';
+            list.innerHTML = html;
+        }
+
+        function renderResident() {
+            const pending = vpRequests.filter(r => r.status === 'waiting');
+            const history = vpRequests.filter(r => r.status !== 'waiting');
+
+            const pendingEl = document.getElementById('vpResidentPending');
+            if (!pending.length) pendingEl.innerHTML = '<div class="vp-empty">No pending visitor requests.</div>';
+            else {
+                pendingEl.innerHTML = pending.map(r => `
+                    <div class="vp-resident-card">
+                        <h4>${r.visitor_name}</h4>
+                        <p>${r.purpose || 'Visit'} · ${r.visitor_count || 1} visitor(s)</p>
+                        <div class="vp-form-row" style="align-items:center;">
+                            <div class="vp-form-field" style="max-width:160px;flex:0;">
+                                <label>OTP</label>
+                                <input type="text" class="vp-otp-input" id="otp-${r.id}" maxlength="4" placeholder="1234">
+                            </div>
+                            <div class="vp-form-field" style="align-self:flex-end;flex:0;">
+                                <button class="vp-btn vp-btn-success" onclick="verifyOtp('${r.id}', '${r.resident_mobile}')">Approve</button>
+                            </div>
+                        </div>
+                        <div id="otp-msg-${r.id}" style="margin-top:8px;font-size:0.85rem;font-weight:600;"></div>
+                    </div>
+                `).join('');
+            }
+
+            const histEl = document.getElementById('vpResidentHistory');
+            if (!history.length) histEl.innerHTML = '<div class="vp-empty">No history yet.</div>';
+            else {
+                histEl.innerHTML = '<table class="vp-table"><thead><tr><th>Date</th><th>Visitor</th><th>Purpose</th><th>Status</th></tr></thead><tbody>' +
+                    history.map(r => `<tr>
+                        <td data-label="Date">${formatDate(r.created_at)}</td>
+                        <td data-label="Visitor">${r.visitor_name}</td>
+                        <td data-label="Purpose">${r.purpose || '-'}</td>
+                        <td data-label="Status"><span class="vp-status ${r.status}">${r.status}</span></td>
+                    </tr>`).join('') + '</tbody></table>';
+            }
+        }
+
+        function renderAdmin(stats) {
+            renderStats('vpAdminStats', stats);
+            const search = document.getElementById('vpAdminSearch').value.toLowerCase();
+            const statusFilter = document.getElementById('vpAdminStatus').value;
+            const dateFilter = document.getElementById('vpAdminDateFilter').value;
+            const from = document.getElementById('vpAdminFrom').value;
+            const to = document.getElementById('vpAdminTo').value;
+
+            const today = new Date().toISOString().slice(0, 10);
+            const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+            const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+            const monthStart = today.slice(0, 7) + '-01';
+
+            let rows = vpRequests.filter(r => {
+                const s = `${r.visitor_name} ${r.resident_name} ${r.resident_mobile} ${r.block} ${r.floor} ${r.flat}`.toLowerCase();
+                if (search && !s.includes(search)) return false;
+                if (statusFilter && r.status !== statusFilter) return false;
+                const d = (r.created_at || '').slice(0, 10);
+                if (dateFilter === 'today' && d !== today) return false;
+                if (dateFilter === 'yesterday' && d !== yesterday) return false;
+                if (dateFilter === 'week' && d < weekAgo) return false;
+                if (dateFilter === 'month' && d < monthStart) return false;
+                if (from && d < from) return false;
+                if (to && d > to) return false;
+                return true;
+            });
+
+            const list = document.getElementById('vpAdminList');
+            if (!rows.length) { list.innerHTML = '<div class="vp-empty">No matching visitors.</div>'; return; }
+            let html = '<table class="vp-table"><thead><tr><th>Date</th><th>Resident</th><th>Flat</th><th>Visitor</th><th>Mobile</th><th>Purpose</th><th>Status</th><th>Entry</th><th>Exit</th></tr></thead><tbody>';
+            rows.forEach(r => {
+                html += `<tr>
+                    <td data-label="Date">${formatDate(r.created_at)}</td>
+                    <td data-label="Resident">${r.resident_name}</td>
+                    <td data-label="Flat">${r.block}-${r.floor}-${r.flat}</td>
+                    <td data-label="Visitor">${r.visitor_name}</td>
+                    <td data-label="Mobile">${r.visitor_mobile || '-'}</td>
+                    <td data-label="Purpose">${r.purpose || '-'}</td>
+                    <td data-label="Status"><span class="vp-status ${r.status}">${r.status}</span></td>
+                    <td data-label="Entry">${formatDate(r.entry_time)}</td>
+                    <td data-label="Exit">${formatDate(r.exit_time)}</td>
+                </tr>`;
+            });
+            html += '</tbody></table>';
+            list.innerHTML = html;
+        }
+
+        async function updateStatus(id, status) {
+            try {
+                await apiPatch('/api/visitor/request/' + id, { status });
+                loadData();
+            } catch (e) { alert(e.message); }
+        }
+        window.updateStatus = updateStatus;
+
+        async function verifyOtp(id, mobile) {
+            const code = document.getElementById('otp-' + id).value.trim();
+            const msgEl = document.getElementById('otp-msg-' + id);
+            try {
+                await apiPost('/api/visitor/verify-otp', { visitor_id: id, mobile, otp: code });
+                msgEl.textContent = 'Approved successfully';
+                msgEl.style.color = '#27ae60';
+                loadData();
+            } catch (e) {
+                msgEl.textContent = e.message || 'Invalid OTP';
+                msgEl.style.color = '#c0392b';
+            }
+        }
+        window.verifyOtp = verifyOtp;
+
+        document.getElementById('vpFetchResident').addEventListener('click', async () => {
+            const mobile = document.getElementById('vpResidentMobile').value.trim();
+            if (!mobile) return;
+            try {
+                const r = await apiGet('/api/visitor/resident-by-mobile/' + encodeURIComponent(mobile));
+                if (!r) { alert('Resident not found'); return; }
+                vpResident = r;
+                document.getElementById('vpResidentInfo').style.display = '';
+                document.getElementById('vpResidentInfo').innerHTML = `<strong>${r.name}</strong> · Block ${r.block}, Floor ${r.floor}, Flat ${r.flat}`;
+                document.getElementById('vpVisitorForm').style.display = '';
+            } catch (e) { alert(e.message); }
+        });
+
+        document.getElementById('vpSendOtp').addEventListener('click', async () => {
+            if (!vpResident) return;
+            const body = {
+                resident_id: vpResident.id,
+                visitor_name: document.getElementById('vpVisitorName').value.trim(),
+                visitor_mobile: document.getElementById('vpVisitorMobile').value.trim(),
+                purpose: document.getElementById('vpPurpose').value.trim(),
+                visitor_count: parseInt(document.getElementById('vpVisitorCount').value) || 1,
+                vehicle_number: document.getElementById('vpVehicleNumber').value.trim(),
+                id_proof_type: document.getElementById('vpIdProofType').value.trim(),
+                remarks: document.getElementById('vpRemarks').value.trim()
+            };
+            if (!body.visitor_name) { alert('Visitor name is required'); return; }
+            try {
+                const data = await apiPost('/api/visitor/request', body);
+                const result = document.getElementById('vpOtpResult');
+                result.style.display = '';
+                result.textContent = `OTP sent to resident (dev code: ${data.otp})`;
+                document.getElementById('vpVisitorForm').style.display = 'none';
+                document.getElementById('vpResidentInfo').style.display = 'none';
+                vpResident = null;
+                loadData();
+            } catch (e) { alert(e.message); }
+        });
+
+        ['vpAdminSearch','vpAdminStatus','vpAdminDateFilter','vpAdminFrom','vpAdminTo'].forEach(id => {
+            document.getElementById(id).addEventListener('input', renderAdmin);
+        });
+
+        document.getElementById('vpAdminExport').addEventListener('click', () => {
+            const rows = vpRequests.filter(r => true); // filtered already via render, re-apply if needed
+            if (!rows.length) return;
+            const headers = ['Date','Resident','Block','Floor','Flat','Visitor','Visitor Mobile','Purpose','Count','Vehicle','ID Proof','Remarks','Status','Entry','Exit'];
+            const csv = [headers.join(',')].concat(rows.map(r => [
+                r.created_at, r.resident_name, r.block, r.floor, r.flat, r.visitor_name, r.visitor_mobile || '', r.purpose || '', r.visitor_count || 1,
+                r.vehicle_number || '', r.id_proof_type || '', r.remarks || '', r.status, r.entry_time || '', r.exit_time || ''
+            ].map(v => '"' + String(v).replace(/"/g, '""') + '"')).join('\n'));
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'visitors.csv';
+            a.click();
+        });
+
+        document.getElementById('vpLogout').addEventListener('click', async () => {
+            await fetch('/logout', { method: 'POST' });
+            clearInterval(vpPollTimer);
+            window.location.href = '/login';
+        });
+
+        init();
+    </script>
+</body>
+</html>

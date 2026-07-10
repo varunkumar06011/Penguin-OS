@@ -4,22 +4,47 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>VGrand Infra Tracking</title>
+    <link rel="icon" href="/static/images/image.png" type="image/png">
     <link rel="stylesheet" href="/static/css/fonts.css">
     <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/theme.css">
 </head>
 <body>
     <div id="app">
-        <!-- Top Bar -->
-        <header class="top-bar">
-            <div class="logo"><img src="/static/images/image.png" alt="VGrand Infra Tracking" class="logo-img"></div>
-            <div class="user-info">
-                <button id="editModeBtn" class="btn-secondary" style="display:none;">Edit Structure</button>
-                <span id="userEmail"></span>
-                <button id="settingsBtn" class="btn-icon" title="Work Items Settings">&#9881;</button>
-                <button id="signOutBtn" class="btn-secondary">Sign Out</button>
+        <!-- Sidebar -->
+        <aside id="appSidebar" class="app-sidebar">
+            <div class="sidebar-header">
+                <img src="/static/images/image.png" alt="VGrand" class="sidebar-logo">
+                <span class="sidebar-brand-text">VGrand Infra</span>
+                <button id="sidebarCollapse" class="sidebar-collapse-btn">&lsaquo;</button>
             </div>
-        </header>
+            <nav class="sidebar-nav">
+                <div class="sidebar-nav-section">Main</div>
+                <button id="sidebarDashboard" class="sidebar-nav-item"><span class="nav-icon">&#9632;</span><span class="nav-label">Dashboard</span></button>
+                <button id="openInvoicesBtn" class="sidebar-nav-item" style="display:none;"><span class="nav-icon">&#128196;</span><span class="nav-label">Invoices</span></button>
+                <button id="openPayrollBtn" class="sidebar-nav-item" style="display:none;"><span class="nav-icon">&#128176;</span><span class="nav-label">Payroll</span></button>
+                <button id="openInventoryBtn" class="sidebar-nav-item" style="display:none;"><span class="nav-icon">&#128230;</span><span class="nav-label">Inventory</span></button>
+                <button id="openPOBtn" class="sidebar-nav-item" style="display:none;"><span class="nav-icon">&#128221;</span><span class="nav-label">Purchase Orders</span></button>
+                <button id="openReportsBtn" class="sidebar-nav-item" style="display:none;"><span class="nav-icon">&#128202;</span><span class="nav-label">Reports</span></button>
+                <button id="openExpenditureBtn" class="sidebar-nav-item" style="display:none;"><span class="nav-icon">&#128176;</span><span class="nav-label">Expenditure</span></button>
+                <div class="sidebar-nav-section">Admin</div>
+                <button id="openInstantReportsBtn" class="sidebar-nav-item" style="display:none;"><span class="nav-icon">&#9889;</span><span class="nav-label">Instant Reports</span></button>
+                <button id="openInventoryAuditBtn" class="sidebar-nav-item" style="display:none;"><span class="nav-icon">&#128269;</span><span class="nav-label">Inventory Audit</span></button>
+                <button id="openDatewiseExpensesBtn" class="sidebar-nav-item" style="display:none;"><span class="nav-icon">&#128197;</span><span class="nav-label">Date-wise Expenses</span></button>
+                <button id="openBurnReportBtn" class="sidebar-nav-item" style="display:none;"><span class="nav-icon">&#128293;</span><span class="nav-label">Cash Burn</span></button>
+            </nav>
+            <div class="sidebar-footer">
+                <button id="editModeBtn" class="sidebar-nav-item" style="display:none;"><span class="nav-icon">&#9998;</span><span class="nav-label">Edit Structure</span></button>
+                <button id="settingsBtn" class="sidebar-nav-item" style="display:none;"><span class="nav-icon">&#9881;</span><span class="nav-label">Settings</span></button>
+                <span id="userEmail" class="sidebar-user-email"></span>
+                <button id="signOutBtn" class="sidebar-nav-item"><span class="nav-icon">&#8634;</span><span class="nav-label">Sign Out</span></button>
+            </div>
+        </aside>
+        <div id="sidebarScrim" class="sidebar-scrim"></div>
+        <button id="sidebarToggle" class="sidebar-toggle">&#9776;</button>
 
+        <!-- Main Content -->
+        <main id="appMain">
         <!-- Edit Mode Banner -->
         <div id="editModeBanner" class="edit-mode-banner" style="display:none;">
             Edit mode active — structural changes apply to this venture only
@@ -37,18 +62,7 @@
             <div class="dashboard-header">
                 <h2>Your Ventures</h2>
             </div>
-            <div class="invoice-dashboard-bar">
-                <button id="openInvoicesBtn" class="btn-primary">&#128196; Invoices</button>
-                <button id="openPayrollBtn" class="btn-secondary">&#128176; Payroll</button>
-                <button id="openInventoryBtn" class="btn-secondary">&#128230; Inventory</button>
-                <button id="openPOBtn" class="btn-secondary">&#128230; Purchase Orders</button>
-                <button id="openReportsBtn" class="btn-secondary">&#128202; Reports</button>
-                <button id="openInstantReportsBtn" class="btn-secondary" style="display:none;">&#128202; Instant Reports</button>
-                <button id="openInventoryAuditBtn" class="btn-secondary" style="display:none;">&#128269; Inventory Audit</button>
-                <button id="openDatewiseExpensesBtn" class="btn-secondary" style="display:none;">&#128197; Date-wise Expenses</button>
-                <button id="openBurnReportBtn" class="btn-secondary" style="display:none;">&#128293; Cash Burn</button>
-            </div>
-
+            <div class="kpi-row" id="ventureKpiRow"></div>
             <div class="venture-grid" id="ventureCards"></div>
         </div>
 
@@ -229,6 +243,15 @@
             <div id="burnReportContent"></div>
         </div>
 
+        <!-- Expenditure Panel -->
+        <div id="expenditurePanel" style="display:none;">
+            <div class="invoice-panel-header">
+                <button id="backFromExpenditure" class="back-btn">&larr; Back to Ventures</button>
+                <h2 class="invoice-panel-title">&#128176; Expenditure</h2>
+            </div>
+            <div id="expenditureContent"></div>
+        </div>
+
         <!-- Tracker View -->
         <div id="trackerView" style="display:none;">
             <!-- Venture Header -->
@@ -317,7 +340,8 @@
             <!-- Milestone Verification Widget -->
             <div id="milestoneWidget" style="display:none;padding:16px 24px;"></div>
         </div>
-    </div>
+
+        </main>
 
     <!-- Status Picker Popup -->
     <div id="statusPopup" class="modal">
@@ -376,6 +400,16 @@
             <ul id="workItemsList" class="sortable-list"></ul>
             <div class="settings-actions">
                 <button id="addWorkItemBtn" class="btn-secondary">+ Add Work Item</button>
+            </div>
+
+            <h4 class="settings-section-title" style="margin-top:24px;">Work Categories</h4>
+            <p class="settings-hint">Categories used in the Work View. Click text to rename, &times; to remove.</p>
+            <ul id="workCategoriesList" class="sortable-list"></ul>
+            <div class="settings-actions" style="display:flex;gap:10px;align-items:flex-end;">
+                <div class="invoice-form-field" style="flex:1;margin-bottom:0;">
+                    <input type="text" id="addWorkCategoryInput" placeholder="New category name (e.g. Flooring, Corridors...)" style="margin-bottom:0;">
+                </div>
+                <button id="addWorkCategoryBtn" class="btn-secondary">+ Add Category</button>
             </div>
 
             <h4 class="settings-section-title" style="margin-top:24px;">Blocks</h4>
@@ -973,5 +1007,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="/static/js/app.js"></script>
+    <script src="/static/js/theme-ui.js"></script>
 </body>
 </html>

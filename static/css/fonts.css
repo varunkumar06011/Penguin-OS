@@ -1,11 +1,15 @@
 /* ========================
    Okra Font — Self-hosted
-   Place actual Okra font files in /static/fonts/ to enable self-hosting.
-   Until then, Inter (loaded from Google Fonts) is used as a close visual fallback.
+   To enable: place Okra font files in /static/fonts/ and re-add the
+   @font-face blocks below. Until then, Manrope / Plus Jakarta Sans / Inter
+   (loaded from Google Fonts) are used as visual fallbacks.
    ======================== */
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
 
+/* @font-face blocks for Okra — uncomment when font files are added:
 @font-face {
     font-family: 'Okra';
     src: url('/static/fonts/Okra-Regular.woff2') format('woff2'),
@@ -45,3 +49,4 @@
     font-style: normal;
     font-display: swap;
 }
+*/

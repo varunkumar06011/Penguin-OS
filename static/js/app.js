@@ -211,6 +211,12 @@ function buildPanelState() {
             locFloor: inventoryLocFloorFilter,
             vendor: inventoryVendorFilter,
             vendorMaterial: inventoryVendorMaterialFilter
+        },
+        expenditure: {
+            selectedVentureId: selectedExpenditureVenture ? selectedExpenditureVenture.id : null,
+            from: expenditureFromDate,
+            to: expenditureToDate,
+            tab: expenditureActiveTab
         }
     };
 }
@@ -265,6 +271,13 @@ function restorePanelState(panel) {
         inventoryLocFloorFilter = p.locFloor || 'all';
         inventoryVendorFilter = p.vendor || 'all';
         inventoryVendorMaterialFilter = p.vendorMaterial || 'all';
+    } else if (panel === 'expenditure') {
+        if (p.selectedVentureId) {
+            selectedExpenditureVenture = venturesList.find(v => v.id === p.selectedVentureId) || null;
+        }
+        expenditureFromDate = p.from || '';
+        expenditureToDate = p.to || '';
+        expenditureActiveTab = p.tab || 'supervisor';
     }
 }
 
@@ -297,6 +310,7 @@ function parseHash(hash) {
     if (parts[0] === 'pos') return { route: 'pos' };
     if (parts[0] === 'payroll') return { route: 'payroll' };
     if (parts[0] === 'inventory') return { route: 'inventory' };
+    if (parts[0] === 'expenditure') return { route: 'expenditure' };
     if (parts[0] === 'venture' && parts[1]) {
         return { route: 'tracker', ventureId: parts[1], block: parts[2], floor: parts[3], view: parts[4] };
     }
@@ -334,6 +348,8 @@ async function applyHashRoute() {
         openPayrollPanel();
     } else if (route.route === 'inventory') {
         openInventoryPanel();
+    } else if (route.route === 'expenditure') {
+        openExpenditurePanel();
     }
     restorePanelState(route.route);
 }
@@ -498,6 +514,7 @@ function buildPermissions(role) {
         p.viewInstantReports = false;
         p.viewInventoryAudit = false;
         p.viewDatewiseExpenses = false;
+        p.viewExpenditures = true;
         p.viewMaterialLeakage = true;
         p.viewMilestones = true;
         p.verifyMilestones = false;
@@ -521,6 +538,7 @@ function buildPermissions(role) {
         p.viewInstantReports = role === 'admin';
         p.viewInventoryAudit = role === 'admin';
         p.viewDatewiseExpenses = role === 'admin';
+        p.viewExpenditures = true;
         p.viewMaterialLeakage = true;
         p.viewMilestones = true;
         p.verifyMilestones = role === 'admin';
@@ -532,6 +550,7 @@ function buildPermissions(role) {
     } else {
         // Unknown / fallback read-only
         p.viewDashboard = true;
+        p.viewExpenditures = true;
     }
     return p;
 }
@@ -818,6 +837,7 @@ function getWorkViewCellId(block, floor, category, workIndex, flat) {
 }
 
 async function renderGrid() {
+    document.getElementById('flatViewContainer').style.display = '';
     els.gridBody.innerHTML = '';
     const flatsPerFloor = currentBlockObj ? (currentBlockObj.flats_per_floor || FLATS_PER_FLOOR) : FLATS_PER_FLOOR;
     const flatNumbers = [];
@@ -1003,6 +1023,7 @@ async function renderGrid() {
 
 async function renderWorkView() {
     const container = document.getElementById('workViewContainer');
+    container.style.display = '';
     container.innerHTML = '';
 
     const flatsPerFloor = currentBlockObj ? (currentBlockObj.flats_per_floor || FLATS_PER_FLOOR) : FLATS_PER_FLOOR;
@@ -1675,6 +1696,52 @@ function renderBlocksSettings() {
     });
 }
 
+function renderWorkCategoriesSettings() {
+    const list = document.getElementById('workCategoriesList');
+    if (!list) return;
+    list.innerHTML = '';
+    const cats = ensureWorkCategories(currentVenture && currentVenture.work_categories ? currentVenture.work_categories : WORK_CATEGORIES);
+    Object.keys(cats).forEach((category, index) => {
+        const li = document.createElement('li');
+        li.draggable = true;
+        li.dataset.index = index;
+
+        const handle = document.createElement('span');
+        handle.className = 'drag-handle';
+        handle.textContent = '≡';
+
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'work-item-name';
+        nameSpan.contentEditable = true;
+        nameSpan.textContent = category;
+        nameSpan.addEventListener('blur', () => {
+            const newName = nameSpan.textContent.trim();
+            if (newName && newName !== category) {
+                renameWorkCategory(category, newName);
+            }
+        });
+        nameSpan.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                nameSpan.blur();
+            }
+        });
+
+        const remove = document.createElement('button');
+        remove.className = 'remove-btn';
+        remove.innerHTML = '&times;';
+        remove.title = 'Remove category';
+        remove.addEventListener('click', () => {
+            showConfirm('Delete Category', `Delete '${category}' and all its items?`, () => deleteWorkCategory(category));
+        });
+
+        li.appendChild(handle);
+        li.appendChild(nameSpan);
+        li.appendChild(remove);
+        list.appendChild(li);
+    });
+}
+
 function openSettingsModal() {
     els.workItemsList.innerHTML = '';
     workItems.forEach((item, index) => {
@@ -1739,6 +1806,7 @@ function openSettingsModal() {
         });
     });
     renderBlocksSettings();
+    renderWorkCategoriesSettings();
     els.settingsModal.classList.add('show');
 }
 
@@ -1766,6 +1834,23 @@ if (els.addBlockBtn) {
     });
 }
 
+const settingsCategoryInput = document.getElementById('addWorkCategoryInput');
+const settingsCategoryBtn = document.getElementById('addWorkCategoryBtn');
+if (settingsCategoryBtn && settingsCategoryInput) {
+    const submitCategory = () => {
+        const val = settingsCategoryInput.value.trim();
+        if (val) {
+            addWorkCategory(val);
+            settingsCategoryInput.value = '';
+            setTimeout(renderWorkCategoriesSettings, 50);
+        }
+    };
+    settingsCategoryBtn.addEventListener('click', submitCategory);
+    settingsCategoryInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') submitCategory();
+    });
+}
+
 els.saveSettingsBtn.addEventListener('click', async () => {
     // Sync work items from DOM
     const newItems = [];
@@ -1778,6 +1863,10 @@ els.saveSettingsBtn.addEventListener('click', async () => {
         currentVenture.flat_view_items = workItems;
     }
     await saveWorkItems(workItems);
+    // Save work categories changes (rename/delete already save inline; this captures any pending state)
+    if (currentVenture) {
+        await saveVentureConfig();
+    }
     // Save venture blocks changes
     if (currentVenture) {
         await saveVentureConfig();
@@ -1965,7 +2054,9 @@ function applyRoleBasedUI() {
     hide('editModeBtn');
     hide('openInvoicesBtn');
     hide('openPayrollBtn');
+    hide('openInventoryBtn');
     hide('openPOBtn');
+    hide('openReportsBtn');
     hide('addInvoiceBtn');
     hide('invoiceAddCategoryBtn');
     hide('addPOBtn');
@@ -1975,14 +2066,18 @@ function applyRoleBasedUI() {
     hide('openInventoryAuditBtn');
     hide('openDatewiseExpensesBtn');
     hide('openBurnReportBtn');
+    hide('openExpenditureBtn');
 
     if (currentUserPermissions.viewInvoices) show('openInvoicesBtn');
     if (currentUserPermissions.viewPayroll) show('openPayrollBtn');
+    if (currentUserPermissions.viewInventory) show('openInventoryBtn');
     if (currentUserPermissions.viewPOs) show('openPOBtn');
+    show('openReportsBtn');
     if (currentUserPermissions.viewInstantReports) show('openInstantReportsBtn');
     if (currentUserPermissions.viewInventoryAudit) show('openInventoryAuditBtn');
     if (currentUserPermissions.viewDatewiseExpenses) show('openDatewiseExpensesBtn');
     if (currentUserPermissions.viewBurnReport) show('openBurnReportBtn');
+    if (currentUserPermissions.viewExpenditures) show('openExpenditureBtn');
     if (currentUserPermissions.editWorkItems || currentUserPermissions.editVentures) {
         show('settingsBtn');
         show('editModeBtn');
@@ -2129,6 +2224,7 @@ window.addEventListener('online', triggerImmediateSync);
 // ========================
 function renderSuperStructure() {
     const container = document.getElementById('superStructureContainer');
+    container.style.display = '';
     container.innerHTML = '';
 
     const ssItems = getSuperStructureItems();
@@ -2455,10 +2551,38 @@ function renderVentureDashboard() {
     document.getElementById('trackerView').style.display = 'none';
     document.getElementById('breadcrumbBar').style.display = 'none';
     ['invoicesPanel', 'poPanel', 'reportsPanel', 'payrollPanel', 'inventoryPanel',
-     'instantReportsPanel', 'inventoryAuditPanel', 'datewiseExpensesPanel', 'burnReportPanel'].forEach(id => {
+     'instantReportsPanel', 'inventoryAuditPanel', 'datewiseExpensesPanel', 'burnReportPanel',
+     'expenditurePanel'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.display = 'none';
     });
+
+    // KPI summary cards
+    const kpiRow = document.getElementById('ventureKpiRow');
+    if (kpiRow) {
+        kpiRow.innerHTML = '';
+        const totalBlocks = venturesList.reduce((s, v) => s + (v.blocks ? v.blocks.length : 0), 0);
+        const totalUnits = venturesList.reduce((s, v) => s + (v.blocks ? v.blocks.reduce((bs, b) => bs + (b.floors || 1) * (b.flats_per_floor || 1), 0) : 0), 0);
+        const totalWorkItems = venturesList.reduce((s, v) => s + (v.flat_view_items ? v.flat_view_items.length : 0), 0);
+
+        const kpis = [
+            { icon: '&#127968;', iconClass: 'blue', label: 'Active Ventures', value: venturesList.length, sub: totalBlocks + ' blocks total' },
+            { icon: '&#10227;', iconClass: 'green', label: 'Total Units', value: totalUnits.toLocaleString(), sub: 'across all ventures' },
+            { icon: '&#9998;', iconClass: 'amber', label: 'Work Items', value: totalWorkItems, sub: 'tracking categories' },
+            { icon: '&#128260;', iconClass: 'dark', label: 'Blocks', value: totalBlocks, sub: 'under construction' },
+        ];
+        kpis.forEach(k => {
+            const card = document.createElement('div');
+            card.className = 'kpi-card';
+            card.innerHTML = `
+                <div class="kpi-icon ${k.iconClass}">${k.icon}</div>
+                <div class="kpi-label">${k.label}</div>
+                <div class="kpi-value">${k.value}</div>
+                <div class="kpi-sub">${k.sub}</div>
+            `;
+            kpiRow.appendChild(card);
+        });
+    }
 
     const grid = document.getElementById('ventureCards');
     grid.innerHTML = '';
@@ -2466,23 +2590,56 @@ function renderVentureDashboard() {
     venturesList.forEach(venture => {
         const card = document.createElement('div');
         card.className = 'venture-card';
-        card.style.position = 'relative';
+
+        // Compute progress from cellsCache if available
+        let completed = 0, total = 0;
+        if (venture.blocks) {
+            venture.blocks.forEach(b => {
+                for (let f = 1; f <= (b.floors || 1); f++) {
+                    for (let flat = 1; flat <= (b.flats_per_floor || 1); flat++) {
+                        const flatNum = ((f - 1) * (b.flats_per_floor || 1) + flat).toString().padStart(3, '0');
+                        const cellId = `${venture.id}|${b.id}|${f}|${flatNum}`;
+                        const cell = cellsCache[cellId];
+                        total++;
+                        if (cell && cell.color === 'green') completed++;
+                    }
+                }
+            });
+        }
+        const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+        const body = document.createElement('div');
+        body.className = 'vc-body';
 
         const title = document.createElement('h3');
         title.textContent = venture.name;
-        card.appendChild(title);
+        body.appendChild(title);
 
-        const blocksList = document.createElement('div');
-        blocksList.className = 'blocks-list';
-        const blockNames = venture.blocks.map(b => b.name || b.id).join(', ');
-        blocksList.textContent = blockNames;
-        card.appendChild(blocksList);
+        const meta = document.createElement('div');
+        meta.className = 'vc-meta';
+        const blockCount = venture.blocks ? venture.blocks.length : 0;
+        const unitCount = venture.blocks ? venture.blocks.reduce((s, b) => s + (b.floors || 1) * (b.flats_per_floor || 1), 0) : 0;
+        meta.innerHTML = `<span class="vc-badge blue">${blockCount} blocks</span><span class="vc-badge green">${unitCount} units</span>`;
+        body.appendChild(meta);
+
+        const blocksDiv = document.createElement('div');
+        blocksDiv.className = 'vc-blocks';
+        blocksDiv.textContent = venture.blocks ? venture.blocks.map(b => b.name || b.id).join(', ') : '';
+        body.appendChild(blocksDiv);
+
+        // Progress bar
+        const progress = document.createElement('div');
+        progress.className = 'vc-progress';
+        progress.innerHTML = `
+            <div class="vc-progress-bar"><div class="vc-progress-fill" style="width:${pct}%"></div></div>
+            <div class="vc-progress-text"><span>Progress</span><span>${pct}%</span></div>
+        `;
+        body.appendChild(progress);
+
+        card.appendChild(body);
 
         const cardEdit = document.createElement('div');
         cardEdit.className = 'edit-controls';
-        cardEdit.style.position = 'absolute';
-        cardEdit.style.top = '12px';
-        cardEdit.style.right = '12px';
         cardEdit.innerHTML = '<button class="edit-btn" title="Rename">&#9998;</button><button class="edit-btn" title="Delete">&#10006;</button>';
         card.appendChild(cardEdit);
 
@@ -3985,6 +4142,7 @@ async function saveInvoiceCategory(cat) {
 
 function openInvoicesPanel() {
     document.getElementById('venturesDashboard').style.display = 'none';
+    document.getElementById('trackerView').style.display = 'none';
     document.getElementById('invoicesPanel').style.display = '';
     document.getElementById('poPanel').style.display = 'none';
     document.getElementById('payrollPanel').style.display = 'none';
@@ -4005,6 +4163,7 @@ function closeInvoicesPanel() {
 
 function openInventoryPanel() {
     document.getElementById('venturesDashboard').style.display = 'none';
+    document.getElementById('trackerView').style.display = 'none';
     document.getElementById('invoicesPanel').style.display = 'none';
     document.getElementById('poPanel').style.display = 'none';
     document.getElementById('payrollPanel').style.display = 'none';
@@ -4376,6 +4535,8 @@ document.getElementById('openDatewiseExpensesBtn').addEventListener('click', ope
 document.getElementById('backFromDatewiseExpenses').addEventListener('click', closeDatewiseExpensesPanel);
 document.getElementById('openBurnReportBtn').addEventListener('click', openBurnReportPanel);
 document.getElementById('backFromBurnReport').addEventListener('click', closeBurnReportPanel);
+document.getElementById('openExpenditureBtn').addEventListener('click', openExpenditurePanel);
+document.getElementById('backFromExpenditure').addEventListener('click', closeExpenditurePanel);
 
 document.getElementById('addInvoiceBtn').addEventListener('click', () => openInvoiceForm(null));
 document.getElementById('closeInvoiceForm').addEventListener('click', closeInvoiceForm);
@@ -4581,6 +4742,7 @@ function isPOFlaggedUnpaid(po) {
 
 function openPOPanel() {
     document.getElementById('venturesDashboard').style.display = 'none';
+    document.getElementById('trackerView').style.display = 'none';
     ['invoicesPanel', 'attendancePanel', 'payrollPanel', 'inventoryPanel'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.display = 'none';
@@ -5359,6 +5521,7 @@ document.getElementById('payrollBtn')?.addEventListener('click', () => {
 
 function openPayrollPanel() {
     document.getElementById('venturesDashboard').style.display = 'none';
+    document.getElementById('trackerView').style.display = 'none';
     ['invoicesPanel', 'poPanel'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.display = 'none';
@@ -5562,23 +5725,23 @@ async function renderPayrollView() {
             const netPay = (parseFloat(emp.base) || 0) - (parseFloat(emp.advance) || 0);
             if (isAllMode) {
                 tr.innerHTML = `
-                    <td>${idx + 1}</td>
-                    <td>${escapeHtml(emp.ventureName || '')}</td>
-                    <td>${escapeHtml(emp.name)}</td>
-                    <td>${escapeHtml(emp.category || '')}</td>
-                    <td>${(parseFloat(emp.base) || 0).toLocaleString('en-IN', {maximumFractionDigits:2})}</td>
-                    <td>${(parseFloat(emp.advance) || 0).toLocaleString('en-IN', {maximumFractionDigits:2})}</td>
-                    <td>${netPay.toLocaleString('en-IN', {maximumFractionDigits:2})}</td>
+                    <td data-label="S.No">${idx + 1}</td>
+                    <td data-label="Venture">${escapeHtml(emp.ventureName || '')}</td>
+                    <td data-label="Name">${escapeHtml(emp.name)}</td>
+                    <td data-label="Category">${escapeHtml(emp.category || '')}</td>
+                    <td data-label="Base">${(parseFloat(emp.base) || 0).toLocaleString('en-IN', {maximumFractionDigits:2})}</td>
+                    <td data-label="Advance">${(parseFloat(emp.advance) || 0).toLocaleString('en-IN', {maximumFractionDigits:2})}</td>
+                    <td data-label="Net Pay">${netPay.toLocaleString('en-IN', {maximumFractionDigits:2})}</td>
                 `;
             } else {
                 tr.innerHTML = `
-                    <td>${idx + 1}</td>
-                    <td>${escapeHtml(emp.name)}</td>
-                    <td>${escapeHtml(emp.category || '')}</td>
-                    <td>${(parseFloat(emp.base) || 0).toLocaleString('en-IN', {maximumFractionDigits:2})}</td>
-                    <td>${(parseFloat(emp.advance) || 0).toLocaleString('en-IN', {maximumFractionDigits:2})}</td>
-                    <td>${netPay.toLocaleString('en-IN', {maximumFractionDigits:2})}</td>
-                    <td style="text-align:center;">
+                    <td data-label="S.No">${idx + 1}</td>
+                    <td data-label="Name">${escapeHtml(emp.name)}</td>
+                    <td data-label="Category">${escapeHtml(emp.category || '')}</td>
+                    <td data-label="Base">${(parseFloat(emp.base) || 0).toLocaleString('en-IN', {maximumFractionDigits:2})}</td>
+                    <td data-label="Advance">${(parseFloat(emp.advance) || 0).toLocaleString('en-IN', {maximumFractionDigits:2})}</td>
+                    <td data-label="Net Pay">${netPay.toLocaleString('en-IN', {maximumFractionDigits:2})}</td>
+                    <td data-label="Actions" style="text-align:center;">
                         <div class="payroll-actions">
                             <button class="btn-text payroll-edit-btn" data-empid="${emp.id}" title="Edit">&#9998;</button>
                             <button class="btn-text payroll-del-btn" data-empid="${emp.id}" style="color:#c0392b;" title="Delete">Delete</button>
@@ -5942,6 +6105,15 @@ let inventoryLocBlockFilter = 'all';
 let inventoryLocFloorFilter = 'all';
 let inventoryVendorFilter = 'all';
 let inventoryVendorMaterialFilter = 'all';
+let expenditureList = [];
+let selectedExpenditureVenture = null;
+let expenditureFromDate = '';
+let expenditureToDate = '';
+let expenditureActiveTab = 'supervisor'; // supervisor | manager | admin
+
+function expenditureActiveVenture() {
+    return selectedExpenditureVenture || currentVenture || (venturesList.length ? venturesList[0] : null);
+}
 
 function inventoryActiveVenture() {
     return selectedInventoryVenture || currentVenture;
@@ -6087,14 +6259,14 @@ function renderInventorySummary(container) {
             else if (threshold > 0 && bal <= threshold) statusHtml = '<span style="color:#f39c12;font-weight:600;">Low</span>';
             const tr = document.createElement('tr');
             tr.innerHTML = `
-                <td>${escapeHtml(mat.name || 'Unknown')}</td>
-                <td>${escapeHtml(mat.category || '-')}</td>
-                <td>${escapeHtml(mat.unit || '-')}</td>
-                <td>${formatNumber(row.total_in)}</td>
-                <td>${formatNumber(row.total_out)}</td>
-                <td>${formatNumber(row.total_adjust)}</td>
-                <td style="font-weight:700;">${formatNumber(row.balance)}</td>
-                <td>${statusHtml}</td>
+                <td data-label="Material">${escapeHtml(mat.name || 'Unknown')}</td>
+                <td data-label="Category">${escapeHtml(mat.category || '-')}</td>
+                <td data-label="Unit">${escapeHtml(mat.unit || '-')}</td>
+                <td data-label="Purchased">${formatNumber(row.total_in)}</td>
+                <td data-label="Used">${formatNumber(row.total_out)}</td>
+                <td data-label="Adjust">${formatNumber(row.total_adjust)}</td>
+                <td data-label="Balance" style="font-weight:700;">${formatNumber(row.balance)}</td>
+                <td data-label="Status">${statusHtml}</td>
             `;
             tbody.appendChild(tr);
         });
@@ -6483,12 +6655,23 @@ function openMaterialModal(materialId) {
         listContainer.innerHTML = '<div style="padding:12px;color:#999;font-size:0.85rem;">No materials added yet.</div>';
     } else {
         inventoryMaterials.forEach(mat => {
+            const balRow = inventoryBalance.find(b => b.material_id === mat.id);
+            const bal = balRow ? (parseFloat(balRow.balance) || 0) : 0;
+            const threshold = parseFloat(mat.min_threshold) || 0;
+            const totalIn = balRow ? (parseFloat(balRow.total_in) || 0) : 0;
+            let stockClass = 'ok';
+            let stockLabel = 'OK';
+            if (bal <= 0) { stockClass = 'out'; stockLabel = 'Out of Stock'; }
+            else if (threshold > 0 && bal <= threshold) { stockClass = 'low'; stockLabel = 'Low'; }
+            const stockPct = totalIn > 0 ? Math.min(100, Math.round((bal / totalIn) * 100)) : (bal > 0 ? 100 : 0);
+
             const item = document.createElement('div');
-            item.className = 'material-list-item';
+            item.className = 'material-list-item' + (stockClass !== 'ok' ? ' low-stock' : '');
             item.innerHTML = `
                 <div class="material-list-info">
                     <span class="material-list-name">${escapeHtml(mat.name)}</span>
-                    <span class="material-list-meta">${escapeHtml(mat.category || 'Uncategorized')} | ${escapeHtml(mat.unit)} | threshold: ${mat.min_threshold || 0}</span>
+                    <span class="material-list-meta">${escapeHtml(mat.category || 'Uncategorized')} | ${escapeHtml(mat.unit)} | threshold: ${mat.min_threshold || 0} | balance: ${formatNumber(bal)} (${stockLabel})</span>
+                    <div class="material-stock-bar"><div class="material-stock-fill ${stockClass}" style="width:${stockPct}%"></div></div>
                 </div>
                 <div class="material-list-actions">
                     <button class="btn-text material-edit-btn" data-mid="${mat.id}" style="font-size:0.78rem;">Edit</button>
@@ -6645,7 +6828,7 @@ document.getElementById('saveMaterial').addEventListener('click', async () => {
 function hideAllMainPanels() {
     ['venturesDashboard', 'invoicesPanel', 'poPanel', 'payrollPanel', 'inventoryPanel',
      'instantReportsPanel', 'inventoryAuditPanel', 'datewiseExpensesPanel', 'burnReportPanel',
-     'trackerView'].forEach(id => {
+     'expenditurePanel', 'trackerView'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.display = 'none';
     });
@@ -6697,6 +6880,19 @@ function openBurnReportPanel() {
 
 function closeBurnReportPanel() {
     document.getElementById('burnReportPanel').style.display = 'none';
+    document.getElementById('venturesDashboard').style.display = '';
+    navigateTo('#/ventures');
+}
+
+function openExpenditurePanel() {
+    hideAllMainPanels();
+    document.getElementById('expenditurePanel').style.display = '';
+    renderExpenditureView();
+    navigateTo('#/expenditure');
+}
+
+function closeExpenditurePanel() {
+    document.getElementById('expenditurePanel').style.display = 'none';
     document.getElementById('venturesDashboard').style.display = '';
     navigateTo('#/ventures');
 }
@@ -6933,6 +7129,279 @@ async function renderBurnReport() {
             outputDiv.innerHTML = `<div style="padding:24px;color:#c0392b;">Error: ${err.message}</div>`;
         }
     });
+}
+
+// ========================
+// Expenditure Renderer
+// ========================
+
+async function loadExpenditures(ventureId) {
+    try {
+        expenditureList = await apiGet('/api/expenditures?venture_id=' + encodeURIComponent(ventureId)) || [];
+    } catch (e) {
+        expenditureList = [];
+    }
+}
+
+function expenditureTotals(entries) {
+    const today = new Date().toISOString().slice(0, 10);
+    const now = new Date();
+    const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+
+    const from = expenditureFromDate || '1900-01-01';
+    const to = expenditureToDate || '9999-12-31';
+
+    let todayTotal = 0;
+    let monthTotal = 0;
+    let rangeTotal = 0;
+
+    entries.forEach(e => {
+        const d = e.date || e.created_at?.slice(0, 10) || today;
+        const amt = parseFloat(e.amount) || 0;
+        if (d === today) todayTotal += amt;
+        if (d >= monthStart && d <= today) monthTotal += amt;
+        if (d >= from && d <= to) rangeTotal += amt;
+    });
+
+    return { todayTotal, monthTotal, rangeTotal };
+}
+
+function filteredExpenditures() {
+    const user = currentUser || '';
+    const role = currentUserRole || 'supervisor';
+
+    // Supervisor tab only shows own entries; manager/admin tabs show all for the venture
+    if (expenditureActiveTab === 'supervisor') {
+        return expenditureList.filter(e => (e.created_by || '').toLowerCase() === user.toLowerCase());
+    }
+    return expenditureList;
+}
+
+function renderExpenditureList(container) {
+    container.innerHTML = '';
+    const entries = filteredExpenditures();
+    const table = document.createElement('table');
+    table.className = 'tracker-table';
+    table.innerHTML = `
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Paid To</th>
+                <th>Amount</th>
+                <th>Reason</th>
+                <th>Approved By</th>
+                <th>Entered By</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    `;
+    const tbody = table.querySelector('tbody');
+
+    if (entries.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#999;padding:24px;">No expenditure entries found.</td></tr>';
+    } else {
+        entries.forEach(e => {
+            const tr = document.createElement('tr');
+            const date = e.date || (e.created_at ? e.created_at.slice(0, 10) : '-');
+            const amount = parseFloat(e.amount) || 0;
+            const canDelete = currentUserRole === 'admin' || (e.created_by || '').toLowerCase() === (currentUser || '').toLowerCase();
+            tr.innerHTML = `
+                <td data-label="Date">${date}</td>
+                <td data-label="Paid To">${escapeHtml(e.paid_to || '')}</td>
+                <td data-label="Amount">${amount.toLocaleString('en-IN', {maximumFractionDigits: 2})}</td>
+                <td data-label="Reason">${escapeHtml(e.reason || '')}</td>
+                <td data-label="Approved By">${escapeHtml(e.approved_by || '')}</td>
+                <td data-label="Entered By">${escapeHtml(e.created_by || '')}</td>
+                <td data-label="Actions" style="text-align:center;">
+                    ${canDelete ? `<button class="btn-text exp-delete-btn" data-id="${e.id}" style="color:#c0392b;font-size:0.78rem;">Delete</button>` : ''}
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        tbody.querySelectorAll('.exp-delete-btn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const id = btn.dataset.id;
+                if (!confirm('Delete this expenditure entry?')) return;
+                try {
+                    await apiDelete('/api/expenditure/' + encodeURIComponent(id));
+                    showToast('Expenditure deleted');
+                    await loadExpenditures(expenditureActiveVenture().id);
+                    renderExpenditureView();
+                } catch (err) {
+                    showToast('Failed to delete', true);
+                }
+            });
+        });
+    }
+
+    container.appendChild(table);
+}
+
+async function renderExpenditureView() {
+    const container = document.getElementById('expenditureContent');
+    if (!container) return;
+    container.innerHTML = '';
+
+    const v = expenditureActiveVenture();
+    if (!v) {
+        container.innerHTML = '<div style="padding:24px;color:#999;">No venture available.</div>';
+        return;
+    }
+
+    // Load data
+    await loadExpenditures(v.id);
+    const totals = expenditureTotals(expenditureList);
+
+    // Header with venture selector
+    const header = document.createElement('div');
+    header.className = 'pending-filter-bar';
+    const ventureOptions = venturesList.map(vent => `<option value="${vent.id}" ${vent.id === v.id ? 'selected' : ''}>${escapeHtml(vent.name)}</option>`).join('');
+    header.innerHTML = `
+        <div class="pending-filter-group">
+            <label>Venture</label>
+            <select id="expenditureVentureSelect">${ventureOptions}</select>
+        </div>
+        <div class="pending-filter-group">
+            <label>From</label>
+            <input type="date" id="expenditureFrom" value="${expenditureFromDate}">
+        </div>
+        <div class="pending-filter-group">
+            <label>To</label>
+            <input type="date" id="expenditureTo" value="${expenditureToDate}">
+        </div>
+        <div class="pending-filter-group" style="align-self:flex-end;">
+            <button id="expenditureApplyRange" class="btn-secondary" style="padding:8px 16px;">Apply Range</button>
+        </div>
+    `;
+    container.appendChild(header);
+
+    header.querySelector('#expenditureVentureSelect').addEventListener('change', (e) => {
+        selectedExpenditureVenture = venturesList.find(vent => vent.id === e.target.value) || null;
+        renderExpenditureView();
+    });
+
+    header.querySelector('#expenditureApplyRange').addEventListener('click', () => {
+        expenditureFromDate = header.querySelector('#expenditureFrom').value;
+        expenditureToDate = header.querySelector('#expenditureTo').value;
+        renderExpenditureView();
+    });
+
+    // Summary cards
+    const summary = document.createElement('div');
+    summary.className = 'kpi-row';
+    summary.style.margin = '16px 24px';
+    summary.innerHTML = `
+        <div class="kpi-card"><div class="kpi-label">Today's Expenditure</div><div class="kpi-value">&#8377; ${totals.todayTotal.toLocaleString('en-IN', {maximumFractionDigits: 2})}</div></div>
+        <div class="kpi-card"><div class="kpi-label">This Month's Expenditure</div><div class="kpi-value">&#8377; ${totals.monthTotal.toLocaleString('en-IN', {maximumFractionDigits: 2})}</div></div>
+        <div class="kpi-card"><div class="kpi-label">Range Total</div><div class="kpi-value">&#8377; ${totals.rangeTotal.toLocaleString('en-IN', {maximumFractionDigits: 2})}</div></div>
+    `;
+    container.appendChild(summary);
+
+    // Tabs
+    const tabBar = document.createElement('div');
+    tabBar.className = 'inventory-tab-bar';
+    const role = currentUserRole || 'supervisor';
+    let tabsHtml = '';
+    if (role === 'supervisor' || role === 'manager' || role === 'admin') {
+        tabsHtml += `<button class="inventory-tab ${expenditureActiveTab === 'supervisor' ? 'active' : ''}" data-tab="supervisor">Supervisor</button>`;
+    }
+    if (role === 'manager' || role === 'admin') {
+        tabsHtml += `<button class="inventory-tab ${expenditureActiveTab === 'manager' ? 'active' : ''}" data-tab="manager">Manager</button>`;
+    }
+    if (role === 'admin') {
+        tabsHtml += `<button class="inventory-tab ${expenditureActiveTab === 'admin' ? 'active' : ''}" data-tab="admin">Admin</button>`;
+    }
+    tabBar.innerHTML = tabsHtml;
+    container.appendChild(tabBar);
+
+    tabBar.querySelectorAll('.inventory-tab').forEach(btn => {
+        btn.addEventListener('click', () => {
+            expenditureActiveTab = btn.dataset.tab;
+            renderExpenditureView();
+        });
+    });
+
+    // Entry form (supervisor only)
+    if (role === 'supervisor') {
+        const formCard = document.createElement('div');
+        formCard.className = 'invoice-form-card';
+        formCard.style.margin = '16px 24px';
+        formCard.innerHTML = `
+            <h4 style="margin:0 0 16px;font-family:var(--font-display);">Add Expenditure</h4>
+            <div class="invoice-form-row">
+                <div class="invoice-form-field" style="flex:2;">
+                    <label>Paid To</label>
+                    <input type="text" id="expPaidTo" placeholder="Person / vendor name">
+                </div>
+                <div class="invoice-form-field" style="flex:1;">
+                    <label>Amount</label>
+                    <input type="number" id="expAmount" placeholder="0.00" min="0" step="0.01">
+                </div>
+            </div>
+            <div class="invoice-form-row">
+                <div class="invoice-form-field" style="flex:2;">
+                    <label>Reason</label>
+                    <input type="text" id="expReason" placeholder="Purpose of payment">
+                </div>
+                <div class="invoice-form-field" style="flex:1;">
+                    <label>Approved By</label>
+                    <input type="text" id="expApprovedBy" placeholder="Approver name">
+                </div>
+            </div>
+            <div class="invoice-form-row">
+                <div class="invoice-form-field" style="flex:1;">
+                    <label>Date</label>
+                    <input type="date" id="expDate" value="${new Date().toISOString().slice(0, 10)}">
+                </div>
+            </div>
+            <div class="invoice-form-actions">
+                <button id="saveExpenditureBtn" class="btn-primary">Save Expenditure</button>
+            </div>
+        `;
+        container.appendChild(formCard);
+
+        document.getElementById('saveExpenditureBtn').addEventListener('click', async () => {
+            const paidTo = document.getElementById('expPaidTo').value.trim();
+            const amount = parseFloat(document.getElementById('expAmount').value);
+            const reason = document.getElementById('expReason').value.trim();
+            const approvedBy = document.getElementById('expApprovedBy').value.trim();
+            const date = document.getElementById('expDate').value;
+
+            if (!paidTo || isNaN(amount) || amount <= 0 || !reason || !date) {
+                showToast('Please fill all required fields', true);
+                return;
+            }
+
+            try {
+                await apiPost('/api/expenditure', {
+                    venture_id: v.id,
+                    paid_to: paidTo,
+                    amount: amount,
+                    reason: reason,
+                    approved_by: approvedBy,
+                    date: date
+                });
+                showToast('Expenditure saved');
+                document.getElementById('expPaidTo').value = '';
+                document.getElementById('expAmount').value = '';
+                document.getElementById('expReason').value = '';
+                document.getElementById('expApprovedBy').value = '';
+                await loadExpenditures(v.id);
+                renderExpenditureView();
+            } catch (err) {
+                showToast('Failed to save expenditure', true);
+            }
+        });
+    }
+
+    // List wrapper
+    const listWrapper = document.createElement('div');
+    listWrapper.className = 'grid-container';
+    listWrapper.style.padding = '0 24px 24px';
+    renderExpenditureList(listWrapper);
+    container.appendChild(listWrapper);
 }
 
 // ========================

@@ -1,0 +1,1661 @@
+/* ============================================================
+   theme.css — VGrand Infra Tracking Redesign
+   Loaded after style.css — additive only, nothing deleted.
+   ============================================================ */
+
+/* ---- Design tokens ---- */
+:root {
+    --sidebar-w: 248px;
+    --sidebar-collapsed-w: 64px;
+    --sidebar-bg: #1a1a1a;
+    --sidebar-text: rgba(255,255,255,0.7);
+    --sidebar-text-active: #fff;
+    --sidebar-accent: #3a3a3a;
+    --sidebar-hover: rgba(255,255,255,0.06);
+    --content-bg: #f5f6f8;
+    --card-radius: 14px;
+    --card-shadow: 0 2px 12px rgba(0,0,0,0.06);
+    --card-shadow-hover: 0 8px 28px rgba(0,0,0,0.12);
+    --kpi-radius: 14px;
+    --form-field-radius: 8px;
+    --color-red: #e74c3c;
+    --color-yellow: #f1c40f;
+    --color-blue: #3498db;
+    --color-green: #2ecc71;
+    --font-display: 'Okra', 'Manrope', 'Inter', system-ui, sans-serif;
+    --font-body: 'Okra', 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+}
+
+/* ---- Body font upgrade ---- */
+body {
+    font-family: var(--font-body);
+    background: var(--content-bg);
+}
+
+h1, h2, h3, h4, .venture-title, .dashboard-header h2, .section-header {
+    font-family: var(--font-display);
+}
+
+/* ============================================================
+   PHASE 1 — Sidebar
+   ============================================================ */
+
+.app-sidebar {
+    position: fixed;
+    top: 0; left: 0; bottom: 0;
+    width: var(--sidebar-w);
+    background: var(--sidebar-bg);
+    display: flex;
+    flex-direction: column;
+    z-index: 200;
+    transition: width 0.25s ease, transform 0.25s ease;
+    overflow: hidden;
+}
+
+.app-sidebar.collapsed {
+    width: var(--sidebar-collapsed-w);
+}
+
+.sidebar-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 16px 18px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    flex-shrink: 0;
+}
+
+.sidebar-logo {
+    max-height: 32px;
+    width: auto;
+    flex-shrink: 0;
+}
+
+.sidebar-brand-text {
+    font-family: var(--font-display);
+    font-size: 1rem;
+    font-weight: 700;
+    color: #fff;
+    white-space: nowrap;
+    opacity: 1;
+    transition: opacity 0.2s;
+}
+
+.app-sidebar.collapsed .sidebar-brand-text {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.sidebar-collapse-btn {
+    margin-left: auto;
+    background: none;
+    border: none;
+    color: var(--sidebar-text);
+    font-size: 1.2rem;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    transition: background 0.2s, color 0.2s;
+    flex-shrink: 0;
+}
+
+.sidebar-collapse-btn:hover {
+    background: var(--sidebar-hover);
+    color: #fff;
+}
+
+.app-sidebar.collapsed .sidebar-collapse-btn {
+    display: flex;
+    width: 100%;
+    height: 36px;
+    align-items: center;
+    justify-content: center;
+    margin: 0;
+    background: rgba(255,255,255,0.08);
+    color: #fff;
+    transform: rotate(180deg);
+}
+
+.app-sidebar.collapsed:hover {
+    width: var(--sidebar-w);
+}
+
+.app-sidebar.collapsed:hover .sidebar-brand-text {
+    opacity: 1;
+}
+
+.app-sidebar.collapsed:hover .sidebar-nav-item .nav-label {
+    display: inline;
+}
+
+.app-sidebar.collapsed:hover .sidebar-nav-section {
+    text-align: left;
+    padding: 14px 20px 6px;
+    font-size: 0.65rem;
+}
+
+.app-sidebar.collapsed:hover .sidebar-nav-section::after {
+    content: '';
+}
+
+.app-sidebar.collapsed:hover .sidebar-user-email {
+    display: block;
+}
+
+.app-sidebar.collapsed:hover .sidebar-collapse-btn {
+    width: auto;
+    height: auto;
+    margin-left: auto;
+    background: none;
+    color: var(--sidebar-text);
+    transform: none;
+}
+
+.sidebar-nav {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.sidebar-nav-section {
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: rgba(255,255,255,0.3);
+    padding: 14px 20px 6px;
+    white-space: nowrap;
+}
+
+.app-sidebar.collapsed .sidebar-nav-section {
+    text-align: center;
+    padding: 14px 0 6px;
+    font-size: 0;
+}
+.app-sidebar.collapsed .sidebar-nav-section::after {
+    content: '·';
+    font-size: 1rem;
+    color: rgba(255,255,255,0.2);
+}
+
+.sidebar-nav-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 20px;
+    background: none;
+    border: none;
+    color: var(--sidebar-text);
+    font-size: 0.88rem;
+    font-weight: 500;
+    cursor: pointer;
+    text-align: left;
+    white-space: nowrap;
+    transition: background 0.2s, color 0.2s;
+    font-family: var(--font-body);
+}
+
+.sidebar-nav-item:hover {
+    background: var(--sidebar-hover);
+    color: var(--sidebar-text-active);
+}
+
+.sidebar-nav-item.active {
+    background: var(--sidebar-accent);
+    color: var(--sidebar-text-active);
+}
+
+.sidebar-nav-item .nav-icon {
+    font-size: 1.1rem;
+    flex-shrink: 0;
+    width: 20px;
+    text-align: center;
+}
+
+.app-sidebar.collapsed .sidebar-nav-item {
+    justify-content: center;
+    padding: 10px 0;
+}
+.app-sidebar.collapsed .sidebar-nav-item .nav-label {
+    display: none;
+}
+
+.sidebar-footer {
+    border-top: 1px solid rgba(255,255,255,0.06);
+    padding: 8px 0;
+    flex-shrink: 0;
+}
+
+.sidebar-user-email {
+    display: block;
+    padding: 8px 20px;
+    font-size: 0.78rem;
+    color: rgba(255,255,255,0.4);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.app-sidebar.collapsed .sidebar-user-email {
+    display: none;
+}
+
+/* ---- Main content offset ---- */
+#appMain {
+    margin-left: var(--sidebar-w);
+    transition: margin-left 0.25s ease;
+    min-height: 100vh;
+}
+
+#appMain.sidebar-collapsed {
+    margin-left: var(--sidebar-collapsed-w);
+}
+
+/* ---- Mobile sidebar ---- */
+.sidebar-toggle {
+    display: none;
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    z-index: 210;
+    background: var(--sidebar-bg);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    width: 40px;
+    height: 40px;
+    font-size: 1.3rem;
+    cursor: pointer;
+    align-items: center;
+    justify-content: center;
+}
+
+.sidebar-scrim {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.4);
+    z-index: 199;
+}
+
+@media (max-width: 900px) {
+    .app-sidebar {
+        transform: translateX(-100%);
+        width: var(--sidebar-w);
+    }
+    .app.sidebar-open .app-sidebar {
+        transform: translateX(0);
+    }
+    .app.sidebar-open .sidebar-scrim {
+        display: block;
+    }
+    .sidebar-toggle {
+        display: flex;
+    }
+    .app.sidebar-open .sidebar-toggle {
+        display: none;
+    }
+    .sidebar-collapse-btn {
+        display: none !important;
+    }
+    #appMain {
+        margin-left: 0 !important;
+    }
+    .app.sidebar-open #appMain {
+        margin-left: 0;
+    }
+}
+
+/* ---- Hide old top-bar (replaced by sidebar) ---- */
+.top-bar {
+    display: none !important;
+}
+
+/* ---- Dashboard bar moved to sidebar, hide in-page version ---- */
+.invoice-dashboard-bar {
+    display: none !important;
+}
+
+/* ---- Edit mode banner adjustment ---- */
+.edit-mode-banner {
+    border-radius: 0;
+}
+
+/* ============================================================
+   PHASE 1 — Login page redesign
+   ============================================================ */
+
+.login-body {
+    background: #fff0f0;
+    background: radial-gradient(circle at 50% 30%, #fff5f5 0%, #ffe8e8 40%, #ffd4d4 100%);
+    font-family: var(--font-body);
+}
+
+.login-wrapper {
+    width: 100%;
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 48px 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+    text-align: center;
+}
+
+.login-hero {
+    margin-bottom: 40px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.login-logo {
+    width: auto;
+    max-height: 110px;
+    height: 110px;
+    object-fit: contain;
+    margin-bottom: 20px;
+    filter: drop-shadow(0 4px 12px rgba(0,0,0,0.08));
+}
+
+.login-hero h1 {
+    font-family: var(--font-display);
+    font-size: 2rem;
+    font-weight: 800;
+    color: #1a1a1a;
+    margin: 0 0 6px;
+}
+
+.login-hero p {
+    color: #666;
+    font-size: 1rem;
+    margin: 0;
+}
+
+.login-form {
+    width: 100%;
+}
+
+.login-portals {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 16px;
+    margin-bottom: 32px;
+}
+
+@media (max-width: 900px) {
+    .login-portals {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+.portal-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    padding: 32px 20px;
+    border-radius: 18px;
+    border: 1.5px solid rgba(0,0,0,0.06);
+    background: #fff;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.04);
+    transition: all 0.25s ease;
+    text-align: center;
+}
+
+.portal-btn .portal-icon {
+    font-family: var(--font-display);
+    font-size: 1.6rem;
+    font-weight: 700;
+    width: 64px;
+    height: 64px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 18px;
+    background: #f5f6f8;
+    color: #1a1a1a;
+    flex-shrink: 0;
+    transition: background 0.25s ease, transform 0.25s ease, color 0.25s ease;
+}
+
+.portal-btn .portal-name {
+    font-family: var(--font-display);
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: #1a1a1a;
+}
+
+.portal-btn .portal-desc {
+    font-size: 0.85rem;
+    font-weight: 400;
+    color: #888;
+    line-height: 1.4;
+}
+
+.portal-btn:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 32px rgba(0,0,0,0.08);
+    border-color: rgba(0,0,0,0.1);
+}
+
+.portal-btn:hover .portal-icon {
+    transform: scale(1.05);
+    background: #f0f2f5;
+}
+
+.portal-btn.active {
+    border-color: #1a1a1a;
+    background: #1a1a1a;
+    color: #fff;
+    box-shadow: 0 12px 32px rgba(0,0,0,0.18);
+}
+
+.portal-btn.active .portal-icon {
+    background: rgba(255,255,255,0.12);
+    color: #fff;
+}
+
+.portal-btn.active .portal-name {
+    color: #fff;
+}
+
+.portal-btn.active .portal-desc {
+    color: rgba(255,255,255,0.7);
+}
+
+.login-form {
+    width: 100%;
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.login-role-indicator {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding-bottom: 16px;
+    margin-bottom: 16px;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.login-role-indicator .portal-icon.small {
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+    font-size: 1.1rem;
+    background: #1a1a1a;
+    color: #fff;
+}
+
+.login-role-indicator #selectedRoleName {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 1.05rem;
+    color: #1a1a1a;
+    flex: 1;
+    text-align: left;
+}
+
+.back-to-portals {
+    background: none;
+    border: none;
+    color: #666;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 4px 0;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+.back-to-portals:hover {
+    color: #1a1a1a;
+}
+
+.login-fields {
+    max-width: 380px;
+    margin: 0 auto;
+    background: #fff;
+    border: 1.5px solid rgba(0,0,0,0.06);
+    border-radius: 16px;
+    padding: 28px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.04);
+}
+
+.login-fields .form-group {
+    text-align: left;
+}
+
+.login-fields .form-group label {
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #555;
+}
+
+.login-fields .form-group input {
+    border: 1.5px solid #e0e4e8;
+    border-radius: 10px;
+    padding: 12px 14px;
+    font-family: var(--font-body);
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.login-fields .form-group input:focus {
+    outline: none;
+    border-color: #1a1a1a;
+    box-shadow: 0 0 0 3px rgba(26,26,26,0.06);
+}
+
+.login-fields .btn-primary {
+    border-radius: 10px;
+    padding: 14px;
+    font-size: 1rem;
+    margin-top: 8px;
+}
+
+.login-get-started {
+    margin-top: 24px;
+    color: #666;
+    font-size: 0.9rem;
+}
+
+.login-get-started a {
+    color: #1a1a1a;
+    font-weight: 700;
+    text-decoration: none;
+    margin-left: 4px;
+    border-bottom: 1px solid transparent;
+    transition: border-color 0.2s;
+}
+
+.login-get-started a:hover {
+    border-bottom-color: #1a1a1a;
+}
+
+.coming-soon-msg {
+    display: none;
+    margin-left: 8px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #1a1a1a;
+    background: #fff;
+    padding: 4px 10px;
+    border-radius: 20px;
+    border: 1px solid #e0e4e8;
+}
+
+.login-footer {
+    margin-top: auto;
+    padding-top: 40px;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: #888;
+}
+
+.login-footer strong {
+    color: #1a1a1a;
+    font-weight: 800;
+}
+
+@media (max-width: 700px) {
+    .login-portals {
+        grid-template-columns: 1fr;
+        max-width: 380px;
+        margin-left: auto;
+        margin-right: auto;
+    }
+
+    .login-portals {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .portal-btn {
+        flex-direction: row;
+        align-items: center;
+        text-align: left;
+        padding: 18px 20px;
+        gap: 16px;
+    }
+
+    .portal-btn .portal-icon {
+        width: 52px;
+        height: 52px;
+        font-size: 1.3rem;
+        border-radius: 14px;
+    }
+
+    .portal-btn .portal-desc {
+        text-align: left;
+    }
+
+    .login-logo {
+        height: 86px;
+    }
+
+    .login-hero h1 {
+        font-size: 1.5rem;
+    }
+
+    .login-fields {
+        padding: 22px;
+    }
+
+    .login-wrapper {
+        padding: 32px 16px;
+    }
+}
+
+/* ============================================================
+   PHASE 2A — KPI summary cards
+   ============================================================ */
+
+.kpi-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.kpi-card {
+    background: #fff;
+    border-radius: var(--kpi-radius);
+    padding: 20px;
+    box-shadow: var(--card-shadow);
+    border: 1px solid #e8ecf0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.kpi-card .kpi-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+    flex-shrink: 0;
+}
+
+.kpi-card .kpi-icon.blue { background: #e8f4fd; color: #3498db; }
+.kpi-card .kpi-icon.green { background: #e8faf0; color: #2ecc71; }
+.kpi-card .kpi-icon.amber { background: #fef5e7; color: #f39c12; }
+.kpi-card .kpi-icon.dark { background: #f0f0f0; color: #1a1a1a; }
+
+.kpi-card .kpi-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #888;
+}
+
+.kpi-card .kpi-value {
+    font-family: var(--font-display);
+    font-size: 1.8rem;
+    font-weight: 800;
+    color: #1a1a1a;
+    line-height: 1.1;
+}
+
+.kpi-card .kpi-sub {
+    font-size: 0.78rem;
+    color: #aaa;
+}
+
+/* ============================================================
+   PHASE 2A — Venture card redesign
+   ============================================================ */
+
+.venture-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 20px;
+}
+
+.venture-card {
+    background: #fff;
+    border-radius: var(--card-radius);
+    padding: 0;
+    box-shadow: var(--card-shadow);
+    border: 1px solid #e8ecf0;
+    cursor: pointer;
+    transition: box-shadow 0.25s ease, transform 0.2s ease;
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+}
+
+.venture-card:hover {
+    box-shadow: var(--card-shadow-hover);
+    transform: translateY(-3px);
+}
+
+.venture-card .vc-body {
+    padding: 20px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.venture-card h3 {
+    font-family: var(--font-display);
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: #1a1a1a;
+    margin: 0;
+}
+
+.venture-card .vc-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.venture-card .vc-badge {
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 20px;
+    background: #f0f2f5;
+    color: #555;
+}
+
+.venture-card .vc-badge.blue { background: #e8f4fd; color: #3498db; }
+.venture-card .vc-badge.green { background: #e8faf0; color: #27ae60; }
+
+.venture-card .vc-blocks {
+    font-size: 0.82rem;
+    color: #777;
+    line-height: 1.4;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+
+.venture-card .vc-progress {
+    margin-top: auto;
+    padding-top: 10px;
+}
+
+.venture-card .vc-progress-bar {
+    height: 6px;
+    border-radius: 3px;
+    background: #f0f2f5;
+    overflow: hidden;
+}
+
+.venture-card .vc-progress-fill {
+    height: 100%;
+    border-radius: 3px;
+    background: linear-gradient(90deg, #2ecc71, #27ae60);
+    transition: width 0.4s ease;
+}
+
+.venture-card .vc-progress-text {
+    font-size: 0.72rem;
+    color: #999;
+    margin-top: 4px;
+    display: flex;
+    justify-content: space-between;
+}
+
+.venture-card .edit-controls {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    z-index: 2;
+}
+
+.venture-card.add-venture-card {
+    border: 2px dashed #ccc;
+    background: #fafbfc;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 160px;
+    color: #777;
+    gap: 8px;
+    padding: 24px;
+}
+
+.venture-card.add-venture-card:hover {
+    border-color: #1a1a1a;
+    color: #1a1a1a;
+    background: #f0f2f5;
+}
+
+.venture-card.add-venture-card .plus-icon {
+    font-size: 2.2rem;
+    font-weight: 300;
+}
+
+/* ============================================================
+   PHASE 2B — Form styling
+   ============================================================ */
+
+.invoice-form-field {
+    position: relative;
+}
+
+.invoice-form-field label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    transition: color 0.2s;
+}
+
+.invoice-form-field:focus-within label {
+    color: #1a1a1a;
+}
+
+.invoice-form-field input[type="text"],
+.invoice-form-field input[type="number"],
+.invoice-form-field input[type="date"],
+.invoice-form-field input[type="email"],
+.invoice-form-field select,
+.invoice-form-field textarea {
+    padding: 10px 14px;
+    border: 1.5px solid #e0e4e8;
+    border-radius: var(--form-field-radius);
+    font-size: 0.92rem;
+    font-family: var(--font-body);
+    background: #fff;
+    color: #333;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.invoice-form-field input:focus,
+.invoice-form-field select:focus,
+.invoice-form-field textarea:focus {
+    outline: none;
+    border-color: #1a1a1a;
+    box-shadow: 0 0 0 3px rgba(26,26,26,0.06);
+}
+
+.invoice-form-field select {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23888' d='M6 8L0 0h12z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 14px center;
+    padding-right: 36px;
+}
+
+.invoice-form-field textarea {
+    resize: vertical;
+    min-height: 60px;
+}
+
+/* Date picker styling */
+.invoice-form-field input[type="date"] {
+    font-family: var(--font-body);
+    color: #333;
+}
+
+.invoice-form-field input[type="date"]::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    opacity: 0.5;
+    transition: opacity 0.2s;
+}
+
+.invoice-form-field input[type="date"]::-webkit-calendar-picker-indicator:hover {
+    opacity: 1;
+}
+
+/* Form card wrapper */
+.invoice-form-card {
+    background: #fff;
+    border: 1.5px solid #e8ecf0;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.04);
+}
+
+/* Form actions */
+.invoice-form-actions {
+    padding-top: 16px;
+    border-top: 1px solid #f0f0f0;
+    margin-top: 16px;
+}
+
+/* Modal content upgrade */
+.modal-content {
+    border-radius: 14px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+}
+
+.modal-header h3 {
+    font-family: var(--font-display);
+}
+
+/* Filter bar upgrade */
+.invoice-filter-bar,
+.po-filter-bar {
+    border-radius: 12px;
+    border: 1px solid #e8ecf0;
+    background: #fff;
+}
+
+.invoice-filter-group label {
+    font-size: 0.72rem;
+}
+
+.invoice-filter-group select,
+.invoice-filter-group input[type="date"] {
+    border: 1.5px solid #e0e4e8;
+    border-radius: 8px;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.invoice-filter-group select:focus,
+.invoice-filter-group input[type="date"]:focus {
+    outline: none;
+    border-color: #1a1a1a;
+    box-shadow: 0 0 0 3px rgba(26,26,26,0.06);
+}
+
+/* ============================================================
+   PHASE 2C — Inventory module polish
+   ============================================================ */
+
+.material-list {
+    max-height: 280px;
+    border-radius: 10px;
+    border: 1px solid #e8ecf0;
+}
+
+.material-list-item {
+    padding: 12px 14px;
+    transition: background 0.2s;
+}
+
+.material-list-item:hover {
+    background: #fafbfc;
+}
+
+.material-list-name {
+    font-weight: 700;
+    color: #1a1a1a;
+}
+
+.material-list-meta {
+    font-size: 0.76rem;
+    color: #999;
+}
+
+/* Stock level bar in material list */
+.material-stock-bar {
+    height: 5px;
+    border-radius: 3px;
+    background: #f0f2f5;
+    overflow: hidden;
+    margin-top: 6px;
+}
+
+.material-stock-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.4s ease;
+}
+
+.material-stock-fill.ok { background: #2ecc71; }
+.material-stock-fill.low { background: #f39c12; }
+.material-stock-fill.out { background: #e74c3c; }
+
+.material-list-item.low-stock {
+    background: #fef9f0;
+}
+
+.material-list-item.low-stock .material-list-name {
+    color: #e67e22;
+}
+
+/* Stock IN/OUT visual separation */
+#stockInFields {
+    border-left: 3px solid #2ecc71;
+    padding-left: 14px;
+    margin-left: 4px;
+    border-radius: 0 8px 8px 0;
+}
+
+#stockOutFields {
+    border-left: 3px solid #e74c3c;
+    padding-left: 14px;
+    margin-left: 4px;
+    border-radius: 0 8px 8px 0;
+}
+
+/* Inventory tabs */
+.inventory-tab-bar {
+    gap: 6px;
+}
+
+.inventory-tab {
+    border-radius: 8px;
+    font-weight: 600;
+    padding: 8px 18px;
+}
+
+.inventory-tab.active {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+/* Inventory summary table */
+.renderInventorySummary table,
+#inventoryTabContent table {
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+/* ============================================================
+   PHASE 2D — Tables & reports mobile responsiveness
+   ============================================================ */
+
+/* Base table responsive baseline */
+@media (max-width: 900px) {
+    table {
+        overflow-x: auto;
+    }
+}
+
+/* Stacked card layout for key tables at mobile width — panels only, NOT the main construction grid */
+@media (max-width: 600px) {
+    #invoicesPanel .tracker-table thead,
+    #poPanel .tracker-table thead,
+    #payrollPanel .tracker-table thead,
+    #reportsPanel .tracker-table thead,
+    #inventoryPanel .tracker-table thead,
+    #expenditurePanel .tracker-table thead,
+    #instantReportsPanel .tracker-table thead,
+    #inventoryAuditPanel .tracker-table thead,
+    #datewiseExpensesPanel .tracker-table thead,
+    #burnReportPanel .tracker-table thead {
+        display: none;
+    }
+
+    #invoicesPanel .tracker-table,
+    #invoicesPanel .tracker-table tbody,
+    #invoicesPanel .tracker-table tr,
+    #invoicesPanel .tracker-table td,
+    #poPanel .tracker-table,
+    #poPanel .tracker-table tbody,
+    #poPanel .tracker-table tr,
+    #poPanel .tracker-table td,
+    #payrollPanel .tracker-table,
+    #payrollPanel .tracker-table tbody,
+    #payrollPanel .tracker-table tr,
+    #payrollPanel .tracker-table td,
+    #reportsPanel .tracker-table,
+    #reportsPanel .tracker-table tbody,
+    #reportsPanel .tracker-table tr,
+    #reportsPanel .tracker-table td,
+    #inventoryPanel .tracker-table,
+    #inventoryPanel .tracker-table tbody,
+    #inventoryPanel .tracker-table tr,
+    #inventoryPanel .tracker-table td,
+    #expenditurePanel .tracker-table,
+    #expenditurePanel .tracker-table tbody,
+    #expenditurePanel .tracker-table tr,
+    #expenditurePanel .tracker-table td,
+    #instantReportsPanel .tracker-table,
+    #instantReportsPanel .tracker-table tbody,
+    #instantReportsPanel .tracker-table tr,
+    #instantReportsPanel .tracker-table td,
+    #inventoryAuditPanel .tracker-table,
+    #inventoryAuditPanel .tracker-table tbody,
+    #inventoryAuditPanel .tracker-table tr,
+    #inventoryAuditPanel .tracker-table td,
+    #datewiseExpensesPanel .tracker-table,
+    #datewiseExpensesPanel .tracker-table tbody,
+    #datewiseExpensesPanel .tracker-table tr,
+    #datewiseExpensesPanel .tracker-table td,
+    #burnReportPanel .tracker-table,
+    #burnReportPanel .tracker-table tbody,
+    #burnReportPanel .tracker-table tr,
+    #burnReportPanel .tracker-table td {
+        display: block;
+        width: 100%;
+    }
+
+    #invoicesPanel .tracker-table tr,
+    #poPanel .tracker-table tr,
+    #payrollPanel .tracker-table tr,
+    #reportsPanel .tracker-table tr,
+    #inventoryPanel .tracker-table tr,
+    #expenditurePanel .tracker-table tr,
+    #instantReportsPanel .tracker-table tr,
+    #inventoryAuditPanel .tracker-table tr,
+    #datewiseExpensesPanel .tracker-table tr,
+    #burnReportPanel .tracker-table tr {
+        background: #fff;
+        border: 1px solid #e8ecf0;
+        border-radius: 10px;
+        margin-bottom: 12px;
+        padding: 8px;
+    }
+
+    #invoicesPanel .tracker-table td,
+    #poPanel .tracker-table td,
+    #payrollPanel .tracker-table td,
+    #reportsPanel .tracker-table td,
+    #inventoryPanel .tracker-table td,
+    #expenditurePanel .tracker-table td,
+    #instantReportsPanel .tracker-table td,
+    #inventoryAuditPanel .tracker-table td,
+    #datewiseExpensesPanel .tracker-table td,
+    #burnReportPanel .tracker-table td {
+        border: none;
+        text-align: left !important;
+        padding: 6px 8px;
+        font-size: 0.85rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+    }
+
+    #invoicesPanel .tracker-table td::before,
+    #poPanel .tracker-table td::before,
+    #payrollPanel .tracker-table td::before,
+    #reportsPanel .tracker-table td::before,
+    #inventoryPanel .tracker-table td::before,
+    #expenditurePanel .tracker-table td::before,
+    #instantReportsPanel .tracker-table td::before,
+    #inventoryAuditPanel .tracker-table td::before,
+    #datewiseExpensesPanel .tracker-table td::before,
+    #burnReportPanel .tracker-table td::before {
+        content: attr(data-label);
+        font-weight: 600;
+        color: #888;
+        font-size: 0.78rem;
+        flex-shrink: 0;
+    }
+
+    #invoicesPanel .tracker-table td:first-child,
+    #poPanel .tracker-table td:first-child,
+    #payrollPanel .tracker-table td:first-child,
+    #reportsPanel .tracker-table td:first-child,
+    #inventoryPanel .tracker-table td:first-child,
+    #expenditurePanel .tracker-table td:first-child,
+    #instantReportsPanel .tracker-table td:first-child,
+    #inventoryAuditPanel .tracker-table td:first-child,
+    #datewiseExpensesPanel .tracker-table td:first-child,
+    #burnReportPanel .tracker-table td:first-child {
+        font-weight: 700;
+        font-size: 0.9rem;
+        border-bottom: 1px solid #f0f2f5;
+        padding-bottom: 8px;
+        margin-bottom: 4px;
+    }
+
+    #invoicesPanel .tracker-table td:first-child::before,
+    #poPanel .tracker-table td:first-child::before,
+    #payrollPanel .tracker-table td:first-child::before,
+    #reportsPanel .tracker-table td:first-child::before,
+    #inventoryPanel .tracker-table td:first-child::before,
+    #expenditurePanel .tracker-table td:first-child::before,
+    #instantReportsPanel .tracker-table td:first-child::before,
+    #inventoryAuditPanel .tracker-table td:first-child::before,
+    #datewiseExpensesPanel .tracker-table td:first-child::before,
+    #burnReportPanel .tracker-table td:first-child::before {
+        content: '';
+    }
+}
+
+/* Report filter bars matching invoice-filter-bar pattern */
+.reports-filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: flex-end;
+    background: #fff;
+    border: 1px solid #e8ecf0;
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 16px;
+}
+
+.reports-filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 140px;
+}
+
+.reports-filter-group label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #555;
+}
+
+.reports-filter-group select,
+.reports-filter-group input {
+    padding: 8px 12px;
+    border: 1.5px solid #e0e4e8;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    background: #fff;
+    color: #333;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.reports-filter-group select:focus,
+.reports-filter-group input:focus {
+    outline: none;
+    border-color: #1a1a1a;
+    box-shadow: 0 0 0 3px rgba(26,26,26,0.06);
+}
+
+/* Export button style */
+.reports-export-btn {
+    background: #fff;
+    border: 1.5px solid #e0e4e8;
+    border-radius: 8px;
+    padding: 8px 16px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    color: #555;
+    transition: all 0.2s;
+}
+
+.reports-export-btn:hover {
+    border-color: #1a1a1a;
+    color: #1a1a1a;
+    background: #fafafa;
+}
+
+/* ---- Panel headers ---- */
+.invoice-panel-header {
+    padding: 20px 24px;
+    background: #fff;
+    border-bottom: 1px solid #e8ecf0;
+}
+
+.invoice-panel-title {
+    font-family: var(--font-display);
+    font-size: 1.3rem;
+    font-weight: 700;
+}
+
+/* ---- Venture dashboard header ---- */
+.dashboard-header h2 {
+    font-family: var(--font-display);
+    font-size: 1.6rem;
+    font-weight: 800;
+}
+
+/* ---- Back button ---- */
+.back-btn {
+    border-radius: 8px;
+    font-weight: 600;
+}
+
+/* ---- Buttons ---- */
+.btn-primary {
+    border-radius: 8px;
+    font-weight: 600;
+    font-family: var(--font-body);
+    transition: background 0.25s ease, transform 0.15s ease;
+}
+
+.btn-primary:hover {
+    transform: translateY(-1px);
+}
+
+.btn-secondary {
+    border-radius: 8px;
+    font-weight: 600;
+    font-family: var(--font-body);
+}
+
+/* ---- Toast ---- */
+.toast {
+    border-radius: 10px;
+    font-family: var(--font-body);
+}
+
+/* ---- Breadcrumb ---- */
+.breadcrumb {
+    padding: 10px 24px;
+    font-weight: 500;
+}
+
+/* ---- Venture header ---- */
+.venture-header {
+    padding: 14px 24px;
+}
+
+.venture-title {
+    font-family: var(--font-display);
+}
+
+/* ---- Block tabs ---- */
+.block-tab {
+    border-radius: 8px;
+    font-family: var(--font-body);
+}
+
+/* ---- Floor tabs ---- */
+.floor-tab {
+    border-radius: 8px;
+    font-family: var(--font-body);
+}
+
+/* ---- View tabs ---- */
+.view-tab {
+    border-radius: 8px;
+    font-family: var(--font-body);
+    font-weight: 600;
+}
+
+/* ---- Venture card edit controls ---- */
+.edit-btn {
+    border-radius: 6px;
+    transition: opacity 0.2s, background 0.2s;
+}
+
+/* ---- Pending filter bar ---- */
+.pending-filter-bar {
+    border-radius: 12px;
+    background: #fff;
+    border: 1px solid #e8ecf0;
+}
+
+/* ---- PO cards grid ---- */
+.po-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+}
+
+/* ---- PO outstanding banner ---- */
+.po-outstanding-banner {
+    border-radius: 10px;
+}
+
+/* ---- Inventory actions ---- */
+.inventory-actions {
+    display: flex;
+    gap: 12px;
+    padding: 12px 24px;
+}
+
+/* ============================================================
+   PHASE 2D — Inventory summary table mobile stacked layout
+   ============================================================ */
+
+@media (max-width: 600px) {
+    #inventoryTabContent .tracker-table thead {
+        display: none;
+    }
+
+    #inventoryTabContent .tracker-table,
+    #inventoryTabContent .tracker-table tbody,
+    #inventoryTabContent .tracker-table tr,
+    #inventoryTabContent .tracker-table td {
+        display: block;
+        width: 100%;
+    }
+
+    #inventoryTabContent .tracker-table tr {
+        background: #fff;
+        border: 1px solid #e8ecf0;
+        border-radius: 10px;
+        margin-bottom: 12px;
+        padding: 8px 12px;
+    }
+
+    #inventoryTabContent .tracker-table td {
+        border: none;
+        text-align: left !important;
+        padding: 4px 0;
+        font-size: 0.85rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+    }
+
+    #inventoryTabContent .tracker-table td::before {
+        content: attr(data-label);
+        font-weight: 600;
+        color: #888;
+        font-size: 0.78rem;
+        flex-shrink: 0;
+    }
+
+    #inventoryTabContent .tracker-table td:first-child {
+        font-weight: 700;
+        font-size: 0.9rem;
+        border-bottom: 1px solid #f0f2f5;
+        padding-bottom: 6px;
+        margin-bottom: 4px;
+    }
+
+    #inventoryTabContent .tracker-table td:first-child::before {
+        content: '';
+    }
+}
+
+/* ============================================================
+   PHASE 2D — Payroll table mobile stacked card layout
+   ============================================================ */
+
+@media (max-width: 600px) {
+    .pending-table thead {
+        display: none;
+    }
+
+    .pending-table,
+    .pending-table tbody,
+    .pending-table tr,
+    .pending-table td {
+        display: block;
+        width: 100%;
+    }
+
+    .pending-table tr {
+        background: #fff;
+        border: 1px solid #e8ecf0;
+        border-radius: 10px;
+        margin-bottom: 12px;
+        padding: 8px 12px;
+    }
+
+    .pending-table td {
+        border: none;
+        text-align: left !important;
+        padding: 4px 0;
+        font-size: 0.85rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .pending-table td::before {
+        content: attr(data-label);
+        font-weight: 600;
+        color: #888;
+        font-size: 0.78rem;
+        flex-shrink: 0;
+    }
+
+    .pending-table td:first-child {
+        font-weight: 700;
+        font-size: 0.9rem;
+        border-bottom: 1px solid #f0f2f5;
+        padding-bottom: 6px;
+        margin-bottom: 4px;
+    }
+
+    .pending-table td:first-child::before {
+        content: '';
+    }
+
+    .payroll-actions {
+        flex-wrap: wrap;
+    }
+}
+
+/* ============================================================
+   PHASE 2D — Reports filter bar (matches invoice-filter-bar)
+   ============================================================ */
+
+#reportsPanelContent .pending-filter-bar,
+#instantReportsContent .pending-filter-bar,
+#inventoryAuditContent .pending-filter-bar,
+#datewiseExpensesContent .pending-filter-bar,
+#burnReportContent .pending-filter-bar {
+    border-radius: 12px;
+    background: #fff;
+    border: 1px solid #e8ecf0;
+}
+
+/* ============================================================
+   PHASE 2D — Panel content padding for mobile
+   ============================================================ */
+
+@media (max-width: 600px) {
+    #appMain {
+        padding: 0;
+    }
+
+    .venture-dashboard,
+    #invoicesPanel,
+    #poPanel,
+    #payrollPanel,
+    #inventoryPanel,
+    #reportsPanel,
+    #expenditurePanel,
+    #instantReportsPanel,
+    #inventoryAuditPanel,
+    #datewiseExpensesPanel,
+    #burnReportPanel {
+        padding: 0 12px 40px 12px;
+    }
+
+    .invoice-panel-header {
+        padding: 14px 12px;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .invoice-panel-title {
+        font-size: 1.1rem;
+    }
+
+    .kpi-row {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+    }
+
+    .kpi-card {
+        padding: 14px;
+    }
+
+    .kpi-card .kpi-value {
+        font-size: 1.4rem;
+    }
+
+    .venture-grid {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+
+    .invoice-cards-grid,
+    .po-cards-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .invoice-filter-bar,
+    .po-filter-bar {
+        flex-direction: column;
+        padding: 12px;
+    }
+
+    .invoice-filter-group {
+        min-width: 100%;
+    }
+
+    .invoice-form-row {
+        flex-direction: column;
+    }
+
+    .controls-sticky {
+        padding: 8px 12px;
+    }
+
+    .view-toggle {
+        flex-wrap: wrap;
+        gap: 4px;
+    }
+
+    .legend {
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+
+    .venture-header {
+        padding: 10px 12px;
+    }
+
+    .block-tabs,
+    .floor-tabs {
+        padding: 8px 12px;
+        flex-wrap: nowrap;
+        gap: 6px;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+    }
+
+    .block-tabs::-webkit-scrollbar,
+    .floor-tabs::-webkit-scrollbar {
+        display: none;
+    }
+
+    #trackerView {
+        padding-bottom: 20px;
+    }
+
+    .grid-container {
+        padding: 8px 0;
+    }
+
+    .modal-content {
+        width: 100%;
+        max-width: 100%;
+    }
+}
+
+@media (max-width: 400px) {
+    .kpi-row {
+        grid-template-columns: 1fr;
+    }
+}
