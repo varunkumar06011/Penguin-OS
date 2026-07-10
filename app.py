@@ -335,8 +335,14 @@ def generate_room_design(image_url, prompt, seed=0):
     from urllib.parse import quote
     from time import sleep
 
+    if not POLLINATIONS_API_TOKEN:
+        return False, (
+            'Pollinations API token is required. '
+            'Get one at https://enter.pollinations.ai and set POLLINATIONS_API_TOKEN in your environment.'
+        )
+
     encoded_prompt = quote(prompt)
-    url = f"https://image.pollinations.ai/prompt/{encoded_prompt}"
+    url = f"https://gen.pollinations.ai/image/{encoded_prompt}"
     params = {
         "model": "flux",
         "image": image_url,
