@@ -1,8 +1,8 @@
 -- -----------------------------------------------------------
--- Migration 004: Seed role-based user accounts
+-- Migration 004: Seed role-based user accounts (live credentials)
 --   supervisor : Vgrand01  / Infra1234
---   manager    : vgrand02  / infra 123
---   admin      : vgrand03  / infra 12345
+--   manager    : vgrand02  / Infra123
+--   admin      : vgrand03  / Infra12345
 -- Password hashes are generated via werkzeug.security.generate_password_hash
 -- using pbkdf2:sha256 method, compatible with check_password_hash() in app.py.
 -- -----------------------------------------------------------
@@ -12,7 +12,7 @@ values
   (
     '11111111-1111-1111-1111-111111111111',
     'Vgrand01',
-    'pbkdf2:sha256:1000000$gUVP6e0OtGzfALdP$13248bc6f05843f05bc89cf2db320abb9ad6678ca772fef4c9ee71bae738a71a',
+    'pbkdf2:sha256:1000000$2vLLC532D9Dp7Zz9$94496795730daed9417aaca66bcff75350cc6267c8419e8f74c1f5fd979c67bb',
     'VGrand Supervisor',
     'supervisor',
     true
@@ -20,7 +20,7 @@ values
   (
     '11111111-1111-1111-1111-111111111111',
     'vgrand02',
-    'pbkdf2:sha256:1000000$EFBVIAqvG1wPdGUB$5e294cf53abae0321d9f2aa766913dae1f4ab0fa8a03bd1c743813606554415d',
+    'pbkdf2:sha256:1000000$qlJIYAt8qaSIaUuF$f28d130b3d818d4657b017ffa4861d48305bb779cc8857325308de5e41076028',
     'VGrand Manager',
     'manager',
     true
@@ -28,7 +28,7 @@ values
   (
     '11111111-1111-1111-1111-111111111111',
     'vgrand03',
-    'pbkdf2:sha256:1000000$cio6ZtO3M7r9ovh7$6bc319a4285d6aaef1ec9276f0739b29609236ce9e1fd91fdad65a59719d03f7',
+    'pbkdf2:sha256:1000000$71ch0Yu9noKuDBQc$245b248cae798640b42d9b37533fbb720eb757bdc8bbbe2fb8438704a7df2245',
     'VGrand Admin',
     'admin',
     true
