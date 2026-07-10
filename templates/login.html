@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VGrand Infra Tracking - Login</title>
-    <link rel="icon" href="/static/images/image.png" type="image/png">
+    <title>Penguin OS - Login</title>
+    <link rel="icon" href="/static/images/P(oS).jpg" type="image/jpeg">
     <link rel="stylesheet" href="/static/css/fonts.css">
     <link rel="stylesheet" href="/static/css/style.css">
     <link rel="stylesheet" href="/static/css/theme.css">
@@ -12,34 +12,34 @@
 <body class="login-body">
     <div class="login-wrapper">
         <div class="login-hero">
-            <img src="/static/images/image.png" alt="VGrand" class="login-logo">
-            <h1>VGrand Infra Tracking</h1>
+            <img src="/static/images/Penguin%20OS(last%20and%20finalized).jpg" alt="Penguin OS" class="login-logo">
+            <h1>Penguin OS</h1>
             <p>Construction Site Progress Tracker</p>
         </div>
 
         <div id="portalStep" class="login-portals">
             <button type="button" class="portal-btn" data-role="supervisor">
-                <span class="portal-icon">S</span>
+                <span class="portal-icon">SP</span>
                 <span class="portal-name">Supervisor</span>
                 <span class="portal-desc">Update cell status & track progress</span>
             </button>
             <button type="button" class="portal-btn" data-role="manager">
-                <span class="portal-icon">M</span>
+                <span class="portal-icon">MG</span>
                 <span class="portal-name">Manager</span>
                 <span class="portal-desc">Invoices, POs, payroll & inventory</span>
             </button>
             <button type="button" class="portal-btn" data-role="admin">
-                <span class="portal-icon">A</span>
+                <span class="portal-icon">AD</span>
                 <span class="portal-name">Admin</span>
                 <span class="portal-desc">Full access, reports & settings</span>
             </button>
             <button type="button" class="portal-btn" data-role="security">
-                <span class="portal-icon">SG</span>
+                <span class="portal-icon">SC</span>
                 <span class="portal-name">Security</span>
                 <span class="portal-desc">Visitor entry & resident verification</span>
             </button>
             <button type="button" class="portal-btn" data-role="resident">
-                <span class="portal-icon">R</span>
+                <span class="portal-icon">RE</span>
                 <span class="portal-name">Resident</span>
                 <span class="portal-desc">Approve visitors & view history</span>
             </button>
@@ -48,7 +48,7 @@
         <form id="loginForm" class="login-form" style="display:none;">
             <div class="login-fields">
                 <div class="login-role-indicator">
-                    <span class="portal-icon small" id="loginRoleIcon">S</span>
+                    <span class="portal-icon small" id="loginRoleIcon">SP</span>
                     <span id="selectedRoleName">Supervisor</span>
                     <button type="button" id="backToPortals" class="back-to-portals">Change role</button>
                 </div>
@@ -65,17 +65,17 @@
                 <div id="securityLoginFields" style="display:none;">
                     <div class="form-group">
                         <label for="securityEmail">Email</label>
-                        <input type="email" id="securityEmail" name="securityEmail" required>
+                        <input type="email" id="securityEmail" name="securityEmail">
                     </div>
                     <div class="form-group">
                         <label for="securityPassword">Password</label>
-                        <input type="password" id="securityPassword" name="securityPassword" required>
+                        <input type="password" id="securityPassword" name="securityPassword">
                     </div>
                 </div>
                 <div id="residentLoginFields" style="display:none;">
                     <div class="form-group">
                         <label for="residentMobile">Mobile Number</label>
-                        <input type="tel" id="residentMobile" name="residentMobile" placeholder="Registered mobile number" required>
+                        <input type="tel" id="residentMobile" name="residentMobile" placeholder="Registered mobile number">
                     </div>
                 </div>
                 <div class="error-msg" id="loginError"></div>
@@ -96,9 +96,13 @@
     <script>
         let selectedPortalRole = 'supervisor';
 
-        function getPortalInitial(role, text) {
-            if (role === 'security') return 'SG';
-            return text.charAt(0).toUpperCase();
+        function getPortalIcon(role) {
+            if (role === 'supervisor') return 'SP';
+            if (role === 'manager') return 'MG';
+            if (role === 'admin') return 'AD';
+            if (role === 'security') return 'SC';
+            if (role === 'resident') return 'RE';
+            return '·';
         }
 
         document.querySelectorAll('.portal-btn').forEach(btn => {
@@ -132,7 +136,7 @@
                 // Update role indicator
                 const indicator = document.querySelector('.login-role-indicator');
                 if (indicator) {
-                    indicator.querySelector('#loginRoleIcon').textContent = getPortalInitial(selectedPortalRole, btn.querySelector('.portal-name').textContent);
+                    indicator.querySelector('#loginRoleIcon').textContent = getPortalIcon(selectedPortalRole);
                     indicator.querySelector('#selectedRoleName').textContent = btn.querySelector('.portal-name').textContent;
                 }
 
@@ -178,6 +182,7 @@
                 } else if (selectedPortalRole === 'security') {
                     const email = document.getElementById('securityEmail').value;
                     const password = document.getElementById('securityPassword').value;
+                    if (!email || !password) { errorDiv.textContent = 'Email and password are required'; return; }
                     resp = await fetch('/api/visitor/security-login', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -190,6 +195,7 @@
                     }
                 } else if (selectedPortalRole === 'resident') {
                     const mobile = document.getElementById('residentMobile').value;
+                    if (!mobile) { errorDiv.textContent = 'Mobile number is required'; return; }
                     resp = await fetch('/api/visitor/resident-login', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },

@@ -170,7 +170,7 @@ let homeQuickReportFlat = 'all';
 // ========================
 // URL Router & State Persistence
 // ========================
-const APP_STATE_KEY = 'vgrand_app_state';
+const APP_STATE_KEY = 'penguin_os_state';
 
 function getElValue(id) {
     const el = document.getElementById(id);
@@ -311,6 +311,11 @@ function parseHash(hash) {
     if (parts[0] === 'payroll') return { route: 'payroll' };
     if (parts[0] === 'inventory') return { route: 'inventory' };
     if (parts[0] === 'expenditure') return { route: 'expenditure' };
+    if (parts[0] === 'reports') return { route: 'reports' };
+    if (parts[0] === 'instant-reports') return { route: 'instant-reports' };
+    if (parts[0] === 'inventory-audit') return { route: 'inventory-audit' };
+    if (parts[0] === 'design-generator') return { route: 'design-generator' };
+    if (parts[0] === 'stock-purchases') return { route: 'stock-purchases' };
     if (parts[0] === 'venture' && parts[1]) {
         return { route: 'tracker', ventureId: parts[1], block: parts[2], floor: parts[3], view: parts[4] };
     }
@@ -350,6 +355,16 @@ async function applyHashRoute() {
         openInventoryPanel();
     } else if (route.route === 'expenditure') {
         openExpenditurePanel();
+    } else if (route.route === 'reports') {
+        openReportsPanel();
+    } else if (route.route === 'instant-reports') {
+        openInstantReportsPanel();
+    } else if (route.route === 'inventory-audit') {
+        openInventoryAuditPanel();
+    } else if (route.route === 'design-generator') {
+        openDesignGeneratorPanel();
+    } else if (route.route === 'stock-purchases') {
+        openStockPurchasesPanel();
     }
     restorePanelState(route.route);
 }
@@ -513,16 +528,14 @@ function buildPermissions(role) {
         p.manageUsers = false;
         p.viewInstantReports = false;
         p.viewInventoryAudit = false;
-        p.viewDatewiseExpenses = false;
         p.viewExpenditures = true;
         p.viewMaterialLeakage = true;
-        p.viewMilestones = true;
-        p.verifyMilestones = false;
         p.releasePayroll = false;
-        p.viewBurnReport = false;
-        p.manageBudgets = false;
         p.createCategory = false;
         p.reorderCells = false;
+        p.viewDesignGenerator = false;
+        p.viewStockPurchases = true;
+        p.editStockPurchases = false;
     } else if (role === 'manager' || role === 'admin') {
         p.viewDashboard = true;
         p.updateCellStatus = true;
@@ -537,16 +550,15 @@ function buildPermissions(role) {
         p.manageUsers = role === 'admin';
         p.viewInstantReports = role === 'admin';
         p.viewInventoryAudit = role === 'admin';
-        p.viewDatewiseExpenses = role === 'admin';
         p.viewExpenditures = true;
         p.viewMaterialLeakage = true;
-        p.viewMilestones = true;
-        p.verifyMilestones = role === 'admin';
         p.releasePayroll = role === 'admin';
-        p.viewBurnReport = role === 'admin';
         p.manageBudgets = role === 'admin';
         p.createCategory = true;
         p.reorderCells = true;
+        p.viewDesignGenerator = true;
+        p.viewStockPurchases = true;
+        p.editStockPurchases = role === 'admin';
     } else {
         // Unknown / fallback read-only
         p.viewDashboard = true;
@@ -1807,7 +1819,76 @@ function openSettingsModal() {
     });
     renderBlocksSettings();
     renderWorkCategoriesSettings();
+    renderSuperItemsSettings();
     els.settingsModal.classList.add('show');
+}
+
+function renderSuperItemsSettings() {
+    const list = document.getElementById('superItemsList');
+    if (!list) return;
+    list.innerHTML = '';
+
+    let items = ensureItemIds(currentVenture && currentVenture.super_structure_items ? currentVenture.super_structure_items : SUPER_STRUCTURE_ITEMS);
+    items.forEach((item, index) => {
+        const li = document.createElement('li');
+        li.draggable = true;
+        li.dataset.index = index;
+
+        const handle = document.createElement('span');
+        handle.className = 'drag-handle';
+        handle.textContent = '≡';
+
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'work-item-name';
+        nameSpan.contentEditable = true;
+        nameSpan.textContent = item.label;
+        nameSpan.addEventListener('blur', () => {
+            const newLabel = nameSpan.textContent.trim();
+            if (newLabel && newLabel !== item.label) {
+                item.label = newLabel;
+            }
+        });
+        nameSpan.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); nameSpan.blur(); }
+        });
+
+        const remove = document.createElement('button');
+        remove.className = 'remove-btn';
+        remove.innerHTML = '&times;';
+        remove.title = 'Remove';
+        remove.addEventListener('click', () => {
+            items.splice(index, 1);
+            renderSuperItemsSettings();
+        });
+
+        li.appendChild(handle);
+        li.appendChild(nameSpan);
+        li.appendChild(remove);
+        list.appendChild(li);
+
+        li.addEventListener('dragstart', () => li.classList.add('dragging'));
+        li.addEventListener('dragend', () => {
+            li.classList.remove('dragging');
+            const newItems = [];
+            list.querySelectorAll('li').forEach(row => {
+                const span = row.querySelector('.work-item-name');
+                newItems.push({ id: 'ss_' + slugId(span.textContent.trim()) + '_' + Date.now(), label: span.textContent.trim() });
+            });
+            items = newItems;
+            renderSuperItemsSettings();
+        });
+        li.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            const dragging = list.querySelector('.dragging');
+            if (!dragging || dragging === li) return;
+            const siblings = [...list.querySelectorAll('li:not(.dragging)')];
+            const next = siblings.find(s => {
+                const rect = s.getBoundingClientRect();
+                return e.clientY <= rect.top + rect.height / 2;
+            });
+            list.insertBefore(dragging, next || null);
+        });
+    });
 }
 
 function closeSettingsModal() {
@@ -1824,6 +1905,16 @@ els.addWorkItemBtn.addEventListener('click', () => {
     workItems.push('New Work Item');
     openSettingsModal();
 });
+
+const addSuperItemBtn = document.getElementById('addSuperItemBtn');
+if (addSuperItemBtn) {
+    addSuperItemBtn.addEventListener('click', () => {
+        const items = ensureItemIds(currentVenture && currentVenture.super_structure_items ? currentVenture.super_structure_items : SUPER_STRUCTURE_ITEMS);
+        items.push({ id: 'ss_new_item_' + Date.now(), label: 'New Super Structure Item' });
+        currentVenture.super_structure_items = items;
+        renderSuperItemsSettings();
+    });
+}
 
 if (els.addBlockBtn) {
     els.addBlockBtn.addEventListener('click', () => {
@@ -1872,6 +1963,20 @@ els.saveSettingsBtn.addEventListener('click', async () => {
         await saveVentureConfig();
         // Refresh block tabs if visible
         renderBlockTabs();
+    }
+    // Save super structure items from DOM
+    if (currentVenture) {
+        const superList = document.getElementById('superItemsList');
+        if (superList) {
+            const superItems = [];
+            superList.querySelectorAll('li').forEach(row => {
+                const span = row.querySelector('.work-item-name');
+                const label = span.textContent.trim();
+                if (label) superItems.push({ id: 'ss_' + slugId(label) + '_' + Date.now(), label });
+            });
+            currentVenture.super_structure_items = superItems;
+            await saveVentureConfig();
+        }
     }
     closeSettingsModal();
     if (currentView === 'flat') {
@@ -2021,9 +2126,9 @@ async function init() {
                 // Keep current state intact; do not seed defaults on a failed fetch.
             }),
             preloadCells().catch(() => {}),
-            apiGet('/api/invoices').then(d => allInvoices = d || []).catch(() => { allInvoices = []; }),
-            apiGet('/api/settings/invoice_categories').then(d => allCategories = d || defaultCategories).catch(() => { allCategories = defaultCategories; }),
-            apiGet('/api/pos').then(d => allPOs = d || []).catch(() => { allPOs = []; }),
+            (currentUserPermissions.viewInvoices ? apiGet('/api/invoices').then(d => allInvoices = d || []).catch(() => { allInvoices = []; }) : Promise.resolve()),
+            (currentUserPermissions.viewInvoices ? apiGet('/api/settings/invoice_categories').then(d => allCategories = d || defaultCategories).catch(() => { allCategories = defaultCategories; }) : Promise.resolve()),
+            (currentUserPermissions.viewPOs ? apiGet('/api/pos').then(d => allPOs = d || []).catch(() => { allPOs = []; }) : Promise.resolve()),
             apiGet('/api/vendors').then(d => allVendors = d || []).catch(() => { allVendors = []; })
         ]);
     } catch (e) {}
@@ -2035,7 +2140,6 @@ async function init() {
     await applyHashRoute();
     applyRoleBasedUI();
     startPolling();
-    ensureMobileActionBar();
 }
 
 function applyRoleBasedUI() {
@@ -2064,9 +2168,9 @@ function applyRoleBasedUI() {
     hide('addVendorCategoryBtn');
     hide('openInstantReportsBtn');
     hide('openInventoryAuditBtn');
-    hide('openDatewiseExpensesBtn');
-    hide('openBurnReportBtn');
     hide('openExpenditureBtn');
+    hide('openDesignGeneratorBtn');
+    hide('openStockPurchasesBtn');
 
     if (currentUserPermissions.viewInvoices) show('openInvoicesBtn');
     if (currentUserPermissions.viewPayroll) show('openPayrollBtn');
@@ -2075,9 +2179,9 @@ function applyRoleBasedUI() {
     show('openReportsBtn');
     if (currentUserPermissions.viewInstantReports) show('openInstantReportsBtn');
     if (currentUserPermissions.viewInventoryAudit) show('openInventoryAuditBtn');
-    if (currentUserPermissions.viewDatewiseExpenses) show('openDatewiseExpensesBtn');
-    if (currentUserPermissions.viewBurnReport) show('openBurnReportBtn');
     if (currentUserPermissions.viewExpenditures) show('openExpenditureBtn');
+    if (currentUserPermissions.viewDesignGenerator) show('openDesignGeneratorBtn');
+    if (currentUserPermissions.viewStockPurchases) show('openStockPurchasesBtn');
     if (currentUserPermissions.editWorkItems || currentUserPermissions.editVentures) {
         show('settingsBtn');
         show('editModeBtn');
@@ -2136,29 +2240,33 @@ async function pollData() {
         }
     } catch (e) {}
 
-    // Invoices
-    try {
-        const fresh = await apiGet('/api/invoices') || [];
-        if (JSON.stringify(fresh) !== JSON.stringify(allInvoices)) {
-            allInvoices = fresh;
-            changed = true;
-            if (document.getElementById('invoicesPanel').style.display !== 'none') {
-                renderInvoiceCards();
+    // Invoices (only for roles with access)
+    if (currentUserPermissions.viewInvoices) {
+        try {
+            const fresh = await apiGet('/api/invoices') || [];
+            if (JSON.stringify(fresh) !== JSON.stringify(allInvoices)) {
+                allInvoices = fresh;
+                changed = true;
+                if (document.getElementById('invoicesPanel').style.display !== 'none') {
+                    renderInvoiceCards();
+                }
             }
-        }
-    } catch (e) {}
+        } catch (e) {}
+    }
 
-    // POs
-    try {
-        const fresh = await apiGet('/api/pos') || [];
-        if (JSON.stringify(fresh) !== JSON.stringify(allPOs)) {
-            allPOs = fresh;
-            changed = true;
-            if (document.getElementById('poPanel').style.display !== 'none') {
-                renderPOCards();
+    // POs (only for roles with access)
+    if (currentUserPermissions.viewPOs) {
+        try {
+            const fresh = await apiGet('/api/pos') || [];
+            if (JSON.stringify(fresh) !== JSON.stringify(allPOs)) {
+                allPOs = fresh;
+                changed = true;
+                if (document.getElementById('poPanel').style.display !== 'none') {
+                    renderPOCards();
+                }
             }
-        }
-    } catch (e) {}
+        } catch (e) {}
+    }
 
     // Vendors
     try {
@@ -2547,15 +2655,8 @@ async function seedDefaultVentures() {
 }
 
 function renderVentureDashboard() {
+    hideAllMainPanels();
     document.getElementById('venturesDashboard').style.display = '';
-    document.getElementById('trackerView').style.display = 'none';
-    document.getElementById('breadcrumbBar').style.display = 'none';
-    ['invoicesPanel', 'poPanel', 'reportsPanel', 'payrollPanel', 'inventoryPanel',
-     'instantReportsPanel', 'inventoryAuditPanel', 'datewiseExpensesPanel', 'burnReportPanel',
-     'expenditurePanel'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.style.display = 'none';
-    });
 
     // KPI summary cards
     const kpiRow = document.getElementById('ventureKpiRow');
@@ -2566,10 +2667,10 @@ function renderVentureDashboard() {
         const totalWorkItems = venturesList.reduce((s, v) => s + (v.flat_view_items ? v.flat_view_items.length : 0), 0);
 
         const kpis = [
-            { icon: '&#127968;', iconClass: 'blue', label: 'Active Ventures', value: venturesList.length, sub: totalBlocks + ' blocks total' },
-            { icon: '&#10227;', iconClass: 'green', label: 'Total Units', value: totalUnits.toLocaleString(), sub: 'across all ventures' },
-            { icon: '&#9998;', iconClass: 'amber', label: 'Work Items', value: totalWorkItems, sub: 'tracking categories' },
-            { icon: '&#128260;', iconClass: 'dark', label: 'Blocks', value: totalBlocks, sub: 'under construction' },
+            { icon: 'AV', iconClass: 'blue', label: 'Active Ventures', value: venturesList.length, sub: totalBlocks + ' blocks total' },
+            { icon: 'TU', iconClass: 'green', label: 'Total Units', value: totalUnits.toLocaleString(), sub: 'across all ventures' },
+            { icon: 'WI', iconClass: 'amber', label: 'Work Items', value: totalWorkItems, sub: 'tracking categories' },
+            { icon: 'BL', iconClass: 'dark', label: 'Blocks', value: totalBlocks, sub: 'under construction' },
         ];
         kpis.forEach(k => {
             const card = document.createElement('div');
@@ -2935,38 +3036,45 @@ async function renderHomeReports(container) {
     summary.textContent = `Total cells: ${totalCells} | ${currentVenture.name} | ${currentBlockObj.name || currentBlock} | ${homeQuickReportFloor}${['st','nd','rd','th','th','th','th','th','th','th'][homeQuickReportFloor - 1] || 'th'} Floor | ${flatText}`;
     container.appendChild(summary);
 
-    // Work details table
-    const statusOrder = { green: 0, yellow: 1, blue: 2, red: 3, none: 4 };
-    const sortedRows = [...workRows].sort((a, b) => {
-        const diff = statusOrder[a.color] - statusOrder[b.color];
-        if (diff !== 0) return diff;
-        if (a.flat !== b.flat) return a.flat - b.flat;
-        return a.workItem.localeCompare(b.workItem);
+    // Work categories report
+    const categorySummary = {};
+    workRows.forEach(row => {
+        if (!categorySummary[row.category]) {
+            categorySummary[row.category] = { red: 0, yellow: 0, blue: 0, green: 0, none: 0, total: 0 };
+        }
+        categorySummary[row.category][row.color]++;
+        categorySummary[row.category].total++;
     });
 
     const detailsHeading = document.createElement('h4');
     detailsHeading.style.margin = '16px 0 8px';
     detailsHeading.style.color = '#1a2a6c';
-    detailsHeading.textContent = 'Work Details';
+    detailsHeading.textContent = 'Work Categories Report';
     container.appendChild(detailsHeading);
 
     const tableWrapper = document.createElement('div');
     tableWrapper.className = 'grid-container';
     const table = document.createElement('table');
     table.className = 'tracker-table pending-table';
-    table.innerHTML = '<thead><tr><th>Status</th><th>Work Item</th><th>Category</th><th>Flat</th></tr></thead>';
+    table.innerHTML = '<thead><tr><th>Category</th><th>Total</th><th>Completed</th><th>In Progress</th><th>Patch Work</th><th>Yet to Start</th><th>Not Started</th><th>Completion %</th></tr></thead>';
     const tbody = document.createElement('tbody');
-    if (sortedRows.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#999;padding:24px;">No work items found</td></tr>';
+    const categories = Object.keys(categorySummary).sort();
+    if (categories.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#999;padding:24px;">No work categories found</td></tr>';
     } else {
-        sortedRows.forEach(row => {
+        categories.forEach(cat => {
+            const summary = categorySummary[cat];
+            const completedPct = summary.total > 0 ? ((summary.green / summary.total) * 100).toFixed(1) : '0.0';
             const tr = document.createElement('tr');
-            const dotColor = row.color === 'none' ? '#ccc' : getColorHex(row.color);
             tr.innerHTML = `
-                <td><span class="dot" style="background:${dotColor};"></span> ${row.statusLabel}</td>
-                <td>${escapeHtml(row.workItem)}</td>
-                <td>${escapeHtml(row.category)}</td>
-                <td>${row.flat}</td>
+                <td><strong>${escapeHtml(cat)}</strong></td>
+                <td>${summary.total}</td>
+                <td><span class="dot" style="background:${getColorHex('green')};"></span> ${summary.green}</td>
+                <td><span class="dot" style="background:${getColorHex('yellow')};"></span> ${summary.yellow}</td>
+                <td><span class="dot" style="background:${getColorHex('blue')};"></span> ${summary.blue}</td>
+                <td><span class="dot" style="background:${getColorHex('red')};"></span> ${summary.red}</td>
+                <td><span class="dot" style="background:#ccc;"></span> ${summary.none}</td>
+                <td><strong>${completedPct}%</strong></td>
             `;
             tbody.appendChild(tr);
         });
@@ -3152,11 +3260,7 @@ async function openVenture(venture, opts = {}) {
 
     workItems = venture.flat_view_items ? [...venture.flat_view_items] : [...DEFAULT_WORK_ITEMS];
 
-    document.getElementById('venturesDashboard').style.display = 'none';
-    document.getElementById('invoicesPanel').style.display = 'none';
-    document.getElementById('poPanel').style.display = 'none';
-    document.getElementById('payrollPanel').style.display = 'none';
-    document.getElementById('inventoryPanel').style.display = 'none';
+    hideAllMainPanels();
     document.getElementById('trackerView').style.display = '';
     document.getElementById('breadcrumbBar').style.display = 'flex';
     document.getElementById('bcVenture').textContent = venture.name;
@@ -3203,18 +3307,11 @@ async function openVenture(venture, opts = {}) {
 
     // Render admin/manager widgets if venture is open
     const leakageWidget = document.getElementById('materialLeakageWidget');
-    const milestoneWidget = document.getElementById('milestoneWidget');
     if (leakageWidget && currentUserPermissions.viewMaterialLeakage && currentVenture.id) {
         leakageWidget.style.display = '';
         renderMaterialLeakageWidget(leakageWidget, currentVenture.id);
     } else if (leakageWidget) {
         leakageWidget.style.display = 'none';
-    }
-    if (milestoneWidget && currentUserPermissions.viewMilestones && currentVenture.id) {
-        milestoneWidget.style.display = '';
-        renderMilestoneWidget(milestoneWidget, currentVenture.id);
-    } else if (milestoneWidget) {
-        milestoneWidget.style.display = 'none';
     }
 }
 
@@ -3229,8 +3326,6 @@ function exitToDashboard() {
     document.body.classList.remove('edit-mode-active');
     const lw = document.getElementById('materialLeakageWidget');
     if (lw) lw.style.display = 'none';
-    const mw = document.getElementById('milestoneWidget');
-    if (mw) mw.style.display = 'none';
     renderVentureDashboard();
     navigateTo('#/ventures');
 }
@@ -4045,12 +4140,11 @@ function exportPendingWorkPDF() {
             </tr>`;
     });
 
-    const logoUrl = window.location.origin + '/static/images/image.png';
     const html = `<!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
-    <title>VGrand Infra - Pending Work Report</title>
+    <title>Penguin OS - Pending Work Report</title>
     <style>
         @media print { body { margin: 0; } .no-print { display: none !important; } }
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 40px; color: #333; }
@@ -4069,11 +4163,10 @@ function exportPendingWorkPDF() {
 <body>
     <div class="report-header">
         <div class="report-header-left">
-            <h1>VGrand Infra Tracking</h1>
+            <h1>Penguin OS</h1>
             <p><strong>Pending Work Report</strong></p>
             <p>Venture: ${ventureName}${blockName ? ' | Block: ' + blockName : ''} | ${floorLabelText} — ${flatLabelText}</p>
         </div>
-        <img src="${logoUrl}" alt="Logo" class="report-logo">
     </div>
     <div class="report-meta">
         <span>Generated on: ${dateStr} at ${timeStr}</span>
@@ -4141,13 +4234,8 @@ async function saveInvoiceCategory(cat) {
 }
 
 function openInvoicesPanel() {
-    document.getElementById('venturesDashboard').style.display = 'none';
-    document.getElementById('trackerView').style.display = 'none';
+    hideAllMainPanels();
     document.getElementById('invoicesPanel').style.display = '';
-    document.getElementById('poPanel').style.display = 'none';
-    document.getElementById('payrollPanel').style.display = 'none';
-    document.getElementById('inventoryPanel').style.display = 'none';
-    document.getElementById('breadcrumbBar').style.display = 'none';
     populateInvoiceFilterVentures();
     populateInvoiceFilterCategories();
     restorePanelState('invoices');
@@ -4156,19 +4244,13 @@ function openInvoicesPanel() {
 }
 
 function closeInvoicesPanel() {
-    document.getElementById('invoicesPanel').style.display = 'none';
-    document.getElementById('venturesDashboard').style.display = '';
+    renderVentureDashboard();
     navigateTo('#/ventures');
 }
 
 function openInventoryPanel() {
-    document.getElementById('venturesDashboard').style.display = 'none';
-    document.getElementById('trackerView').style.display = 'none';
-    document.getElementById('invoicesPanel').style.display = 'none';
-    document.getElementById('poPanel').style.display = 'none';
-    document.getElementById('payrollPanel').style.display = 'none';
+    hideAllMainPanels();
     document.getElementById('inventoryPanel').style.display = '';
-    document.getElementById('breadcrumbBar').style.display = 'none';
     restorePanelState('inventory');
     if (venturesList.length > 0 && !selectedInventoryVenture) {
         selectedInventoryVenture = venturesList[0];
@@ -4178,9 +4260,8 @@ function openInventoryPanel() {
 }
 
 function closeInventoryPanel() {
-    document.getElementById('inventoryPanel').style.display = 'none';
-    document.getElementById('venturesDashboard').style.display = '';
     selectedInventoryVenture = null;
+    renderVentureDashboard();
     navigateTo('#/ventures');
 }
 
@@ -4526,15 +4607,15 @@ document.getElementById('backFromInvoices').addEventListener('click', closeInvoi
 document.getElementById('openInventoryBtn').addEventListener('click', openInventoryPanel);
 document.getElementById('backFromInventory').addEventListener('click', closeInventoryPanel);
 
+// Reports panel event wiring
+document.getElementById('openReportsBtn').addEventListener('click', openReportsPanel);
+document.getElementById('backFromReports').addEventListener('click', closeReportsPanel);
+
 // Admin-only panel event wiring
 document.getElementById('openInstantReportsBtn').addEventListener('click', openInstantReportsPanel);
 document.getElementById('backFromInstantReports').addEventListener('click', closeInstantReportsPanel);
 document.getElementById('openInventoryAuditBtn').addEventListener('click', openInventoryAuditPanel);
 document.getElementById('backFromInventoryAudit').addEventListener('click', closeInventoryAuditPanel);
-document.getElementById('openDatewiseExpensesBtn').addEventListener('click', openDatewiseExpensesPanel);
-document.getElementById('backFromDatewiseExpenses').addEventListener('click', closeDatewiseExpensesPanel);
-document.getElementById('openBurnReportBtn').addEventListener('click', openBurnReportPanel);
-document.getElementById('backFromBurnReport').addEventListener('click', closeBurnReportPanel);
 document.getElementById('openExpenditureBtn').addEventListener('click', openExpenditurePanel);
 document.getElementById('backFromExpenditure').addEventListener('click', closeExpenditurePanel);
 
@@ -4741,14 +4822,8 @@ function isPOFlaggedUnpaid(po) {
 }
 
 function openPOPanel() {
-    document.getElementById('venturesDashboard').style.display = 'none';
-    document.getElementById('trackerView').style.display = 'none';
-    ['invoicesPanel', 'attendancePanel', 'payrollPanel', 'inventoryPanel'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.style.display = 'none';
-    });
+    hideAllMainPanels();
     document.getElementById('poPanel').style.display = '';
-    document.getElementById('breadcrumbBar').style.display = 'none';
     populatePOFilters();
     restorePanelState('po');
     renderPOCards();
@@ -4756,8 +4831,7 @@ function openPOPanel() {
 }
 
 function closePOPanel() {
-    document.getElementById('poPanel').style.display = 'none';
-    document.getElementById('venturesDashboard').style.display = '';
+    renderVentureDashboard();
     navigateTo('#/ventures');
 }
 
@@ -5520,14 +5594,8 @@ document.getElementById('payrollBtn')?.addEventListener('click', () => {
 });
 
 function openPayrollPanel() {
-    document.getElementById('venturesDashboard').style.display = 'none';
-    document.getElementById('trackerView').style.display = 'none';
-    ['invoicesPanel', 'poPanel'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.style.display = 'none';
-    });
+    hideAllMainPanels();
     document.getElementById('payrollPanel').style.display = '';
-    document.getElementById('breadcrumbBar').style.display = 'none';
     restorePanelState('payroll');
     payrollPanelMode = true;
     renderPayrollView();
@@ -5535,10 +5603,9 @@ function openPayrollPanel() {
 }
 
 function closePayrollPanel() {
-    document.getElementById('payrollPanel').style.display = 'none';
-    document.getElementById('venturesDashboard').style.display = '';
     selectedPayrollVenture = null;
     payrollPanelMode = false;
+    renderVentureDashboard();
     navigateTo('#/ventures');
 }
 
@@ -5789,7 +5856,7 @@ async function renderPayrollView() {
         releaseBtn.addEventListener('click', async () => {
             const monthSel = container.querySelector('#payrollMonthSelect');
             const month = monthSel ? monthSel.value : new Date().toISOString().slice(0, 7);
-            showConfirm('Release Payroll', `Release payroll for ${month}? This requires all milestones to be verified.`, async () => {
+            showConfirm('Release Payroll', `Release payroll for ${month}?`, async () => {
                 try {
                     const payrolls = await apiGet(`/api/payroll?venture_id=${encodeURIComponent(venture.id)}&month=${month}`);
                     if (!payrolls || payrolls.length === 0) {
@@ -5809,7 +5876,7 @@ async function renderPayrollView() {
                         }
                     }
                     if (failed > 0) {
-                        showToast(`Released ${released}, ${failed} failed (milestone not verified)`, true);
+                        showToast(`Released ${released}, ${failed} failed`, true);
                     } else {
                         showToast(`Released ${released} payroll ${released === 1 ? 'entry' : 'entries'}`);
                     }
@@ -6826,9 +6893,9 @@ document.getElementById('saveMaterial').addEventListener('click', async () => {
 // ========================
 
 function hideAllMainPanels() {
-    ['venturesDashboard', 'invoicesPanel', 'poPanel', 'payrollPanel', 'inventoryPanel',
-     'instantReportsPanel', 'inventoryAuditPanel', 'datewiseExpensesPanel', 'burnReportPanel',
-     'expenditurePanel', 'trackerView'].forEach(id => {
+    ['venturesDashboard', 'invoicesPanel', 'poPanel', 'reportsPanel', 'payrollPanel', 'inventoryPanel',
+     'instantReportsPanel', 'inventoryAuditPanel',
+     'expenditurePanel', 'designGeneratorPanel', 'stockPurchasesPanel', 'trackerView'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.display = 'none';
     });
@@ -6840,11 +6907,11 @@ function openInstantReportsPanel() {
     hideAllMainPanels();
     document.getElementById('instantReportsPanel').style.display = '';
     renderInstantReports();
+    navigateTo('#/instant-reports');
 }
 
 function closeInstantReportsPanel() {
-    document.getElementById('instantReportsPanel').style.display = 'none';
-    document.getElementById('venturesDashboard').style.display = '';
+    renderVentureDashboard();
     navigateTo('#/ventures');
 }
 
@@ -6852,35 +6919,24 @@ function openInventoryAuditPanel() {
     hideAllMainPanels();
     document.getElementById('inventoryAuditPanel').style.display = '';
     renderInventoryAudit();
+    navigateTo('#/inventory-audit');
 }
 
 function closeInventoryAuditPanel() {
-    document.getElementById('inventoryAuditPanel').style.display = 'none';
-    document.getElementById('venturesDashboard').style.display = '';
+    renderVentureDashboard();
     navigateTo('#/ventures');
 }
 
-function openDatewiseExpensesPanel() {
+
+function openReportsPanel() {
     hideAllMainPanels();
-    document.getElementById('datewiseExpensesPanel').style.display = '';
-    renderDatewiseExpenses();
+    document.getElementById('reportsPanel').style.display = '';
+    renderReportsPanel();
+    navigateTo('#/reports');
 }
 
-function closeDatewiseExpensesPanel() {
-    document.getElementById('datewiseExpensesPanel').style.display = 'none';
-    document.getElementById('venturesDashboard').style.display = '';
-    navigateTo('#/ventures');
-}
-
-function openBurnReportPanel() {
-    hideAllMainPanels();
-    document.getElementById('burnReportPanel').style.display = '';
-    renderBurnReport();
-}
-
-function closeBurnReportPanel() {
-    document.getElementById('burnReportPanel').style.display = 'none';
-    document.getElementById('venturesDashboard').style.display = '';
+function closeReportsPanel() {
+    renderVentureDashboard();
     navigateTo('#/ventures');
 }
 
@@ -6892,9 +6948,150 @@ function openExpenditurePanel() {
 }
 
 function closeExpenditurePanel() {
-    document.getElementById('expenditurePanel').style.display = 'none';
-    document.getElementById('venturesDashboard').style.display = '';
+    renderVentureDashboard();
     navigateTo('#/ventures');
+}
+
+function openDesignGeneratorPanel() {
+    hideAllMainPanels();
+    document.getElementById('designGeneratorPanel').style.display = '';
+    renderDesignGeneratorHistory();
+    navigateTo('#/design-generator');
+}
+
+function closeDesignGeneratorPanel() {
+    stopDesignPolling();
+    renderVentureDashboard();
+    navigateTo('#/ventures');
+}
+
+function openStockPurchasesPanel() {
+    hideAllMainPanels();
+    document.getElementById('stockPurchasesPanel').style.display = '';
+    renderStockPurchases();
+    navigateTo('#/stock-purchases');
+}
+
+function closeStockPurchasesPanel() {
+    renderVentureDashboard();
+    navigateTo('#/ventures');
+}
+
+// ========================
+// Reports Panel Renderer
+// ========================
+
+function renderReportsPanel() {
+    const container = document.getElementById('reportsPanelContent');
+    if (!container) return;
+    container.innerHTML = '';
+
+    const v = currentVenture;
+    if (!v) {
+        container.innerHTML = '<div style="padding:24px;color:#888;">Please select a venture from the dashboard.</div>';
+        return;
+    }
+
+    if (!currentBlockObj || !v.blocks.find(b => b.id === currentBlockObj.id)) {
+        currentBlockObj = v.blocks && v.blocks[0] ? v.blocks[0] : { id: 'A', floors: 5 };
+    }
+    currentBlock = currentBlockObj.id;
+    homeQuickReportFloor = currentFloor || 1;
+    homeQuickReportFlat = 'all';
+
+    const header = document.createElement('div');
+    header.className = 'pending-filter-bar';
+    header.style.marginBottom = '16px';
+    header.innerHTML = `
+        <div class="pending-filter-group"><label>Venture</label><div class="pending-readonly">${escapeHtml(v.name)}</div></div>
+        <div class="pending-filter-group"><label>Block</label><select id="reportBlockSelect" class="pending-filter-group-select"></select></div>
+        <div class="pending-filter-group"><label>Floor</label><select id="reportFloorSelect" class="pending-filter-group-select"></select></div>
+        <div class="pending-filter-group"><label>Flat</label><select id="reportFlatSelect" class="pending-filter-group-select"></select></div>
+    `;
+    container.appendChild(header);
+
+    populateReportBlockSelect();
+    populateReportFloorSelect();
+    populateReportFlatSelect();
+
+    document.getElementById('reportBlockSelect').addEventListener('change', () => {
+        currentBlockObj = v.blocks.find(b => b.id === document.getElementById('reportBlockSelect').value) || v.blocks[0];
+        currentBlock = currentBlockObj.id;
+        homeQuickReportFloor = 1;
+        homeQuickReportFlat = 'all';
+        populateReportFloorSelect();
+        populateReportFlatSelect();
+        regenerateReports();
+    });
+
+    document.getElementById('reportFloorSelect').addEventListener('change', () => {
+        homeQuickReportFloor = parseInt(document.getElementById('reportFloorSelect').value) || 1;
+        homeQuickReportFlat = 'all';
+        populateReportFlatSelect();
+        regenerateReports();
+    });
+
+    document.getElementById('reportFlatSelect').addEventListener('change', () => {
+        homeQuickReportFlat = document.getElementById('reportFlatSelect').value;
+        regenerateReports();
+    });
+
+    const reportContainer = document.createElement('div');
+    reportContainer.id = 'reportsChartContainer';
+    reportContainer.className = 'grid-container';
+    container.appendChild(reportContainer);
+
+    renderHomeReports(reportContainer);
+}
+
+function populateReportBlockSelect() {
+    const select = document.getElementById('reportBlockSelect');
+    if (!select || !currentVenture) return;
+    select.innerHTML = '';
+    currentVenture.blocks.forEach(b => {
+        const opt = document.createElement('option');
+        opt.value = b.id;
+        opt.textContent = b.name || b.id;
+        select.appendChild(opt);
+    });
+    select.value = currentBlockObj.id;
+}
+
+function populateReportFloorSelect() {
+    const select = document.getElementById('reportFloorSelect');
+    if (!select || !currentBlockObj) return;
+    const floors = currentBlockObj.floors || 5;
+    const floorLabels = ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th', '10th'];
+    select.innerHTML = '';
+    for (let i = 1; i <= floors; i++) {
+        const opt = document.createElement('option');
+        opt.value = i;
+        opt.textContent = floorLabels[i - 1] || `${i}th`;
+        select.appendChild(opt);
+    }
+    select.value = String(homeQuickReportFloor);
+}
+
+function populateReportFlatSelect() {
+    const select = document.getElementById('reportFlatSelect');
+    if (!select || !currentBlockObj) return;
+    const flatsPerFloor = currentBlockObj.flats_per_floor || FLATS_PER_FLOOR;
+    select.innerHTML = '<option value="all">All Flats</option>';
+    for (let i = 1; i <= flatsPerFloor; i++) {
+        const flatNum = (homeQuickReportFloor * 100) + i;
+        const opt = document.createElement('option');
+        opt.value = flatNum;
+        opt.textContent = flatNum;
+        select.appendChild(opt);
+    }
+    select.value = String(homeQuickReportFlat);
+}
+
+function regenerateReports() {
+    const container = document.getElementById('reportsChartContainer');
+    if (!container) return;
+    container.innerHTML = '';
+    renderHomeReports(container);
 }
 
 // ========================
@@ -7010,126 +7207,6 @@ async function renderInventoryAudit() {
     });
 }
 
-// ========================
-// Date-wise Expenses Renderer
-// ========================
-
-async function renderDatewiseExpenses() {
-    const container = document.getElementById('datewiseExpensesContent');
-    if (!container) return;
-    container.innerHTML = '';
-
-    const bar = document.createElement('div');
-    bar.style.cssText = 'display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;padding:16px 24px;';
-    bar.innerHTML = `
-        <div class="pending-filter-group"><label>Venture</label><select id="dwExpVenture"></select></div>
-        <div class="pending-filter-group"><label>From</label><input type="date" id="dwExpFrom"></div>
-        <div class="pending-filter-group"><label>To</label><input type="date" id="dwExpTo"></div>
-        <div class="pending-filter-group"><button id="dwExpGo" class="btn-primary" style="padding:8px 16px;">Check</button></div>
-    `;
-    container.appendChild(bar);
-
-    const sel = bar.querySelector('#dwExpVenture');
-    sel.innerHTML = '<option value="">-- Select Venture --</option>';
-    venturesList.forEach(v => {
-        sel.innerHTML += `<option value="${v.id}">${v.name}</option>`;
-    });
-
-    const today = new Date().toISOString().slice(0, 10);
-    const monthAgo = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
-    bar.querySelector('#dwExpFrom').value = monthAgo;
-    bar.querySelector('#dwExpTo').value = today;
-
-    const outputDiv = document.createElement('div');
-    outputDiv.style.cssText = 'padding:0 24px;';
-    container.appendChild(outputDiv);
-
-    bar.querySelector('#dwExpGo').addEventListener('click', async () => {
-        const vid = sel.value;
-        const from = bar.querySelector('#dwExpFrom').value;
-        const to = bar.querySelector('#dwExpTo').value;
-        if (!vid || !from || !to) { showToast('Please select venture and date range', true); return; }
-        outputDiv.innerHTML = '<div style="padding:24px;color:#888;">Loading...</div>';
-        try {
-            const rows = await apiGet(`/api/expenses/date-check?venture_id=${encodeURIComponent(vid)}&from=${from}&to=${to}`);
-            let total = 0;
-            let html = '<table class="tracker-table" style="font-size:0.85rem;margin-top:16px;">';
-            html += '<thead><tr><th>Date</th><th>Amount</th></tr></thead><tbody>';
-            rows.forEach(r => {
-                total += r.amount;
-                const isZero = r.amount === 0;
-                html += `<tr${isZero ? ' style="color:#ccc;"' : ''}><td>${r.date}</td><td>&#8377; ${r.amount.toLocaleString('en-IN')}</td></tr>`;
-            });
-            html += `</tbody><tfoot><tr style="font-weight:700;"><td>Total</td><td>&#8377; ${total.toLocaleString('en-IN')}</td></tr></tfoot></table>`;
-            outputDiv.innerHTML = html;
-        } catch (err) {
-            outputDiv.innerHTML = `<div style="padding:24px;color:#c0392b;">Error: ${err.message}</div>`;
-        }
-    });
-}
-
-// ========================
-// Cash Burn Report Renderer
-// ========================
-
-async function renderBurnReport() {
-    const container = document.getElementById('burnReportContent');
-    if (!container) return;
-    container.innerHTML = '';
-
-    const bar = document.createElement('div');
-    bar.style.cssText = 'display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;padding:16px 24px;';
-    bar.innerHTML = `
-        <div class="pending-filter-group"><label>Venture</label><select id="burnVenture"></select></div>
-        <div class="pending-filter-group"><label>From</label><input type="date" id="burnFrom"></div>
-        <div class="pending-filter-group"><label>To</label><input type="date" id="burnTo"></div>
-        <div class="pending-filter-group"><button id="burnGo" class="btn-primary" style="padding:8px 16px;">Generate</button></div>
-    `;
-    container.appendChild(bar);
-
-    const sel = bar.querySelector('#burnVenture');
-    sel.innerHTML = '<option value="">-- Select Venture --</option>';
-    venturesList.forEach(v => {
-        sel.innerHTML += `<option value="${v.id}">${v.name}</option>`;
-    });
-
-    const today = new Date().toISOString().slice(0, 10);
-    const monthAgo = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
-    bar.querySelector('#burnFrom').value = monthAgo;
-    bar.querySelector('#burnTo').value = today;
-
-    const outputDiv = document.createElement('div');
-    outputDiv.style.cssText = 'padding:0 24px;';
-    container.appendChild(outputDiv);
-
-    bar.querySelector('#burnGo').addEventListener('click', async () => {
-        const vid = sel.value;
-        const from = bar.querySelector('#burnFrom').value;
-        const to = bar.querySelector('#burnTo').value;
-        if (!vid || !from || !to) { showToast('Please select venture and date range', true); return; }
-        outputDiv.innerHTML = '<div style="padding:24px;color:#888;">Loading burn report...</div>';
-        try {
-            const data = await apiGet(`/api/budgets/burn-report?venture_id=${encodeURIComponent(vid)}&from=${from}&to=${to}`);
-            let html = '<div style="display:flex;gap:16px;flex-wrap:wrap;padding:16px 0;">';
-            html += `<div style="background:#fff;border:1px solid #e0e4e8;border-radius:8px;padding:16px;flex:1;min-width:150px;"><h4 style="margin:0 0 8px;font-size:0.85rem;">MTD Budget</h4><div style="font-size:1.2rem;font-weight:700;">&#8377; ${data.mtd_budget.toLocaleString('en-IN')}</div></div>`;
-            html += `<div style="background:#fff;border:1px solid #e0e4e8;border-radius:8px;padding:16px;flex:1;min-width:150px;"><h4 style="margin:0 0 8px;font-size:0.85rem;">MTD Actual</h4><div style="font-size:1.2rem;font-weight:700;">&#8377; ${data.mtd_actual.toLocaleString('en-IN')}</div></div>`;
-            const varColor = data.mtd_variance >= 0 ? '#27ae60' : '#c0392b';
-            html += `<div style="background:#fff;border:1px solid #e0e4e8;border-radius:8px;padding:16px;flex:1;min-width:150px;"><h4 style="margin:0 0 8px;font-size:0.85rem;">MTD Variance</h4><div style="font-size:1.2rem;font-weight:700;color:${varColor};">&#8377; ${data.mtd_variance.toLocaleString('en-IN')}</div></div>`;
-            html += '</div>';
-
-            html += '<table class="tracker-table" style="font-size:0.85rem;margin-top:16px;">';
-            html += '<thead><tr><th>Date</th><th>Budget</th><th>Actual</th><th>Variance</th><th>Var %</th></tr></thead><tbody>';
-            data.days.forEach(d => {
-                const vColor = d.variance >= 0 ? '#27ae60' : '#c0392b';
-                html += `<tr><td>${d.date}</td><td>&#8377; ${d.budget.toLocaleString('en-IN')}</td><td>&#8377; ${d.actual.toLocaleString('en-IN')}</td><td style="color:${vColor};">&#8377; ${d.variance.toLocaleString('en-IN')}</td><td>${d.variance_pct}%</td></tr>`;
-            });
-            html += '</tbody></table>';
-            outputDiv.innerHTML = html;
-        } catch (err) {
-            outputDiv.innerHTML = `<div style="padding:24px;color:#c0392b;">Error: ${err.message}</div>`;
-        }
-    });
-}
 
 // ========================
 // Expenditure Renderer
@@ -7442,137 +7519,6 @@ async function renderMaterialLeakageWidget(container, ventureId) {
     }
 }
 
-// ========================
-// Milestone Verification Widget
-// ========================
-
-async function renderMilestoneWidget(container, ventureId) {
-    if (!container || !ventureId) return;
-    container.innerHTML = '<div style="padding:16px;color:#888;">Loading milestones...</div>';
-    try {
-        const milestones = await apiGet(`/api/milestones?venture_id=${encodeURIComponent(ventureId)}`);
-        let html = '<div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">';
-        html += '<h4 style="margin:0;font-size:0.95rem;">Milestone Verification</h4>';
-        html += `<button id="addMilestoneBtn" class="btn-secondary" style="padding:4px 12px;font-size:0.8rem;">+ Add Milestone</button>`;
-        html += '</div>';
-
-        if (!milestones.length) {
-            html += '<div style="padding:16px;color:#888;">No milestones yet.</div>';
-        } else {
-            html += '<div style="display:flex;flex-direction:column;gap:8px;">';
-            milestones.forEach(m => {
-                const statusColor = m.status === 'verified' ? '#27ae60' : m.status === 'submitted' ? '#f39c12' : m.status === 'rejected' ? '#e74c3c' : '#888';
-                const photos = m.milestone_photos || [];
-                const hasBefore = photos.some(p => p.photo_type === 'before');
-                const hasAfter = photos.some(p => p.photo_type === 'after');
-                html += `<div style="background:#fff;border:1px solid #e0e4e8;border-radius:8px;padding:12px;">`;
-                html += `<div style="display:flex;justify-content:space-between;align-items:center;">`;
-                html += `<div><strong>${m.work_item || 'Unknown'}</strong> — ${m.description || ''}</div>`;
-                html += `<span style="font-size:0.75rem;padding:2px 10px;border-radius:12px;color:#fff;background:${statusColor};">${m.status}</span>`;
-                html += `</div>`;
-                html += `<div style="font-size:0.8rem;color:#888;margin-top:6px;">Block: ${m.block || '-'} | Floor: ${m.floor || '-'} | Flat: ${m.flat || '-'}</div>`;
-                html += `<div style="font-size:0.78rem;margin-top:6px;">Photos: ${hasBefore ? '✓ Before' : '✗ Before'} | ${hasAfter ? '✓ After' : '✗ After'}</div>`;
-                if (m.status === 'pending') {
-                    html += `<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">`;
-                    html += `<label class="btn-secondary" style="padding:4px 12px;font-size:0.78rem;cursor:pointer;">📷 Before<input type="file" accept="image/*" class="ms-photo-input" data-ms-id="${m.id}" data-photo-type="before" style="display:none;"></label>`;
-                    html += `<label class="btn-secondary" style="padding:4px 12px;font-size:0.78rem;cursor:pointer;">📷 After<input type="file" accept="image/*" class="ms-photo-input" data-ms-id="${m.id}" data-photo-type="after" style="display:none;"></label>`;
-                    html += `<button class="ms-submit-btn btn-secondary" data-ms-id="${m.id}" style="padding:4px 12px;font-size:0.78rem;" ${(!hasBefore || !hasAfter) ? 'disabled' : ''}>Submit for Verification</button>`;
-                    html += `</div>`;
-                }
-                if (m.status === 'submitted' && currentUserPermissions.verifyMilestones) {
-                    html += `<div style="display:flex;gap:8px;margin-top:8px;">`;
-                    html += `<button class="ms-verify-btn btn-primary" data-ms-id="${m.id}" style="padding:4px 12px;font-size:0.78rem;">Verify</button>`;
-                    html += `<button class="ms-reject-btn btn-secondary" data-ms-id="${m.id}" style="padding:4px 12px;font-size:0.78rem;">Reject</button>`;
-                    html += `</div>`;
-                }
-                html += `</div>`;
-            });
-            html += '</div>';
-        }
-        container.innerHTML = html;
-
-        // Wire milestone buttons
-        container.querySelectorAll('.ms-photo-input').forEach(inp => {
-            inp.addEventListener('change', async (e) => {
-                const file = e.target.files[0];
-                if (!file) return;
-                const msId = inp.dataset.msId;
-                const photoType = inp.dataset.photoType;
-                const reader = new FileReader();
-                reader.onload = async () => {
-                    try {
-                        const formData = new FormData();
-                        formData.append('photo', file);
-                        formData.append('photo_type', photoType);
-                        formData.append('taken_at', new Date().toISOString().slice(0, 10));
-                        await apiUpload(`/api/milestone/${msId}/photo`, formData);
-                        showToast(`${photoType} photo uploaded`);
-                        renderMilestoneWidget(container, ventureId);
-                    } catch (err) {
-                        showToast('Photo upload failed: ' + err.message, true);
-                    }
-                };
-                reader.readAsDataURL(file);
-            });
-        });
-        container.querySelectorAll('.ms-submit-btn').forEach(btn => {
-            btn.addEventListener('click', async () => {
-                try {
-                    await apiPost(`/api/milestone/${btn.dataset.msId}/submit`, {});
-                    showToast('Milestone submitted for verification');
-                    renderMilestoneWidget(container, ventureId);
-                } catch (err) {
-                    showToast(err.message, true);
-                }
-            });
-        });
-        container.querySelectorAll('.ms-verify-btn').forEach(btn => {
-            btn.addEventListener('click', async () => {
-                try {
-                    await apiPost(`/api/milestone/${btn.dataset.msId}/verify`, {});
-                    showToast('Milestone verified');
-                    renderMilestoneWidget(container, ventureId);
-                } catch (err) {
-                    showToast(err.message, true);
-                }
-            });
-        });
-        container.querySelectorAll('.ms-reject-btn').forEach(btn => {
-            btn.addEventListener('click', async () => {
-                try {
-                    await apiPost(`/api/milestone/${btn.dataset.msId}/reject`, {});
-                    showToast('Milestone rejected');
-                    renderMilestoneWidget(container, ventureId);
-                } catch (err) {
-                    showToast(err.message, true);
-                }
-            });
-        });
-
-        const addBtn = container.querySelector('#addMilestoneBtn');
-        if (addBtn) {
-            addBtn.addEventListener('click', () => {
-                const workItem = prompt('Work item name:');
-                if (!workItem) return;
-                const block = prompt('Block (optional):') || '';
-                const floor = prompt('Floor (optional):') || '';
-                const desc = prompt('Description (optional):') || '';
-                apiPost('/api/milestone', {
-                    venture_id: ventureId,
-                    work_item: workItem,
-                    block: block,
-                    floor: floor,
-                    description: desc
-                }).then(() => {
-                    showToast('Milestone created');
-                    renderMilestoneWidget(container, ventureId);
-                }).catch(err => showToast(err.message, true));
-            });
-        }
-    } catch (err) {
-        container.innerHTML = `<div style="padding:16px;color:#c0392b;">Error: ${err.message}</div>`;
-    }
-}
 
 // ========================
 // Inline Autosave Helper
@@ -7604,39 +7550,296 @@ function attachInlineAutosave(element, cellId, field, valueExtractor) {
 }
 
 // ========================
-// Mobile Bottom Action Bar
+// Feature 1: Interior Design Studio
 // ========================
 
-function ensureMobileActionBar() {
-    if (document.getElementById('mobileActionBar')) return;
-    const bar = document.createElement('div');
-    bar.id = 'mobileActionBar';
-    bar.className = 'mobile-action-bar';
-    bar.innerHTML = `
-        <button class="mobile-action-btn" id="maStatus" title="Set Status">&#9679;</button>
-        <button class="mobile-action-btn" id="maTimeline" title="Timeline">&#9776;</button>
-        <button class="mobile-action-btn" id="maPending" title="Pending">&#9888;</button>
-        <button class="mobile-action-btn" id="maReports" title="Reports">&#128202;</button>
-    `;
-    document.body.appendChild(bar);
+let dgSelectedFile = null;
+let dgCurrentDesignId = null;
+let dgPollTimer = null;
+let dgHistory = [];
 
-    bar.querySelector('#maStatus').addEventListener('click', () => {
-        if (selectedCellId) {
-            const btn = document.querySelector(`[data-cell-id="${selectedCellId}"]`);
-            if (btn) btn.click();
+function initDesignGenerator() {
+    const uploadZone = document.getElementById('dgUploadZone');
+    const fileInput = document.getElementById('dgImageInput');
+    const preview = document.getElementById('dgImagePreview');
+    const prompt = document.querySelector('.dg-upload-prompt');
+    const generateBtn = document.getElementById('dgGenerateBtn');
+
+    if (!uploadZone || !fileInput) return;
+
+    uploadZone.addEventListener('click', () => fileInput.click());
+    uploadZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        uploadZone.classList.add('drag-over');
+    });
+    uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
+    uploadZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        uploadZone.classList.remove('drag-over');
+        const file = e.dataTransfer.files[0];
+        if (file) handleDesignImage(file);
+    });
+    fileInput.addEventListener('change', () => {
+        const file = fileInput.files[0];
+        if (file) handleDesignImage(file);
+    });
+
+    function handleDesignImage(file) {
+        if (!file.type.startsWith('image/')) {
+            showToast('Please upload an image file', true);
+            return;
         }
-    });
-    bar.querySelector('#maTimeline').addEventListener('click', () => {
-        if (selectedCellId && selectedWorkItem && selectedFlat) {
-            openTimelineModal(selectedCellId, selectedWorkItem, selectedFlat);
+        if (file.size > 5 * 1024 * 1024) {
+            showToast('Image must be under 5 MB', true);
+            return;
         }
-    });
-    bar.querySelector('#maPending').addEventListener('click', () => {
-        const pendingBtn = document.querySelector('.view-tab[data-view="pending"]');
-        if (pendingBtn) pendingBtn.click();
-    });
-    bar.querySelector('#maReports').addEventListener('click', () => {
-        const reportsBtn = document.querySelector('.view-tab[data-view="reports"]');
-        if (reportsBtn) reportsBtn.click();
+        dgSelectedFile = file;
+        const url = URL.createObjectURL(file);
+        preview.src = url;
+        preview.style.display = '';
+        if (prompt) prompt.style.display = 'none';
+        generateBtn.disabled = false;
+    }
+
+    generateBtn.addEventListener('click', async () => {
+        if (!dgSelectedFile) return;
+        generateBtn.disabled = true;
+        document.getElementById('dgLoading').style.display = '';
+        document.getElementById('dgGallery').style.display = 'none';
+        document.getElementById('dgPromptBox').style.display = 'none';
+
+        const formData = new FormData();
+        formData.append('image', dgSelectedFile);
+        formData.append('room_type', document.getElementById('dgRoomType').value);
+        formData.append('style', document.getElementById('dgStyle').value);
+        formData.append('budget_tier', document.getElementById('dgBudgetTier').value);
+        const areaSqft = document.getElementById('dgAreaSqft');
+        formData.append('area_sqft', areaSqft && areaSqft.value ? areaSqft.value : '120');
+
+        try {
+            const res = await fetch('/api/interior-design/generate', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+            dgCurrentDesignId = data.id;
+            startDesignPolling(data.id);
+        } catch (err) {
+            showToast(err.message, true);
+            document.getElementById('dgLoading').style.display = 'none';
+            generateBtn.disabled = false;
+        }
     });
 }
+
+function startDesignPolling(designId) {
+    stopDesignPolling();
+    let attempts = 0;
+    dgPollTimer = setInterval(async () => {
+        attempts++;
+        try {
+            const data = await apiGet(`/api/interior-design/${designId}/status`);
+            if (data.status === 'completed' || data.status === 'failed' || attempts > 40) {
+                stopDesignPolling();
+                renderDesignResult(data);
+                renderDesignGeneratorHistory();
+            }
+        } catch (err) {
+            console.error('Design poll error:', err);
+        }
+    }, 1500);
+}
+
+function stopDesignPolling() {
+    if (dgPollTimer) {
+        clearInterval(dgPollTimer);
+        dgPollTimer = null;
+    }
+}
+
+function renderDesignResult(data) {
+    document.getElementById('dgLoading').style.display = 'none';
+    document.getElementById('dgGenerateBtn').disabled = false;
+    const gallery = document.getElementById('dgGallery');
+    const promptBox = document.getElementById('dgPromptBox');
+    const promptText = document.getElementById('dgPromptText');
+
+    gallery.innerHTML = '';
+    const images = (data.generated_images || []).filter(img => img && img.url);
+    if (images.length === 0) {
+        const failures = (data.generated_images || []).filter(img => img && !img.url && img.error);
+        const details = failures.length
+            ? `<ul style="margin:8px 0 0 20px;font-size:13px;">${failures.map(f => `<li>Seed ${f.seed}: ${escapeHtml(f.error)}</li>`).join('')}</ul>`
+            : '';
+        gallery.innerHTML = `<div style="padding:20px;color:#c0392b;">${escapeHtml(data.error_message || 'No images were generated.')}${details}</div>`;
+        gallery.style.display = '';
+        return;
+    }
+
+    images.forEach((img, idx) => {
+        const card = document.createElement('div');
+        card.className = 'dg-result-card';
+        const cost = data.cost_estimate || {};
+        card.innerHTML = `
+            <img src="${escapeHtml(img.url)}" alt="Generated design" loading="lazy">
+            <div class="dg-result-meta">
+                <h4>Generated Design</h4>
+                <div class="dg-result-cost">Est. ${cost.currency || 'INR'} ${(cost.total_estimate || 0).toLocaleString()} (${cost.area_sqft || cost.sample_area_sqft || 120} sqft)</div>
+                <div class="dg-result-actions">
+                    <button class="btn-primary dg-download-btn" data-url="${escapeHtml(img.url)}" data-idx="${idx}">Download</button>
+                </div>
+            </div>
+        `;
+        gallery.appendChild(card);
+    });
+
+    gallery.querySelectorAll('.dg-download-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            downloadImage(btn.dataset.url, `design_${data.id}_v${parseInt(btn.dataset.idx) + 1}.jpg`);
+        });
+    });
+    gallery.style.display = '';
+
+    if (data.enhanced_prompt) {
+        promptText.textContent = data.enhanced_prompt;
+        promptBox.style.display = '';
+    }
+}
+
+async function downloadImage(url, filename) {
+    try {
+        const res = await fetch(url);
+        const blob = await res.blob();
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        URL.revokeObjectURL(a.href);
+        a.remove();
+    } catch (err) {
+        showToast('Download failed', true);
+    }
+}
+
+async function renderDesignGeneratorHistory() {
+    const container = document.getElementById('dgHistoryList');
+    if (!container) return;
+    try {
+        const data = await apiGet('/api/interior-design/history');
+        dgHistory = data || [];
+    } catch (err) {
+        dgHistory = [];
+    }
+    container.innerHTML = '';
+    if (!dgHistory.length) {
+        container.innerHTML = '<div style="color:#888;padding:12px 0;">No designs yet.</div>';
+        return;
+    }
+    dgHistory.slice(0, 8).forEach(item => {
+        const first = (item.generated_images || []).find(img => img && img.url);
+        const el = document.createElement('div');
+        el.className = 'dg-history-item';
+        el.innerHTML = `
+            ${first ? `<img src="${escapeHtml(first.url)}" alt="">` : '<div style="height:120px;background:#f0f0f0;border-radius:8px;margin-bottom:8px;"></div>'}
+            <div class="dg-history-title">${escapeHtml(item.room_type || '')} &bull; ${escapeHtml(item.style || '')}</div>
+            <div class="dg-history-meta">${escapeHtml(item.budget_tier || '')} &bull; ${item.status}</div>
+        `;
+        el.addEventListener('click', () => {
+            dgCurrentDesignId = item.id;
+            renderDesignResult(item);
+        });
+        container.appendChild(el);
+    });
+}
+
+// ========================
+// Feature 2: Construction Stock Purchases
+// ========================
+
+let spMaterials = [];
+let spCategories = ['All', 'Structural', 'Electrical', 'Plumbing', 'Finishes', 'Hardware', 'Flooring', 'Ceiling'];
+let spSelectedCategory = 'All';
+
+async function renderStockPurchases() {
+    const catBar = document.getElementById('spCategoryBar');
+    const grid = document.getElementById('spMaterialsGrid');
+    if (!catBar || !grid) return;
+
+    renderSPCategories();
+    try {
+        spMaterials = await apiGet('/api/marketplace/materials');
+    } catch (err) {
+        spMaterials = [];
+    }
+    renderSPMaterials();
+}
+
+function renderSPCategories() {
+    const catBar = document.getElementById('spCategoryBar');
+    if (!catBar) return;
+    const isAdmin = currentUserRole === 'admin';
+    catBar.innerHTML = '';
+    spCategories.forEach(cat => {
+        const chip = document.createElement('button');
+        chip.className = 'sp-category-chip' + (cat === spSelectedCategory ? ' active' : '') + (isAdmin ? '' : ' disabled');
+        chip.textContent = cat;
+        chip.disabled = !isAdmin;
+        if (isAdmin) {
+            chip.addEventListener('click', () => {
+                spSelectedCategory = cat;
+                renderSPCategories();
+                renderSPMaterials();
+            });
+        }
+        catBar.appendChild(chip);
+    });
+}
+
+function renderSPMaterials() {
+    const grid = document.getElementById('spMaterialsGrid');
+    if (!grid) return;
+    grid.innerHTML = '';
+    const filtered = spSelectedCategory === 'All'
+        ? spMaterials
+        : spMaterials.filter(m => (m.category || '').toLowerCase() === spSelectedCategory.toLowerCase());
+
+    if (!filtered.length) {
+        grid.innerHTML = '<div style="grid-column:1/-1;color:#888;padding:20px;">No materials found.</div>';
+        return;
+    }
+
+    filtered.forEach(m => {
+        const card = document.createElement('div');
+        card.className = 'sp-material-card';
+        card.innerHTML = `
+            <div class="sp-material-category">${escapeHtml(m.category || '')}</div>
+            <div class="sp-material-name">${escapeHtml(m.name || '')}</div>
+            <div class="sp-material-unit">${escapeHtml(m.unit || '')}</div>
+            ${m.description ? `<div class="sp-material-desc">${escapeHtml(m.description)}</div>` : ''}
+        `;
+        grid.appendChild(card);
+    });
+}
+
+function initStockPurchases() {
+    // Filter interactions are wired in renderSPCategories per role.
+}
+
+// ========================
+// Event wiring for new features
+// ========================
+
+const openDesignGeneratorBtn = document.getElementById('openDesignGeneratorBtn');
+if (openDesignGeneratorBtn) openDesignGeneratorBtn.addEventListener('click', openDesignGeneratorPanel);
+const backFromDesignGenerator = document.getElementById('backFromDesignGenerator');
+if (backFromDesignGenerator) backFromDesignGenerator.addEventListener('click', closeDesignGeneratorPanel);
+
+const openStockPurchasesBtn = document.getElementById('openStockPurchasesBtn');
+if (openStockPurchasesBtn) openStockPurchasesBtn.addEventListener('click', openStockPurchasesPanel);
+const backFromStockPurchases = document.getElementById('backFromStockPurchases');
+if (backFromStockPurchases) backFromStockPurchases.addEventListener('click', closeStockPurchasesPanel);
+
+initDesignGenerator();
+initStockPurchases();

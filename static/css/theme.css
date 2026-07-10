@@ -1,5 +1,5 @@
 /* ============================================================
-   theme.css — VGrand Infra Tracking Redesign
+   theme.css — Penguin OS Redesign
    Loaded after style.css — additive only, nothing deleted.
    ============================================================ */
 
@@ -22,8 +22,8 @@
     --color-yellow: #f1c40f;
     --color-blue: #3498db;
     --color-green: #2ecc71;
-    --font-display: 'Okra', 'Manrope', 'Inter', system-ui, sans-serif;
-    --font-body: 'Okra', 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+    --font-display: 'Okra', 'Manrope', 'Futura', 'Trebuchet MS', system-ui, sans-serif;
+    --font-body: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Roboto', 'Segoe UI', 'Inter', system-ui, sans-serif;
 }
 
 /* ---- Body font upgrade ---- */
@@ -68,7 +68,8 @@ h1, h2, h3, h4, .venture-title, .dashboard-header h2, .section-header {
 .sidebar-logo {
     max-height: 32px;
     width: auto;
-    flex-shrink: 0;
+    object-fit: contain;
+    border-radius: 8px;
 }
 
 .sidebar-brand-text {
@@ -215,9 +216,26 @@ h1, h2, h3, h4, .venture-title, .dashboard-header h2, .section-header {
     text-align: center;
 }
 
+/* Collapsed state: show a small dot indicator since icons are removed */
 .app-sidebar.collapsed .sidebar-nav-item {
     justify-content: center;
     padding: 10px 0;
+    position: relative;
+}
+.app-sidebar.collapsed .sidebar-nav-item::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.3);
+    flex-shrink: 0;
+    transition: background 0.2s;
+}
+.app-sidebar.collapsed .sidebar-nav-item.active::before {
+    background: #fff;
+}
+.app-sidebar.collapsed .sidebar-nav-item:hover::before {
+    background: rgba(255,255,255,0.6);
 }
 .app-sidebar.collapsed .sidebar-nav-item .nav-label {
     display: none;
@@ -260,7 +278,7 @@ h1, h2, h3, h4, .venture-title, .dashboard-header h2, .section-header {
     position: fixed;
     top: 14px;
     left: 14px;
-    z-index: 210;
+    z-index: 999;
     background: var(--sidebar-bg);
     color: #fff;
     border: none;
@@ -271,6 +289,7 @@ h1, h2, h3, h4, .venture-title, .dashboard-header h2, .section-header {
     cursor: pointer;
     align-items: center;
     justify-content: center;
+    pointer-events: auto;
 }
 
 .sidebar-scrim {
@@ -354,12 +373,17 @@ h1, h2, h3, h4, .venture-title, .dashboard-header h2, .section-header {
 }
 
 .login-logo {
+    max-height: 155px;
     width: auto;
-    max-height: 110px;
-    height: 110px;
     object-fit: contain;
-    margin-bottom: 20px;
-    filter: drop-shadow(0 4px 12px rgba(0,0,0,0.08));
+    margin-bottom: 12px;
+    border-radius: 12px;
+}
+
+@media (max-width: 600px) {
+    .login-logo {
+        max-height: 115px;
+    }
 }
 
 .login-hero h1 {
@@ -409,8 +433,9 @@ h1, h2, h3, h4, .venture-title, .dashboard-header h2, .section-header {
 
 .portal-btn .portal-icon {
     font-family: var(--font-display);
-    font-size: 1.6rem;
-    font-weight: 700;
+    font-size: 1.3rem;
+    font-weight: 800;
+    letter-spacing: 0.02em;
     width: 64px;
     height: 64px;
     display: flex;
@@ -641,10 +666,6 @@ h1, h2, h3, h4, .venture-title, .dashboard-header h2, .section-header {
         text-align: left;
     }
 
-    .login-logo {
-        height: 86px;
-    }
-
     .login-hero h1 {
         font-size: 1.5rem;
     }
@@ -687,7 +708,10 @@ h1, h2, h3, h4, .venture-title, .dashboard-header h2, .section-header {
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 1.2rem;
+    font-family: var(--font-display);
+    font-size: 0.85rem;
+    font-weight: 800;
+    letter-spacing: 0.02em;
     flex-shrink: 0;
 }
 
@@ -1089,9 +1113,7 @@ h1, h2, h3, h4, .venture-title, .dashboard-header h2, .section-header {
     #inventoryPanel .tracker-table thead,
     #expenditurePanel .tracker-table thead,
     #instantReportsPanel .tracker-table thead,
-    #inventoryAuditPanel .tracker-table thead,
-    #datewiseExpensesPanel .tracker-table thead,
-    #burnReportPanel .tracker-table thead {
+    #inventoryAuditPanel .tracker-table thead {
         display: none;
     }
 
@@ -1126,15 +1148,7 @@ h1, h2, h3, h4, .venture-title, .dashboard-header h2, .section-header {
     #inventoryAuditPanel .tracker-table,
     #inventoryAuditPanel .tracker-table tbody,
     #inventoryAuditPanel .tracker-table tr,
-    #inventoryAuditPanel .tracker-table td,
-    #datewiseExpensesPanel .tracker-table,
-    #datewiseExpensesPanel .tracker-table tbody,
-    #datewiseExpensesPanel .tracker-table tr,
-    #datewiseExpensesPanel .tracker-table td,
-    #burnReportPanel .tracker-table,
-    #burnReportPanel .tracker-table tbody,
-    #burnReportPanel .tracker-table tr,
-    #burnReportPanel .tracker-table td {
+    #inventoryAuditPanel .tracker-table td {
         display: block;
         width: 100%;
     }
@@ -1146,9 +1160,7 @@ h1, h2, h3, h4, .venture-title, .dashboard-header h2, .section-header {
     #inventoryPanel .tracker-table tr,
     #expenditurePanel .tracker-table tr,
     #instantReportsPanel .tracker-table tr,
-    #inventoryAuditPanel .tracker-table tr,
-    #datewiseExpensesPanel .tracker-table tr,
-    #burnReportPanel .tracker-table tr {
+    #inventoryAuditPanel .tracker-table tr {
         background: #fff;
         border: 1px solid #e8ecf0;
         border-radius: 10px;
@@ -1163,9 +1175,7 @@ h1, h2, h3, h4, .venture-title, .dashboard-header h2, .section-header {
     #inventoryPanel .tracker-table td,
     #expenditurePanel .tracker-table td,
     #instantReportsPanel .tracker-table td,
-    #inventoryAuditPanel .tracker-table td,
-    #datewiseExpensesPanel .tracker-table td,
-    #burnReportPanel .tracker-table td {
+    #inventoryAuditPanel .tracker-table td {
         border: none;
         text-align: left !important;
         padding: 6px 8px;
@@ -1183,9 +1193,7 @@ h1, h2, h3, h4, .venture-title, .dashboard-header h2, .section-header {
     #inventoryPanel .tracker-table td::before,
     #expenditurePanel .tracker-table td::before,
     #instantReportsPanel .tracker-table td::before,
-    #inventoryAuditPanel .tracker-table td::before,
-    #datewiseExpensesPanel .tracker-table td::before,
-    #burnReportPanel .tracker-table td::before {
+    #inventoryAuditPanel .tracker-table td::before {
         content: attr(data-label);
         font-weight: 600;
         color: #888;
@@ -1200,9 +1208,7 @@ h1, h2, h3, h4, .venture-title, .dashboard-header h2, .section-header {
     #inventoryPanel .tracker-table td:first-child,
     #expenditurePanel .tracker-table td:first-child,
     #instantReportsPanel .tracker-table td:first-child,
-    #inventoryAuditPanel .tracker-table td:first-child,
-    #datewiseExpensesPanel .tracker-table td:first-child,
-    #burnReportPanel .tracker-table td:first-child {
+    #inventoryAuditPanel .tracker-table td:first-child {
         font-weight: 700;
         font-size: 0.9rem;
         border-bottom: 1px solid #f0f2f5;
@@ -1217,9 +1223,7 @@ h1, h2, h3, h4, .venture-title, .dashboard-header h2, .section-header {
     #inventoryPanel .tracker-table td:first-child::before,
     #expenditurePanel .tracker-table td:first-child::before,
     #instantReportsPanel .tracker-table td:first-child::before,
-    #inventoryAuditPanel .tracker-table td:first-child::before,
-    #datewiseExpensesPanel .tracker-table td:first-child::before,
-    #burnReportPanel .tracker-table td:first-child::before {
+    #inventoryAuditPanel .tracker-table td:first-child::before {
         content: '';
     }
 }
@@ -1529,9 +1533,7 @@ h1, h2, h3, h4, .venture-title, .dashboard-header h2, .section-header {
 
 #reportsPanelContent .pending-filter-bar,
 #instantReportsContent .pending-filter-bar,
-#inventoryAuditContent .pending-filter-bar,
-#datewiseExpensesContent .pending-filter-bar,
-#burnReportContent .pending-filter-bar {
+#inventoryAuditContent .pending-filter-bar {
     border-radius: 12px;
     background: #fff;
     border: 1px solid #e8ecf0;
@@ -1554,9 +1556,7 @@ h1, h2, h3, h4, .venture-title, .dashboard-header h2, .section-header {
     #reportsPanel,
     #expenditurePanel,
     #instantReportsPanel,
-    #inventoryAuditPanel,
-    #datewiseExpensesPanel,
-    #burnReportPanel {
+    #inventoryAuditPanel {
         padding: 0 12px 40px 12px;
     }
 
@@ -1657,5 +1657,477 @@ h1, h2, h3, h4, .venture-title, .dashboard-header h2, .section-header {
 @media (max-width: 400px) {
     .kpi-row {
         grid-template-columns: 1fr;
+    }
+}
+
+/* ============================================================
+   FEATURE 1 — Interior Design Studio
+   ============================================================ */
+
+.dg-layout {
+    display: grid;
+    grid-template-columns: 360px 1fr;
+    gap: 24px;
+    padding: 24px;
+}
+
+.dg-form-card,
+.dg-output-card {
+    background: #fff;
+    border-radius: var(--card-radius);
+    box-shadow: var(--card-shadow);
+    padding: 20px;
+}
+
+.dg-upload-zone {
+    border: 2px dashed #d0d5dd;
+    border-radius: var(--form-field-radius);
+    padding: 32px 16px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    position: relative;
+    min-height: 180px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.dg-upload-zone:hover {
+    border-color: var(--color-blue);
+    background: #f8fbff;
+}
+
+.dg-upload-prompt {
+    color: #777;
+    pointer-events: none;
+}
+
+.dg-upload-icon {
+    font-size: 2.2rem;
+    display: block;
+    margin-bottom: 8px;
+}
+
+.dg-image-preview {
+    max-width: 100%;
+    max-height: 220px;
+    object-fit: contain;
+    border-radius: var(--form-field-radius);
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.dg-fields {
+    margin-top: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.dg-fields .form-group label {
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: #333;
+    margin-bottom: 4px;
+}
+
+.dg-fields .form-group select {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #d0d5dd;
+    border-radius: var(--form-field-radius);
+    font-size: 0.95rem;
+    background: #fff;
+}
+
+.dg-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 48px 20px;
+    color: #555;
+    text-align: center;
+}
+
+.dg-spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid #e0e4ed;
+    border-top-color: var(--color-blue);
+    border-radius: 50%;
+    animation: dg-spin 1s linear infinite;
+    margin-bottom: 16px;
+}
+
+@keyframes dg-spin {
+    to { transform: rotate(360deg); }
+}
+
+.dg-gallery {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 16px;
+}
+
+.dg-result-card {
+    border: 1px solid #e0e4ed;
+    border-radius: var(--card-radius);
+    overflow: hidden;
+    background: #fff;
+    display: flex;
+    flex-direction: column;
+}
+
+.dg-result-card img {
+    width: 100%;
+    height: 220px;
+    object-fit: cover;
+    background: #f5f6f8;
+}
+
+.dg-result-meta {
+    padding: 12px;
+    flex: 1;
+}
+
+.dg-result-meta h4 {
+    font-size: 0.95rem;
+    margin-bottom: 6px;
+    color: #1a1a1a;
+}
+
+.dg-result-cost {
+    font-size: 0.85rem;
+    color: var(--color-green);
+    font-weight: 700;
+    margin-bottom: 10px;
+}
+
+.dg-result-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.dg-result-actions button {
+    flex: 1;
+    padding: 8px 12px;
+    font-size: 0.85rem;
+}
+
+.dg-prompt-box {
+    margin-top: 20px;
+    padding: 14px;
+    background: #f8f9fa;
+    border-left: 4px solid var(--color-blue);
+    border-radius: 0 var(--form-field-radius) var(--form-field-radius) 0;
+    font-size: 0.9rem;
+    color: #444;
+}
+
+.dg-prompt-box p {
+    margin-top: 6px;
+    font-style: italic;
+}
+
+.dg-history-section {
+    padding: 0 24px 24px;
+}
+
+.dg-history-section h3 {
+    margin-bottom: 12px;
+    color: #1a1a1a;
+}
+
+.dg-history-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 14px;
+}
+
+.dg-history-item {
+    background: #fff;
+    border: 1px solid #e0e4ed;
+    border-radius: var(--card-radius);
+    padding: 12px;
+    cursor: pointer;
+    transition: box-shadow 0.2s;
+}
+
+.dg-history-item:hover {
+    box-shadow: var(--card-shadow-hover);
+}
+
+.dg-history-item img {
+    width: 100%;
+    height: 120px;
+    object-fit: cover;
+    border-radius: var(--form-field-radius);
+    margin-bottom: 8px;
+}
+
+.dg-history-item .dg-history-title {
+    font-weight: 700;
+    font-size: 0.9rem;
+    color: #1a1a1a;
+}
+
+.dg-history-item .dg-history-meta {
+    font-size: 0.78rem;
+    color: #777;
+}
+
+/* ============================================================
+   FEATURE 2 — Construction Stock Purchases
+   ============================================================ */
+
+.sp-category-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 16px 24px 0;
+}
+
+.sp-category-chip {
+    padding: 8px 16px;
+    border-radius: 20px;
+    border: 1px solid #d0d5dd;
+    background: #fff;
+    color: #333;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.sp-category-chip:hover {
+    border-color: var(--color-blue);
+    color: var(--color-blue);
+}
+
+.sp-category-chip.active {
+    background: var(--color-blue);
+    border-color: var(--color-blue);
+    color: #fff;
+}
+
+.sp-category-chip:disabled,
+.sp-category-chip.disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.sp-layout {
+    display: grid;
+    grid-template-columns: 1fr 360px;
+    gap: 24px;
+    padding: 20px 24px;
+}
+
+.sp-materials-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 16px;
+    align-content: start;
+    padding: 20px 24px;
+}
+
+.sp-material-card {
+    background: #fff;
+    border: 1px solid #e0e4ed;
+    border-radius: var(--card-radius);
+    padding: 16px;
+    transition: box-shadow 0.2s;
+}
+
+.sp-material-card:hover {
+    box-shadow: var(--card-shadow-hover);
+}
+
+.sp-material-card .sp-material-desc {
+    font-size: 0.8rem;
+    color: #555;
+    margin-top: 8px;
+    line-height: 1.4;
+}
+
+.sp-material-card .sp-material-category {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-blue);
+    font-weight: 700;
+    margin-bottom: 4px;
+}
+
+.sp-material-card .sp-material-name {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #1a1a1a;
+    margin-bottom: 4px;
+}
+
+.sp-material-card .sp-material-unit {
+    font-size: 0.8rem;
+    color: #777;
+}
+
+.sp-supplier-drawer {
+    background: #fff;
+    border-radius: var(--card-radius);
+    box-shadow: var(--card-shadow);
+    padding: 20px;
+    align-self: start;
+}
+
+.sp-drawer-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.sp-drawer-header h3 {
+    font-size: 1.1rem;
+    color: #1a1a1a;
+}
+
+.sp-filter-bar {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 16px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.sp-filter-bar .form-group label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #555;
+}
+
+.sp-filter-bar .form-group input {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid #d0d5dd;
+    border-radius: var(--form-field-radius);
+    font-size: 0.9rem;
+}
+
+.sp-checkbox {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.9rem;
+    color: #333;
+    cursor: pointer;
+}
+
+.sp-suppliers-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    max-height: 520px;
+    overflow-y: auto;
+}
+
+.sp-supplier-card {
+    border: 1px solid #e0e4ed;
+    border-radius: var(--form-field-radius);
+    padding: 14px;
+}
+
+.sp-supplier-card .sp-supplier-brand {
+    font-weight: 700;
+    color: #1a1a1a;
+    margin-bottom: 2px;
+}
+
+.sp-supplier-card .sp-supplier-company {
+    font-size: 0.8rem;
+    color: #555;
+    margin-bottom: 8px;
+}
+
+.sp-supplier-card .sp-supplier-price {
+    font-size: 1.1rem;
+    font-weight: 800;
+    color: var(--color-green);
+    margin-bottom: 4px;
+}
+
+.sp-supplier-card .sp-supplier-trust {
+    font-size: 0.75rem;
+    color: var(--color-blue);
+    font-weight: 700;
+    margin-bottom: 8px;
+}
+
+.sp-supplier-card .sp-supplier-contact {
+    font-size: 0.8rem;
+    color: #555;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.sp-admin-forms,
+.sp-admin-material-form {
+    margin-top: 16px;
+    padding: 16px;
+    background: #f8f9fa;
+    border-radius: var(--form-field-radius);
+}
+
+.sp-admin-material-form {
+    margin: 0 24px 24px;
+}
+
+.sp-admin-forms h4,
+.sp-admin-material-form h3 {
+    margin-bottom: 10px;
+    color: #1a1a1a;
+}
+
+.sp-admin-forms .form-group input,
+.sp-admin-material-form .form-group input,
+.sp-admin-material-form .form-group textarea {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid #d0d5dd;
+    border-radius: var(--form-field-radius);
+    font-size: 0.9rem;
+}
+
+.sp-admin-material-form .form-group textarea {
+    resize: vertical;
+    min-height: 60px;
+}
+
+/* Responsive */
+@media (max-width: 900px) {
+    .dg-layout,
+    .sp-layout {
+        grid-template-columns: 1fr;
+    }
+    .sp-supplier-drawer {
+        position: fixed;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        width: min(360px, 90vw);
+        z-index: 250;
+        border-radius: 0;
+        overflow-y: auto;
+        transform: translateX(100%);
+        transition: transform 0.25s ease;
+    }
+    .sp-supplier-drawer.open {
+        transform: translateX(0);
     }
 }

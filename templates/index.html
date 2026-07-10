@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VGrand Infra Tracking</title>
-    <link rel="icon" href="/static/images/image.png" type="image/png">
+    <title>Penguin OS</title>
+    <link rel="icon" href="/static/images/P(oS).jpg" type="image/jpeg">
     <link rel="stylesheet" href="/static/css/fonts.css">
     <link rel="stylesheet" href="/static/css/style.css">
     <link rel="stylesheet" href="/static/css/theme.css">
@@ -14,34 +14,34 @@
         <!-- Sidebar -->
         <aside id="appSidebar" class="app-sidebar">
             <div class="sidebar-header">
-                <img src="/static/images/image.png" alt="VGrand" class="sidebar-logo">
-                <span class="sidebar-brand-text">VGrand Infra</span>
+                <img src="/static/images/Penguin%20OS(last%20and%20finalized).jpg" alt="Penguin OS" class="sidebar-logo">
+                <span class="sidebar-brand-text">Penguin OS</span>
                 <button id="sidebarCollapse" class="sidebar-collapse-btn">&lsaquo;</button>
             </div>
             <nav class="sidebar-nav">
                 <div class="sidebar-nav-section">Main</div>
-                <button id="sidebarDashboard" class="sidebar-nav-item"><span class="nav-icon">&#9632;</span><span class="nav-label">Dashboard</span></button>
-                <button id="openInvoicesBtn" class="sidebar-nav-item" style="display:none;"><span class="nav-icon">&#128196;</span><span class="nav-label">Invoices</span></button>
-                <button id="openPayrollBtn" class="sidebar-nav-item" style="display:none;"><span class="nav-icon">&#128176;</span><span class="nav-label">Payroll</span></button>
-                <button id="openInventoryBtn" class="sidebar-nav-item" style="display:none;"><span class="nav-icon">&#128230;</span><span class="nav-label">Inventory</span></button>
-                <button id="openPOBtn" class="sidebar-nav-item" style="display:none;"><span class="nav-icon">&#128221;</span><span class="nav-label">Purchase Orders</span></button>
-                <button id="openReportsBtn" class="sidebar-nav-item" style="display:none;"><span class="nav-icon">&#128202;</span><span class="nav-label">Reports</span></button>
-                <button id="openExpenditureBtn" class="sidebar-nav-item" style="display:none;"><span class="nav-icon">&#128176;</span><span class="nav-label">Expenditure</span></button>
+                <button id="sidebarDashboard" class="sidebar-nav-item"><span class="nav-label">Dashboard</span></button>
+                <button id="openInvoicesBtn" class="sidebar-nav-item" style="display:none;"><span class="nav-label">Invoices</span></button>
+                <button id="openPayrollBtn" class="sidebar-nav-item" style="display:none;"><span class="nav-label">Payroll</span></button>
+                <button id="openInventoryBtn" class="sidebar-nav-item" style="display:none;"><span class="nav-label">Inventory</span></button>
+                <button id="openPOBtn" class="sidebar-nav-item" style="display:none;"><span class="nav-label">Purchase Orders</span></button>
+                <button id="openReportsBtn" class="sidebar-nav-item" style="display:none;"><span class="nav-label">Reports</span></button>
+                <button id="openExpenditureBtn" class="sidebar-nav-item" style="display:none;"><span class="nav-label">Expenditure</span></button>
                 <div class="sidebar-nav-section">Admin</div>
-                <button id="openInstantReportsBtn" class="sidebar-nav-item" style="display:none;"><span class="nav-icon">&#9889;</span><span class="nav-label">Instant Reports</span></button>
-                <button id="openInventoryAuditBtn" class="sidebar-nav-item" style="display:none;"><span class="nav-icon">&#128269;</span><span class="nav-label">Inventory Audit</span></button>
-                <button id="openDatewiseExpensesBtn" class="sidebar-nav-item" style="display:none;"><span class="nav-icon">&#128197;</span><span class="nav-label">Date-wise Expenses</span></button>
-                <button id="openBurnReportBtn" class="sidebar-nav-item" style="display:none;"><span class="nav-icon">&#128293;</span><span class="nav-label">Cash Burn</span></button>
+                <button id="openInstantReportsBtn" class="sidebar-nav-item" style="display:none;"><span class="nav-label">Instant Reports</span></button>
+                <button id="openInventoryAuditBtn" class="sidebar-nav-item" style="display:none;"><span class="nav-label">Inventory Audit</span></button>
+                <button id="openDesignGeneratorBtn" class="sidebar-nav-item" style="display:none;"><span class="nav-icon">&#127968;</span><span class="nav-label">Design Generator</span></button>
+                <button id="openStockPurchasesBtn" class="sidebar-nav-item" style="display:none;"><span class="nav-icon">&#128230;</span><span class="nav-label">Stock Purchases</span></button>
             </nav>
             <div class="sidebar-footer">
-                <button id="editModeBtn" class="sidebar-nav-item" style="display:none;"><span class="nav-icon">&#9998;</span><span class="nav-label">Edit Structure</span></button>
-                <button id="settingsBtn" class="sidebar-nav-item" style="display:none;"><span class="nav-icon">&#9881;</span><span class="nav-label">Settings</span></button>
+                <button id="editModeBtn" class="sidebar-nav-item" style="display:none;"><span class="nav-label">Edit Structure</span></button>
+                <button id="settingsBtn" class="sidebar-nav-item" style="display:none;"><span class="nav-label">Settings</span></button>
                 <span id="userEmail" class="sidebar-user-email"></span>
-                <button id="signOutBtn" class="sidebar-nav-item"><span class="nav-icon">&#8634;</span><span class="nav-label">Sign Out</span></button>
+                <button id="signOutBtn" class="sidebar-nav-item"><span class="nav-label">Sign Out</span></button>
             </div>
         </aside>
         <div id="sidebarScrim" class="sidebar-scrim"></div>
-        <button id="sidebarToggle" class="sidebar-toggle">&#9776;</button>
+        <button id="sidebarToggle" class="sidebar-toggle" style="pointer-events:auto;">&#9776;</button>
 
         <!-- Main Content -->
         <main id="appMain">
@@ -70,7 +70,7 @@
         <div id="invoicesPanel" style="display:none;">
             <div class="invoice-panel-header">
                 <button id="backFromInvoices" class="back-btn">&larr; Back to Ventures</button>
-                <h2 class="invoice-panel-title">&#128196; Invoices</h2>
+                <h2 class="invoice-panel-title">Invoices</h2>
                 <button id="addInvoiceBtn" class="btn-primary">+ Add Invoice</button>
             </div>
 
@@ -116,9 +116,9 @@
         <div id="poPanel" style="display:none;">
             <div class="po-panel-header">
                 <button id="backFromPO" class="back-btn">&larr; Back to Ventures</button>
-                <h2 class="po-panel-title">&#128230; Purchase Orders</h2>
+                <h2 class="po-panel-title">Purchase Orders</h2>
                 <div class="po-header-actions">
-                    <button id="openVendorDirectoryBtn" class="btn-secondary">&#127978; Vendors</button>
+                    <button id="openVendorDirectoryBtn" class="btn-secondary">Vendors</button>
                     <button id="addPOBtn" class="btn-primary">+ New PO</button>
                 </div>
             </div>
@@ -184,7 +184,7 @@
         <div id="reportsPanel" style="display:none;">
             <div class="invoice-panel-header">
                 <button id="backFromReports" class="back-btn">&larr; Back to Ventures</button>
-                <h2 class="invoice-panel-title">&#128202; Reports</h2>
+                <h2 class="invoice-panel-title">Reports</h2>
             </div>
             <div id="reportsPanelContent"></div>
         </div>
@@ -193,7 +193,7 @@
         <div id="payrollPanel" style="display:none;">
             <div class="invoice-panel-header">
                 <button id="backFromPayroll" class="back-btn">&larr; Back to Ventures</button>
-                <h2 class="invoice-panel-title">&#128176; Payroll</h2>
+                <h2 class="invoice-panel-title">Payroll</h2>
             </div>
             <div id="payrollPanelContent"></div>
         </div>
@@ -202,7 +202,7 @@
         <div id="inventoryPanel" style="display:none;">
             <div class="invoice-panel-header">
                 <button id="backFromInventory" class="back-btn">&larr; Back to Ventures</button>
-                <h2 class="invoice-panel-title">&#128230; Inventory</h2>
+                <h2 class="invoice-panel-title">Inventory</h2>
             </div>
             <div id="inventoryPanelContent"></div>
         </div>
@@ -211,7 +211,7 @@
         <div id="instantReportsPanel" style="display:none;">
             <div class="invoice-panel-header">
                 <button id="backFromInstantReports" class="back-btn">&larr; Back to Ventures</button>
-                <h2 class="invoice-panel-title">&#128202; Instant Reports</h2>
+                <h2 class="invoice-panel-title">Instant Reports</h2>
             </div>
             <div id="instantReportsContent"></div>
         </div>
@@ -220,36 +220,108 @@
         <div id="inventoryAuditPanel" style="display:none;">
             <div class="invoice-panel-header">
                 <button id="backFromInventoryAudit" class="back-btn">&larr; Back to Ventures</button>
-                <h2 class="invoice-panel-title">&#128269; Inventory Audit</h2>
+                <h2 class="invoice-panel-title">Inventory Audit</h2>
             </div>
             <div id="inventoryAuditContent"></div>
-        </div>
-
-        <!-- Date-wise Expenses Panel (Admin-only) -->
-        <div id="datewiseExpensesPanel" style="display:none;">
-            <div class="invoice-panel-header">
-                <button id="backFromDatewiseExpenses" class="back-btn">&larr; Back to Ventures</button>
-                <h2 class="invoice-panel-title">&#128197; Date-wise Expenses</h2>
-            </div>
-            <div id="datewiseExpensesContent"></div>
-        </div>
-
-        <!-- Cash Burn Panel (Admin-only) -->
-        <div id="burnReportPanel" style="display:none;">
-            <div class="invoice-panel-header">
-                <button id="backFromBurnReport" class="back-btn">&larr; Back to Ventures</button>
-                <h2 class="invoice-panel-title">&#128293; Daily Cash Burn</h2>
-            </div>
-            <div id="burnReportContent"></div>
         </div>
 
         <!-- Expenditure Panel -->
         <div id="expenditurePanel" style="display:none;">
             <div class="invoice-panel-header">
                 <button id="backFromExpenditure" class="back-btn">&larr; Back to Ventures</button>
-                <h2 class="invoice-panel-title">&#128176; Expenditure</h2>
+                <h2 class="invoice-panel-title">Expenditure</h2>
             </div>
             <div id="expenditureContent"></div>
+        </div>
+
+        <!-- Design Generator Panel -->
+        <div id="designGeneratorPanel" style="display:none;">
+            <div class="invoice-panel-header">
+                <button id="backFromDesignGenerator" class="back-btn">&larr; Back to Ventures</button>
+                <h2 class="invoice-panel-title">AI Interior Design Studio</h2>
+            </div>
+            <div id="designGeneratorContent">
+                <div class="dg-layout">
+                    <div class="dg-form-card">
+                        <div class="dg-upload-zone" id="dgUploadZone">
+                            <input type="file" id="dgImageInput" accept="image/jpeg,image/png,image/webp" style="display:none;">
+                            <div class="dg-upload-prompt">
+                                <span class="dg-upload-icon">&#128444;</span>
+                                <p>Drop a room photo or floor plan here, or click to browse</p>
+                                <small>JPG / PNG / WebP, max 5 MB</small>
+                            </div>
+                            <img id="dgImagePreview" class="dg-image-preview" style="display:none;">
+                        </div>
+                        <div class="dg-fields">
+                            <div class="form-group">
+                                <label for="dgRoomType">Room Type</label>
+                                <select id="dgRoomType">
+                                    <option value="Living Room">Living Room</option>
+                                    <option value="Bedroom">Bedroom</option>
+                                    <option value="Kitchen">Kitchen</option>
+                                    <option value="Bathroom">Bathroom</option>
+                                    <option value="Dining Room">Dining Room</option>
+                                    <option value="Home Office">Home Office</option>
+                                    <option value="Balcony">Balcony</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="dgStyle">Design Style</label>
+                                <select id="dgStyle">
+                                    <option value="Modern">Modern</option>
+                                    <option value="Minimalist">Minimalist</option>
+                                    <option value="Traditional">Traditional</option>
+                                    <option value="Luxury">Luxury</option>
+                                    <option value="Industrial">Industrial</option>
+                                    <option value="Scandinavian">Scandinavian</option>
+                                    <option value="Contemporary">Contemporary</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="dgBudgetTier">Budget Tier</label>
+                                <select id="dgBudgetTier">
+                                    <option value="economy">Economy</option>
+                                    <option value="mid-range" selected>Mid-range</option>
+                                    <option value="premium">Premium</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="dgAreaSqft">Room Area (sqft)</label>
+                                <input type="number" id="dgAreaSqft" value="120" min="10" max="5000" step="1">
+                            </div>
+                            <button id="dgGenerateBtn" class="btn-primary" disabled>Generate Design</button>
+                        </div>
+                    </div>
+                    <div class="dg-output-card">
+                        <div id="dgLoading" class="dg-loading" style="display:none;">
+                            <div class="dg-spinner"></div>
+                            <p>Penguin OS is building an image for you...</p>
+                            <small>This usually takes under 30 seconds.</small>
+                        </div>
+                        <div id="dgGallery" class="dg-gallery" style="display:none;"></div>
+                        <div id="dgPromptBox" class="dg-prompt-box" style="display:none;">
+                            <strong>Enhanced prompt:</strong>
+                            <p id="dgPromptText"></p>
+                        </div>
+                    </div>
+                </div>
+                <div class="dg-history-section">
+                    <h3>Recent Designs</h3>
+                    <div id="dgHistoryList" class="dg-history-list"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Stock Purchases Panel -->
+        <div id="stockPurchasesPanel" style="display:none;">
+            <div class="invoice-panel-header">
+                <button id="backFromStockPurchases" class="back-btn">&larr; Back to Ventures</button>
+                <h2 class="invoice-panel-title">Stock Purchases</h2>
+            </div>
+            <div id="stockPurchasesContent">
+                <div class="sp-category-bar" id="spCategoryBar"></div>
+                <div class="sp-materials-grid" id="spMaterialsGrid"></div>
+            </div>
         </div>
 
         <!-- Tracker View -->
@@ -273,7 +345,7 @@
                     <button class="view-tab active" data-view="flat">Flat View</button>
                     <button class="view-tab" data-view="work">Work View</button>
                     <button class="view-tab" data-view="super">Super Structure</button>
-                    <button id="bulkSelectBtn" class="btn-bulk-select">&#9635; Bulk Select</button>
+                    <button id="bulkSelectBtn" class="btn-bulk-select">Bulk Select</button>
                 </div>
 
                 <!-- Legend -->
@@ -336,9 +408,6 @@
 
             <!-- Material Leakage Widget -->
             <div id="materialLeakageWidget" style="display:none;padding:16px 24px;"></div>
-
-            <!-- Milestone Verification Widget -->
-            <div id="milestoneWidget" style="display:none;padding:16px 24px;"></div>
         </div>
 
         </main>
@@ -396,10 +465,17 @@
             </div>
 
             <h4 class="settings-section-title">Work Items</h4>
-            <p class="settings-hint">Drag to reorder. Click text to rename. Use + to add, &times; to remove.</p>
+            <p class="settings-hint">Flat view work items. Drag to reorder. Click text to rename. Use + to add, &times; to remove.</p>
             <ul id="workItemsList" class="sortable-list"></ul>
             <div class="settings-actions">
                 <button id="addWorkItemBtn" class="btn-secondary">+ Add Work Item</button>
+            </div>
+
+            <h4 class="settings-section-title" style="margin-top:24px;">Super Structure Work Items</h4>
+            <p class="settings-hint">Super structure items. Drag to reorder. Click text to rename. Use + to add, &times; to remove.</p>
+            <ul id="superItemsList" class="sortable-list"></ul>
+            <div class="settings-actions">
+                <button id="addSuperItemBtn" class="btn-secondary">+ Add Super Structure Item</button>
             </div>
 
             <h4 class="settings-section-title" style="margin-top:24px;">Work Categories</h4>
@@ -545,7 +621,7 @@
         <div class="lightbox-toolbar">
             <span id="lightboxFileName" class="lightbox-filename"></span>
             <div style="display:flex;gap:8px;">
-                <button id="lightboxDownload" class="btn-secondary" style="font-size:0.8rem;">&#11015; Download</button>
+                <button id="lightboxDownload" class="btn-secondary" style="font-size:0.8rem;">Download</button>
                 <button id="closeLightbox" class="close-btn" style="font-size:1.8rem;">&times;</button>
             </div>
         </div>

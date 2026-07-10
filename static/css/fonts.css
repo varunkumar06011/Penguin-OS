@@ -1,15 +1,17 @@
 /* ========================
-   Okra Font — Self-hosted
-   To enable: place Okra font files in /static/fonts/ and re-add the
-   @font-face blocks below. Until then, Manrope / Plus Jakarta Sans / Inter
-   (loaded from Google Fonts) are used as visual fallbacks.
+   Font System — Swiggy/Zomato inspired
+   - Display/Branding: Geometric sans-serif (Manrope as OKRA/Metropolis
+     substitute, Futura fallback for local installs)
+   - Body/UI: System sans-serif stack — San Francisco (iOS), Roboto (Android),
+     Segoe UI (Windows), with Inter as web fallback
+   - To enable real OKRA: place font files in /static/fonts/ and uncomment
+     the @font-face blocks below.
    ======================== */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
-/* @font-face blocks for Okra — uncomment when font files are added:
+/* Okra @font-face blocks — uncomment when font files are added to /static/fonts/
 @font-face {
     font-family: 'Okra';
     src: url('/static/fonts/Okra-Regular.woff2') format('woff2'),

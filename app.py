@@ -36,6 +36,9 @@ SUPABASE_SERVICE_KEY = os.environ.get('SUPABASE_SERVICE_KEY', '')
 _supabase_key = SUPABASE_SERVICE_KEY or SUPABASE_ANON_KEY
 supabase: Client = create_client(SUPABASE_URL, _supabase_key) if SUPABASE_URL and _supabase_key else None
 
+# --- Pollinations AI (Feature 1: interior design) ---
+POLLINATIONS_API_TOKEN = os.environ.get('POLLINATIONS_API_TOKEN', '')
+
 
 def load_json_fallback(filename):
     try:
@@ -139,24 +142,390 @@ def compress_images_in_data(data):
     return data
 
 
+def get_or_create_storage_bucket(bucket_name):
+    """Ensure a Supabase Storage bucket exists. Returns True on success."""
+    if not supabase:
+        return False
+    try:
+        buckets = supabase.storage.list_buckets()
+        if any(b.get('name') == bucket_name or b.name == bucket_name for b in buckets):
+            return True
+        supabase.storage.create_bucket(bucket_name, bucket_name, {'public': True})
+        return True
+    except Exception as e:
+        app.logger.warning(f'Bucket check/create failed for {bucket_name}: {e}')
+        return False
+
+
+def upload_bytes_to_storage(bucket_name, path, data, content_type='application/octet-stream'):
+    """Upload bytes to Supabase Storage and return the public URL, or (None, error) on failure."""
+    if not supabase:
+        return None, 'Supabase not connected'
+    try:
+        bucket_ok = get_or_create_storage_bucket(bucket_name)
+        if not bucket_ok:
+            # Bucket may already exist but list/create failed; still try upload.
+            pass
+        supabase.storage.from_(bucket_name).upload(path, data, {'content-type': content_type})
+        url = supabase.storage.from_(bucket_name).get_public_url(path)
+        return url, None
+    except Exception as e:
+        err = str(e)
+        app.logger.warning(f'Upload to {bucket_name}/{path} failed: {err}')
+        return None, err
+
+
+def _get_public_image_url(bucket_name, path):
+    """Return Supabase public URL for a storage path."""
+    if not supabase:
+        return None
+    try:
+        return supabase.storage.from_(bucket_name).get_public_url(path)
+    except Exception as e:
+        app.logger.warning(f'Public URL failed for {bucket_name}/{path}: {e}')
+        return None
+
+
+def _get_signed_image_url(bucket_name, path, expires_in=3600):
+    """Return a signed URL for a private storage object."""
+    if not supabase:
+        return None
+    try:
+        res = supabase.storage.from_(bucket_name).create_signed_url(path, expires_in)
+        return res.get('signedURL') if isinstance(res, dict) else res
+    except Exception as e:
+        app.logger.warning(f'Signed URL failed for {bucket_name}/{path}: {e}')
+        return None
+
+
+def _is_url_accessible(url, timeout=10):
+    """Check that a URL is reachable over HTTP(S). Pollinations needs this."""
+    if not url or url.startswith('data:'):
+        return False
+    import requests
+    try:
+        r = requests.head(url, timeout=timeout, allow_redirects=True)
+        if r.status_code < 400:
+            return True
+    except Exception:
+        pass
+    try:
+        r = requests.get(url, timeout=timeout, stream=True)
+        r.close()
+        return r.status_code < 400
+    except Exception:
+        return False
+    return False
+
+
+def get_fetchable_image_url(bucket_name, path, expiry=3600):
+    """Return a URL Pollinations can fetch: public URL if reachable, else signed URL."""
+    public_url = _get_public_image_url(bucket_name, path)
+    if public_url and _is_url_accessible(public_url):
+        return public_url
+    signed_url = _get_signed_image_url(bucket_name, path, expiry)
+    if signed_url and _is_url_accessible(signed_url):
+        return signed_url
+    return None
+
+
+def enhance_design_prompt(room_type, style, budget_tier, area_sqft=120):
+    """
+    Uses GLM (via Pollinations text API) to turn simple selections into a rich
+    kontext editing instruction. Falls back to a detailed template if GLM fails —
+    never let a text-generation hiccup block image generation.
+    """
+    import requests
+
+    budget_materials = {
+        'economy': {
+            'Living Room': 'laminate flooring, budget fabric sofa, simple TV unit, basic curtains',
+            'Bedroom': 'vinyl flooring, engineered-wood bed frame, budget wardrobe, simple bedding',
+            'Kitchen': 'laminate cabinets, granite-look countertop, basic chimney, SS sink',
+            'Bathroom': 'ceramic wall tiles, PVC vanity, budget sanitaryware, simple mirror',
+            'Dining Room': 'engineered wood dining table, basic upholstered chairs, simple pendant light',
+            'Home Office': 'laminate desk, basic ergonomic chair, open shelves, task lamp',
+            'Balcony': 'outdoor tiles, plastic/wooden planters, basic outdoor seating',
+        },
+        'mid-range': {
+            'Living Room': 'engineered wood flooring, sectional sofa, built-in TV unit, designer curtains',
+            'Bedroom': 'engineered wood flooring, upholstered bed, modular wardrobe, premium bedding',
+            'Kitchen': 'acrylic cabinets, quartz countertop, branded chimney, SS appliances',
+            'Bathroom': 'vitrified wall tiles, ceramic vanity, branded sanitaryware, LED mirror',
+            'Dining Room': 'solid wood dining table, upholstered chairs, modern chandelier',
+            'Home Office': 'wooden desk, ergonomic chair, closed cabinets, ambient lighting',
+            'Balcony': 'wooden deck tiles, metal planters, weather-resistant lounge seating',
+        },
+        'premium': {
+            'Living Room': 'Italian marble flooring, designer leather sofa, custom TV wall, smart lighting',
+            'Bedroom': 'Italian marble flooring, luxury upholstered bed, walk-in wardrobe, silk bedding',
+            'Kitchen': 'high-gloss modular cabinets, quartzite countertop, built-in oven, chimney hob',
+            'Bathroom': 'imported marble tiles, designer vanity, premium sanitaryware, rainfall shower',
+            'Dining Room': 'imported marble flooring, designer dining set, statement chandelier, artwork',
+            'Home Office': 'executive wooden desk, leather chair, custom library, designer lighting',
+            'Balcony': 'premium deck tiles, designer planters, outdoor sofa set, ambient lights',
+        },
+    }
+    materials = budget_materials.get(budget_tier.lower(), budget_materials['mid-range']).get(room_type, 'mid-range furnishings')
+
+    style_directive = {
+        'Modern': 'clean lines, minimal ornamentation, neutral palette with bold accents',
+        'Minimalist': 'very sparse, white and wood tones, hidden storage, no clutter',
+        'Traditional': 'classic carved wood, warm colors, ornate details, rich textiles',
+        'Luxury': 'rich materials, gold/brass accents, plush textures, statement pieces',
+        'Industrial': 'exposed brick/metal, Edison bulbs, raw wood, loft aesthetic',
+        'Scandinavian': 'light wood, white walls, cozy textiles, functional furniture',
+        'Contemporary': 'mixed textures, curved forms, muted colors, art-forward',
+    }.get(style, 'modern interior design')
+
+    fallback = (
+        f"interior design renovation of the same {room_type} photograph, approximately {area_sqft} sqft, "
+        f"preserve the exact camera angle, room proportions, wall positions, window placements, and ceiling height, "
+        f"apply a {style} look with {style_directive}, "
+        f"use {materials} suitable for a {budget_tier} budget, "
+        f"photorealistic 3D render, consistent daylight, same viewpoint"
+    )
+
+    if not POLLINATIONS_API_TOKEN:
+        return fallback
+
+    system_prompt = (
+        "You write short, specific image-editing instructions for an AI interior design tool. "
+        "Output ONE paragraph, under 70 words, no preamble, no markdown. "
+        "Describe concrete materials, furniture, and finishes. "
+        "Emphasize preserving the exact camera angle, room shape, walls, windows, and layout."
+    )
+    user_prompt = f"Room type: {room_type} ({area_sqft} sqft). Style: {style}. Budget level: {budget_tier}. Materials: {materials}."
+
+    try:
+        resp = requests.post(
+            "https://gen.pollinations.ai/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {POLLINATIONS_API_TOKEN}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": "glm",
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                "max_tokens": 120,
+            },
+            timeout=20,
+        )
+        if resp.status_code == 200:
+            text = resp.json()["choices"][0]["message"]["content"].strip()
+            if text:
+                return text
+        return fallback
+    except Exception:
+        return fallback
+
+
+def generate_room_design(image_url, prompt, seed=0):
+    """Calls Pollinations' fast image-to-image API to redesign a room photo."""
+    import requests
+    from urllib.parse import quote
+    from time import sleep
+
+    encoded_prompt = quote(prompt)
+    url = f"https://image.pollinations.ai/prompt/{encoded_prompt}"
+    params = {
+        "model": "turbo",
+        "image": image_url,
+        "width": 768,
+        "height": 768,
+        "seed": seed,
+        "negative": "changed room layout, moved walls, removed windows, added windows, different camera angle, different perspective, altered room shape, different ceiling, exterior view",
+    }
+    if POLLINATIONS_API_TOKEN:
+        params["nologo"] = "true"
+    headers = {"Authorization": f"Bearer {POLLINATIONS_API_TOKEN}"} if POLLINATIONS_API_TOKEN else {}
+
+    last_error = "Unknown error"
+    for attempt in range(2):
+        try:
+            resp = requests.get(url, params=params, headers=headers, timeout=30)
+            content_type = resp.headers.get('content-type', '')
+            if resp.status_code == 200 and 'image' in content_type:
+                return True, resp.content
+            last_error = f"Pollinations error {resp.status_code} ({content_type}): {resp.text[:200]}"
+        except requests.exceptions.RequestException as e:
+            last_error = f"Request failed: {e}"
+        if attempt < 1:
+            sleep(1)
+    return False, last_error
+
+
+def compute_design_cost_estimate(room_type, budget_tier, area_sqft=120):
+    """Return a cost estimate dict scaled to the provided area in sqft."""
+    try:
+        area = float(area_sqft)
+        if area <= 0:
+            area = 120
+    except (TypeError, ValueError):
+        area = 120
+
+    if supabase:
+        try:
+            res = supabase.table('design_cost_rates').select('*').eq(
+                'room_type', room_type).eq('budget_tier', budget_tier).limit(1).execute()
+            if res.data:
+                row = res.data[0]
+                return {
+                    'room_type': room_type,
+                    'budget_tier': budget_tier,
+                    'area_sqft': area,
+                    'material_rate_per_sqft': float(row['material_rate_per_sqft']),
+                    'labor_rate_per_sqft': float(row['labor_rate_per_sqft']),
+                    'sample_area_sqft': area,
+                    'material_cost': round(float(row['material_rate_per_sqft']) * area, 2),
+                    'labor_cost': round(float(row['labor_rate_per_sqft']) * area, 2),
+                    'total_estimate': round((float(row['material_rate_per_sqft']) + float(row['labor_rate_per_sqft'])) * area, 2),
+                    'currency': 'INR'
+                }
+        except Exception as e:
+            app.logger.warning(f'Cost rate lookup failed: {e}')
+
+    defaults = {
+        'economy': (250, 150),
+        'mid-range': (450, 250),
+        'premium': (900, 500),
+    }
+    material, labor = defaults.get(budget_tier.lower(), (450, 250))
+    return {
+        'room_type': room_type,
+        'budget_tier': budget_tier,
+        'area_sqft': area,
+        'material_rate_per_sqft': material,
+        'labor_rate_per_sqft': labor,
+        'sample_area_sqft': area,
+        'material_cost': round(material * area, 2),
+        'labor_cost': round(labor * area, 2),
+        'total_estimate': round((material + labor) * area, 2),
+        'currency': 'INR',
+        'note': 'fallback estimate'
+    }
+
+
+# --- Marketplace seed data (verified July 2026) ---
+MARKETPLACE_SEED_DATA = [
+    {
+        "category": "Structural", "material": "OPC 53 Grade Cement", "unit": "50kg bag",
+        "suppliers": [
+            {"company_name": "UltraTech Cement (Aditya Birla Group)", "brand_name": "UltraTech",
+             "price_low": 340, "price_high": 465, "trust_level": "Verified — market leader",
+             "email": "ultratech.communication@adityabirla.com", "phone": "1800 210 3311",
+             "price_last_verified_at": "2026-07-10",
+             "source_note": "Toll-free + email confirmed via ultratechcement.com"},
+            {"company_name": "ACC Limited (Adani Group)", "brand_name": "ACC",
+             "price_low": 370, "price_high": 470, "trust_level": "Verified",
+             "email": "", "phone": "1800 1033 444",
+             "price_last_verified_at": "2026-07-10",
+             "source_note": "Toll-free confirmed via acclimited.com; no public direct email found"},
+            {"company_name": "Ambuja Cements Ltd (Adani Group)", "brand_name": "Ambuja",
+             "price_low": 360, "price_high": 435, "trust_level": "Verified",
+             "email": "corporate.communications@ambujacement.com", "phone": "1800 22 3010",
+             "price_last_verified_at": "2026-07-10",
+             "source_note": "Confirmed via ambujacement.com contact page"},
+            {"company_name": "Shree Cement Ltd", "brand_name": "Shree Cement",
+             "price_low": 320, "price_high": 370, "trust_level": "Verified — value pick",
+             "email": "", "phone": "1800 180 6003",
+             "price_last_verified_at": "2026-07-10",
+             "source_note": "Toll-free confirmed; no public direct email found"},
+            {"company_name": "Dalmia Cement (Bharat) Ltd", "brand_name": "Dalmia Cement",
+             "price_low": 290, "price_high": 420, "trust_level": "Verified — competitive bulk pricing",
+             "email": "marketing@dalmiacement.com", "phone": "011-23310121",
+             "price_last_verified_at": "2026-07-10",
+             "source_note": "Confirmed via dalmiacement.com"},
+        ],
+    },
+    {
+        "category": "Structural", "material": "TMT Steel Bars (Fe 500/500D/550D)", "unit": "per kg",
+        "suppliers": [
+            {"company_name": "Tata Steel Ltd (Tata Tiscon)", "brand_name": "Tata Tiscon",
+             "price_low": 57, "price_high": 78, "trust_level": "Verified — premium/widest network",
+             "email": "sntitatasteel@conneqtcorp.com", "phone": "1800 108 8282",
+             "price_last_verified_at": "2026-07-10",
+             "source_note": "Confirmed via tatatiscon.co.in"},
+            {"company_name": "JSW Steel Ltd (JSW Neosteel)", "brand_name": "JSW Neosteel",
+             "price_low": 61, "price_high": 78, "trust_level": "Verified — seismic-grade focus",
+             "email": "", "phone": "",
+             "price_last_verified_at": "2026-07-10",
+             "source_note": "Price range from dealer aggregators; direct contact pending — do not fabricate"},
+            {"company_name": "Steel Authority of India Ltd (SAIL)", "brand_name": "SAIL TMT",
+             "price_low": 59, "price_high": 75, "trust_level": "Verified — government-backed",
+             "email": "", "phone": "",
+             "price_last_verified_at": "2026-07-10",
+             "source_note": "Price range from dealer aggregators; direct contact pending — do not fabricate"},
+            {"company_name": "Rashtriya Ispat Nigam Ltd (Vizag Steel)", "brand_name": "Vizag Steel",
+             "price_low": 44, "price_high": 56, "trust_level": "Verified — regional value leader (South India)",
+             "email": "", "phone": "",
+             "price_last_verified_at": "2026-07-10",
+             "source_note": "Price range from Vizag-region dealer trackers"},
+            {"company_name": "Jindal Steel & Power (Jindal Panther)", "brand_name": "Jindal Panther",
+             "price_low": 59, "price_high": 75, "trust_level": "Verified — competitive mid-tier value",
+             "email": "", "phone": "",
+             "price_last_verified_at": "2026-07-10",
+             "source_note": "Price range from dealer aggregators; direct contact pending — do not fabricate"},
+        ],
+    },
+]
+
+
+def run_marketplace_seed():
+    """Idempotent: upserts on (material name, company_name), never duplicates rows,
+    never overwrites manually-edited admin data."""
+    if not supabase:
+        return
+    for entry in MARKETPLACE_SEED_DATA:
+        existing = supabase.table('marketplace_materials').select('id').eq('name', entry['material']).execute()
+        if existing.data:
+            material_id = existing.data[0]['id']
+        else:
+            inserted = supabase.table('marketplace_materials').insert({
+                'category': entry['category'], 'name': entry['material'], 'unit': entry['unit'],
+            }).execute()
+            material_id = inserted.data[0]['id'] if inserted.data else None
+            if not material_id:
+                continue
+
+        for s in entry['suppliers']:
+            existing_supplier = supabase.table('marketplace_suppliers').select('id').eq(
+                'material_id', material_id).eq('company_name', s['company_name']).execute()
+            if existing_supplier.data:
+                continue  # don't overwrite — admin may have edited this row already
+            supabase.table('marketplace_suppliers').insert({**s, 'material_id': material_id}).execute()
+
+
 @app.route('/login', methods=['POST'])
 def login():
     data = request.get_json() or {}
-    username = data.get('username', '')
+    username = data.get('username', '').strip()
     password = data.get('password', '')
+
+    if not username or not password:
+        return jsonify({'success': False, 'error': 'Username and password are required'}), 400
 
     # Authenticate against the Supabase users table only.
     user_obj = None
     if supabase:
         try:
-            res = supabase.table('users').select('*').eq('email', username).eq('active', True).execute()
+            res = supabase.table('users').select('*').ilike('email', username).eq('active', True).execute()
             if res.data:
                 row = res.data[0]
                 pw_hash = row.get('password_hash', '')
                 if pw_hash and check_password_hash(pw_hash, password):
                     user_obj = {'id': row['id'], 'email': row['email'], 'role': row['role'], 'org_id': row.get('org_id')}
+                else:
+                    print(f'Login failed for "{username}": password mismatch')
+            else:
+                print(f'Login failed for "{username}": no active user found')
         except Exception as e:
             print(f'Error loading user from Supabase: {e}')
+    else:
+        print('Login failed: Supabase not connected')
 
     if user_obj:
         session['user'] = user_obj
@@ -1134,7 +1503,7 @@ def api_payroll_list():
     if not supabase:
         return jsonify([]), 500
     venture_id = request.args.get('venture_id')
-    q = supabase.table('payroll').select('*, milestones(id,status,work_item,description)')
+    q = supabase.table('payroll').select('*')
     if venture_id:
         q = q.eq('venture_id', venture_id)
     res = q.execute()
@@ -1152,7 +1521,6 @@ def api_payroll_create():
         row = {
             'venture_id': body.get('venture_id'),
             'subcontractor_id': body.get('subcontractor_id'),
-            'milestone_id': body.get('milestone_id'),
             'amount': body.get('amount', 0),
             'status': 'pending',
             'created_by': user.get('id') if isinstance(user, dict) else None,
@@ -1238,63 +1606,6 @@ def api_inventory_audit():
         return jsonify(audit_rows)
     except Exception as e:
         print(f'Error in inventory audit: {e}')
-        return jsonify({'error': str(e)}), 500
-
-
-# ========================
-# Date-wise Expense Check API (Admin-only)
-# ========================
-
-@app.route('/api/expenses/date-check')
-@requires_role('admin')
-def api_expenses_date_check():
-    if not supabase:
-        return jsonify({'error': 'Supabase not connected'}), 500
-    venture_id = request.args.get('venture_id')
-    from_date = request.args.get('from')
-    to_date = request.args.get('to')
-    if not venture_id or not from_date or not to_date:
-        return jsonify({'error': 'venture_id, from, and to are required'}), 400
-    try:
-        # Sum invoices by day
-        inv_res = supabase.table('invoices').select('*').execute()
-        daily_spend = {}
-        for inv in inv_res.data:
-            d = inv.get('data') or {}
-            v_id = d.get('venture_id') or inv.get('venture_id')
-            if v_id != venture_id:
-                continue
-            inv_date = d.get('date') or inv.get('due_date')
-            if not inv_date:
-                continue
-            amt = float(d.get('amount', 0) or inv.get('amount', 0) or 0)
-            day = inv_date[:10]
-            daily_spend[day] = daily_spend.get(day, 0) + amt
-        # Sum stock_ledger OUT entries by day (valued via material rate)
-        stock_res = supabase.table('stock_ledger').select('*').eq(
-            'venture_id', venture_id).eq('entry_type', 'OUT').execute()
-        for entry in stock_res.data:
-            entry_day = entry.get('entry_date', '')[:10]
-            if not entry_day:
-                continue
-            rate = float(entry.get('rate', 0) or 0)
-            qty = float(entry.get('qty', 0) or 0)
-            daily_spend[entry_day] = daily_spend.get(entry_day, 0) + (rate * qty)
-        # Build date range
-        start = datetime.strptime(from_date, '%Y-%m-%d').date()
-        end = datetime.strptime(to_date, '%Y-%m-%d').date()
-        result = []
-        current = start
-        while current <= end:
-            day_str = current.isoformat()
-            result.append({
-                'date': day_str,
-                'amount': round(daily_spend.get(day_str, 0), 2)
-            })
-            current += timedelta(days=1)
-        return jsonify(result)
-    except Exception as e:
-        print(f'Error in date-check expenses: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -1441,140 +1752,7 @@ def api_materials_leakage_check():
 
 
 # ========================
-# Milestone API
-# ========================
-
-@app.route('/api/milestone', methods=['POST'])
-@requires_role_or_override('supervisor')
-def api_milestone_create():
-    if not supabase:
-        return jsonify({'error': 'Supabase not connected'}), 500
-    body = request.get_json() or {}
-    user = session.get('user', {})
-    try:
-        row = {
-            'venture_id': body.get('venture_id'),
-            'subcontractor_id': body.get('subcontractor_id'),
-            'work_item': body.get('work_item'),
-            'block': body.get('block'),
-            'floor': body.get('floor'),
-            'flat': body.get('flat'),
-            'description': body.get('description', ''),
-            'required_photo_pair': body.get('required_photo_pair', True),
-            'status': 'pending',
-        }
-        res = supabase.table('milestones').insert(row).execute()
-        return jsonify({'success': True, 'id': res.data[0]['id'] if res.data else None})
-    except Exception as e:
-        print(f'Error creating milestone: {e}')
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/milestone/<milestone_id>/photo', methods=['POST'])
-@requires_role_or_override('supervisor')
-def api_milestone_photo(milestone_id):
-    if not supabase:
-        return jsonify({'error': 'Supabase not connected'}), 500
-    body = request.get_json() or {}
-    photo_type = body.get('photo_type')  # 'before' or 'after'
-    photo_url = body.get('photo_url')
-    taken_at = body.get('taken_at')
-    user = session.get('user', {})
-    if photo_type not in ('before', 'after'):
-        return jsonify({'error': 'photo_type must be before or after'}), 400
-    if not photo_url:
-        return jsonify({'error': 'photo_url is required'}), 400
-    try:
-        res = supabase.table('milestone_photos').insert({
-            'milestone_id': milestone_id,
-            'photo_type': photo_type,
-            'photo_url': photo_url,
-            'taken_at': taken_at,
-            'uploaded_by': user.get('id') if isinstance(user, dict) else None,
-        }).execute()
-        return jsonify({'success': True, 'id': res.data[0]['id'] if res.data else None})
-    except Exception as e:
-        print(f'Error uploading milestone photo: {e}')
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/milestone/<milestone_id>/submit', methods=['POST'])
-@requires_role_or_override('supervisor')
-def api_milestone_submit(milestone_id):
-    if not supabase:
-        return jsonify({'error': 'Supabase not connected'}), 500
-    user = session.get('user', {})
-    try:
-        # Check both before and after photos exist
-        photos_res = supabase.table('milestone_photos').select('*').eq(
-            'milestone_id', milestone_id).execute()
-        photos = photos_res.data or []
-        has_before = any(p.get('photo_type') == 'before' for p in photos)
-        has_after = any(p.get('photo_type') == 'after' for p in photos)
-        if not has_before or not has_after:
-            return jsonify({'error': 'Both before and after photos are required before submission'}), 400
-        supabase.table('milestones').update({
-            'status': 'submitted',
-            'submitted_by': user.get('id') if isinstance(user, dict) else None,
-            'submitted_at': datetime.utcnow().isoformat()
-        }).eq('id', milestone_id).execute()
-        return jsonify({'success': True})
-    except Exception as e:
-        print(f'Error submitting milestone: {e}')
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/milestone/<milestone_id>/verify', methods=['POST'])
-@requires_role('admin')
-def api_milestone_verify(milestone_id):
-    if not supabase:
-        return jsonify({'error': 'Supabase not connected'}), 500
-    user = session.get('user', {})
-    try:
-        supabase.table('milestones').update({
-            'status': 'verified',
-            'verified_by': user.get('id') if isinstance(user, dict) else None,
-            'verified_at': datetime.utcnow().isoformat()
-        }).eq('id', milestone_id).execute()
-        return jsonify({'success': True})
-    except Exception as e:
-        print(f'Error verifying milestone: {e}')
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/milestone/<milestone_id>/reject', methods=['POST'])
-@requires_role('admin')
-def api_milestone_reject(milestone_id):
-    if not supabase:
-        return jsonify({'error': 'Supabase not connected'}), 500
-    try:
-        supabase.table('milestones').update({
-            'status': 'rejected'
-        }).eq('id', milestone_id).execute()
-        return jsonify({'success': True})
-    except Exception as e:
-        print(f'Error rejecting milestone: {e}')
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/milestones')
-@requires_role_or_override('supervisor')
-def api_milestones_list():
-    if not supabase:
-        return jsonify([]), 500
-    venture_id = request.args.get('venture_id')
-    status = request.args.get('status')
-    q = supabase.table('milestones').select('*, milestone_photos(*)')
-    if venture_id:
-        q = q.eq('venture_id', venture_id)
-    if status:
-        q = q.eq('status', status)
-    res = q.execute()
-    return jsonify(res.data or [])
-
-
-# ========================
-# Budgets & Burn Report API (Admin-only)
+# Budgets API (Admin-only)
 # ========================
 
 @app.route('/api/budgets', methods=['GET', 'POST'])
@@ -1607,87 +1785,6 @@ def api_budgets():
             return jsonify({'error': str(e)}), 500
 
 
-@app.route('/api/budgets/burn-report')
-@requires_role('admin')
-def api_budgets_burn_report():
-    if not supabase:
-        return jsonify({'error': 'Supabase not connected'}), 500
-    venture_id = request.args.get('venture_id')
-    from_date = request.args.get('from')
-    to_date = request.args.get('to')
-    if not venture_id or not from_date or not to_date:
-        return jsonify({'error': 'venture_id, from, and to are required'}), 400
-    try:
-        # Get budgets for this venture
-        budget_res = supabase.table('budgets').select('*').eq('venture_id', venture_id).execute()
-        budgets = budget_res.data or []
-        # Build daily budget map (expand weekly into 7 days)
-        daily_budget_map = {}
-        for b in budgets:
-            bdate = b.get('budget_date', '')[:10]
-            amt = float(b.get('daily_budget', 0))
-            if b.get('interval') == 'weekly':
-                for i in range(7):
-                    d = (datetime.strptime(bdate, '%Y-%m-%d').date() + timedelta(days=i)).isoformat()
-                    daily_budget_map[d] = daily_budget_map.get(d, 0) + amt
-            else:
-                daily_budget_map[bdate] = daily_budget_map.get(bdate, 0) + amt
-        # Actual spend: invoices + stock_ledger IN
-        inv_res = supabase.table('invoices').select('*').execute()
-        daily_spend = {}
-        for inv in inv_res.data:
-            d = inv.get('data') or {}
-            v_id = d.get('venture_id') or inv.get('venture_id')
-            if v_id != venture_id:
-                continue
-            inv_date = d.get('date') or inv.get('due_date')
-            if not inv_date:
-                continue
-            amt = float(d.get('amount', 0) or inv.get('amount', 0) or 0)
-            day = inv_date[:10]
-            daily_spend[day] = daily_spend.get(day, 0) + amt
-        stock_res = supabase.table('stock_ledger').select('*').eq(
-            'venture_id', venture_id).eq('entry_type', 'IN').execute()
-        for entry in stock_res.data:
-            entry_day = entry.get('entry_date', '')[:10]
-            if not entry_day:
-                continue
-            amt = float(entry.get('amount', 0) or 0)
-            daily_spend[entry_day] = daily_spend.get(entry_day, 0) + amt
-        # Build date range
-        start = datetime.strptime(from_date, '%Y-%m-%d').date()
-        end = datetime.strptime(to_date, '%Y-%m-%d').date()
-        result = []
-        mtd_budget = 0
-        mtd_actual = 0
-        current = start
-        while current <= end:
-            day_str = current.isoformat()
-            budget = daily_budget_map.get(day_str, 0)
-            actual = daily_spend.get(day_str, 0)
-            variance = budget - actual
-            variance_pct = round((variance / budget * 100), 1) if budget else 0
-            result.append({
-                'date': day_str,
-                'budget': round(budget, 2),
-                'actual': round(actual, 2),
-                'variance': round(variance, 2),
-                'variance_pct': variance_pct
-            })
-            mtd_budget += budget
-            mtd_actual += actual
-            current += timedelta(days=1)
-        return jsonify({
-            'days': result,
-            'mtd_budget': round(mtd_budget, 2),
-            'mtd_actual': round(mtd_actual, 2),
-            'mtd_variance': round(mtd_budget - mtd_actual, 2)
-        })
-    except Exception as e:
-        print(f'Error generating burn report: {e}')
-        return jsonify({'error': str(e)}), 500
-
-
 # ========================
 # Test DB
 # ========================
@@ -1704,5 +1801,346 @@ def api_test_db():
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
 
+# ========================
+# Interior Design Studio API (Admin/Manager)
+# ========================
+
+@app.route('/api/interior-design/generate', methods=['POST'])
+@requires_role('manager', 'admin')
+def api_interior_design_generate():
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+
+    room_type = request.form.get('room_type', '').strip()
+    style = request.form.get('style', '').strip()
+    budget_tier = request.form.get('budget_tier', '').strip()
+    area_sqft = request.form.get('area_sqft', '120').strip()
+    if not room_type or not style or not budget_tier:
+        return jsonify({'error': 'room_type, style, and budget_tier are required'}), 400
+    try:
+        area_sqft_val = float(area_sqft) if area_sqft else 120
+        if area_sqft_val <= 0:
+            area_sqft_val = 120
+    except ValueError:
+        area_sqft_val = 120
+
+    file = request.files.get('image')
+    if not file:
+        return jsonify({'error': 'image is required'}), 400
+    file_bytes = file.read()
+    if not file_bytes:
+        return jsonify({'error': 'image is empty'}), 400
+
+    ext = (file.filename or '').rsplit('.', 1)[-1].lower() if '.' in (file.filename or '') else 'jpg'
+    if ext not in ('jpg', 'jpeg', 'png', 'webp'):
+        ext = 'jpg'
+    content_type = f"image/{'jpeg' if ext in ('jpg', 'jpeg') else ext}"
+
+    user = session.get('user', {})
+    user_id = user.get('id') if isinstance(user, dict) else None
+    ts = now_ist().strftime('%Y%m%d_%H%M%S')
+    import uuid as _uuid
+    path = f"{user_id or 'anon'}_{ts}_{_uuid.uuid4().hex[:8]}.{ext}"
+
+    upload_url, upload_error = upload_bytes_to_storage('interior-uploads', path, file_bytes, content_type)
+    if not upload_url:
+        return jsonify({'error': 'Failed to upload image to storage', 'details': upload_error}), 500
+
+    # Pollinations must fetch the source image via URL. Prefer the public URL,
+    # but fall back to a signed URL if the bucket is private.
+    fetchable_url = get_fetchable_image_url('interior-uploads', path)
+    if not fetchable_url:
+        return jsonify({'error': 'Uploaded image is not reachable; check Supabase Storage bucket permissions'}), 500
+    upload_url = fetchable_url
+
+    try:
+        res = supabase.table('interior_designs').insert({
+            'created_by': user_id,
+            'room_type': room_type,
+            'style': style,
+            'budget_tier': budget_tier,
+            'upload_image_url': upload_url,
+            'status': 'pending',
+            'generated_images': [],
+            'cost_estimate': None,
+        }).execute()
+        design_id = res.data[0]['id']
+    except Exception as e:
+        print(f'Error creating interior design record: {e}')
+        return jsonify({'error': 'Failed to create design record'}), 500
+
+    def generate_in_background(did, img_url, rt, st, bt, sqft):
+        from time import sleep
+        try:
+            prompt = enhance_design_prompt(rt, st, bt, sqft)
+            supabase.table('interior_designs').update({'enhanced_prompt': prompt}).eq('id', did).execute()
+            generated = []
+            # Single variant keeps generation reliably under 30 seconds on the free tier.
+            for idx, seed in enumerate((0,)):
+                if idx > 0:
+                    sleep(4)
+                ok, result = generate_room_design(img_url, prompt, seed)
+                if ok:
+                    out_path = f"generated_{did}_{seed}.jpg"
+                    out_url, out_err = upload_bytes_to_storage('interior-uploads', out_path, result, 'image/jpeg')
+                    if not out_url:
+                        # Fallback: embed generated image as base64 data URL.
+                        out_url = f"data:image/jpeg;base64,{base64.b64encode(result).decode('ascii')}"
+                    generated.append({'seed': seed, 'url': out_url})
+                else:
+                    generated.append({'seed': seed, 'url': None, 'error': result})
+                    app.logger.warning(f'Design {did} seed {seed} failed: {result}')
+            cost = compute_design_cost_estimate(rt, bt, sqft)
+            successful = [g for g in generated if g.get('url')]
+            failed = [g for g in generated if not g.get('url')]
+            status = 'completed' if successful else 'failed'
+            error_message = None
+            if failed:
+                parts = [g.get('error') or 'unknown error' for g in failed]
+                if not successful:
+                    error_message = '; '.join(parts)[:500]
+                else:
+                    error_message = 'Some images failed to generate'
+            supabase.table('interior_designs').update({
+                'generated_images': generated,
+                'cost_estimate': cost,
+                'status': status,
+                'error_message': error_message
+            }).eq('id', did).execute()
+        except Exception as e:
+            print(f'Background generation error for {did}: {e}')
+            try:
+                supabase.table('interior_designs').update({
+                    'status': 'failed',
+                    'error_message': str(e)
+                }).eq('id', did).execute()
+            except Exception:
+                pass
+
+    import threading
+    threading.Thread(target=generate_in_background, args=(
+        design_id, upload_url, room_type, style, budget_tier, area_sqft_val
+    ), daemon=True).start()
+
+    return jsonify({'id': design_id, 'status': 'pending'}), 200
+
+
+@app.route('/api/interior-design/<design_id>/status')
+@login_required
+def api_interior_design_status(design_id):
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    try:
+        res = supabase.table('interior_designs').select('*').eq('id', design_id).limit(1).execute()
+        if not res.data:
+            return jsonify({'error': 'Design not found'}), 404
+        row = res.data[0]
+        return jsonify({
+            'id': row['id'],
+            'status': row['status'],
+            'room_type': row['room_type'],
+            'style': row['style'],
+            'budget_tier': row['budget_tier'],
+            'upload_image_url': row['upload_image_url'],
+            'enhanced_prompt': row.get('enhanced_prompt'),
+            'generated_images': row.get('generated_images') or [],
+            'cost_estimate': row.get('cost_estimate'),
+            'error_message': row.get('error_message'),
+            'created_at': row.get('created_at')
+        })
+    except Exception as e:
+        print(f'Error fetching design status: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/interior-design/history')
+@login_required
+def api_interior_design_history():
+    if not supabase:
+        return jsonify([])
+    try:
+        res = supabase.table('interior_designs').select('*').order('created_at', desc=True).limit(100).execute()
+        return jsonify(res.data or [])
+    except Exception as e:
+        print(f'Error fetching design history: {e}')
+        return jsonify([])
+
+
+@app.route('/api/interior-design/<design_id>', methods=['DELETE'])
+@requires_role('manager', 'admin')
+def api_interior_design_delete(design_id):
+    if not supabase:
+        return jsonify({'success': True, 'note': 'read-only local mode'})
+    try:
+        supabase.table('interior_designs').delete().eq('id', design_id).execute()
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f'Error deleting interior design: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+# ========================
+# Construction Marketplace API
+# ========================
+
+@app.route('/api/marketplace/materials')
+@login_required
+def api_marketplace_materials():
+    if not supabase:
+        return jsonify([])
+    category = request.args.get('category', '').strip()
+    q = supabase.table('marketplace_materials').select('*').eq('is_active', True)
+    if category:
+        q = q.eq('category', category)
+    try:
+        res = q.order('category', desc=False).order('name', desc=False).execute()
+        return jsonify(res.data or [])
+    except Exception as e:
+        print(f'Error fetching marketplace materials: {e}')
+        return jsonify([])
+
+
+@app.route('/api/marketplace/materials/<material_id>/suppliers')
+@login_required
+def api_marketplace_suppliers(material_id):
+    if not supabase:
+        return jsonify([])
+    min_price = request.args.get('min_price')
+    max_price = request.args.get('max_price')
+    verified_only = request.args.get('verified_only', '').lower() == 'true'
+    try:
+        q = supabase.table('marketplace_suppliers').select('*').eq('material_id', material_id)
+        if verified_only:
+            q = q.ilike('trust_level', '%Verified%')
+        res = q.execute()
+        rows = res.data or []
+        if min_price is not None:
+            try:
+                min_p = float(min_price)
+                rows = [r for r in rows if float(r.get('price_low', 0)) >= min_p]
+            except ValueError:
+                pass
+        if max_price is not None:
+            try:
+                max_p = float(max_price)
+                rows = [r for r in rows if float(r.get('price_low', 0)) <= max_p]
+            except ValueError:
+                pass
+        rows.sort(key=lambda r: (
+            0 if 'verified' in (r.get('trust_level') or '').lower() else 1,
+            float(r.get('price_low', 0))
+        ))
+        return jsonify(rows[:5])
+    except Exception as e:
+        print(f'Error fetching marketplace suppliers: {e}')
+        return jsonify([])
+
+
+@app.route('/api/marketplace/materials', methods=['POST'])
+@requires_role('admin')
+def api_marketplace_material_post():
+    if not supabase:
+        return jsonify({'success': True, 'note': 'read-only local mode'})
+    body = request.get_json() or {}
+    required = ['category', 'name', 'unit']
+    for field in required:
+        if not body.get(field):
+            return jsonify({'error': f'{field} is required'}), 400
+    try:
+        row = {
+            'category': body['category'],
+            'name': body['name'],
+            'unit': body['unit'],
+            'description': body.get('description', ''),
+            'is_active': body.get('is_active', True),
+        }
+        if body.get('id'):
+            row['id'] = body['id']
+            supabase.table('marketplace_materials').upsert(row, on_conflict='id').execute()
+            return jsonify({'success': True})
+        res = supabase.table('marketplace_materials').insert(row).execute()
+        return jsonify({'success': True, 'id': res.data[0]['id'] if res.data else None})
+    except Exception as e:
+        print(f'Error saving marketplace material: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/marketplace/suppliers', methods=['POST'])
+@requires_role('admin')
+def api_marketplace_supplier_post():
+    if not supabase:
+        return jsonify({'success': True, 'note': 'read-only local mode'})
+    body = request.get_json() or {}
+    required = ['material_id', 'company_name', 'brand_name', 'price_low', 'price_high']
+    for field in required:
+        if field not in body or body[field] in (None, ''):
+            return jsonify({'error': f'{field} is required'}), 400
+    try:
+        row = {
+            'material_id': body['material_id'],
+            'company_name': body['company_name'],
+            'brand_name': body['brand_name'],
+            'price_low': float(body['price_low']),
+            'price_high': float(body['price_high']),
+            'currency': body.get('currency', 'INR'),
+            'trust_level': body.get('trust_level', ''),
+            'email': body.get('email', ''),
+            'phone': body.get('phone', ''),
+            'price_last_verified_at': body.get('price_last_verified_at'),
+            'source_note': body.get('source_note', ''),
+        }
+        if body.get('id'):
+            row['id'] = body['id']
+            supabase.table('marketplace_suppliers').upsert(row, on_conflict='id').execute()
+            return jsonify({'success': True})
+        res = supabase.table('marketplace_suppliers').insert(row).execute()
+        return jsonify({'success': True, 'id': res.data[0]['id'] if res.data else None})
+    except Exception as e:
+        print(f'Error saving marketplace supplier: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/marketplace/materials/<material_id>', methods=['DELETE'])
+@requires_role('admin')
+def api_marketplace_material_delete(material_id):
+    if not supabase:
+        return jsonify({'success': True, 'note': 'read-only local mode'})
+    try:
+        supabase.table('marketplace_suppliers').delete().eq('material_id', material_id).execute()
+        supabase.table('marketplace_materials').delete().eq('id', material_id).execute()
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f'Error deleting marketplace material: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/marketplace/suppliers/<supplier_id>', methods=['DELETE'])
+@requires_role('admin')
+def api_marketplace_supplier_delete(supplier_id):
+    if not supabase:
+        return jsonify({'success': True, 'note': 'read-only local mode'})
+    try:
+        supabase.table('marketplace_suppliers').delete().eq('id', supplier_id).execute()
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f'Error deleting marketplace supplier: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/marketplace/seed', methods=['POST'])
+@requires_role('admin')
+def api_marketplace_seed():
+    if not supabase:
+        return jsonify({'success': True, 'note': 'read-only local mode'})
+    try:
+        run_marketplace_seed()
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f'Error seeding marketplace: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    # Disable reloader: background image-generation threads must not be killed
+    # when source files change during a design request.
+    app.run(debug=True, host='0.0.0.0', port=5000, use_reloader=False)
