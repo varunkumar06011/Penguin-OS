@@ -5719,15 +5719,19 @@ async function renderPayrollView() {
     const isAllMode = isPanel && !selectedPayrollVenture;
     const container = document.getElementById(isPanel ? 'payrollPanelContent' : 'payrollViewContainer');
     if (!container) return;
+
+    // Preserve selected month on re-render; default to current month
+    const existingMonthInput = document.getElementById('payrollMonthSelect');
+    const currentMonth = existingMonthInput && existingMonthInput.value
+        ? existingMonthInput.value
+        : new Date().toISOString().slice(0, 7);
+
     container.innerHTML = '';
 
     if (!venture && !isAllMode) {
         container.innerHTML = '<div style="padding:24px;color:#999;">No venture selected.</div>';
         return;
     }
-
-    // Default to current month
-    const currentMonth = new Date().toISOString().slice(0, 7);
 
     // Header bar
     const headerBar = document.createElement('div');
