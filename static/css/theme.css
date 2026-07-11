@@ -1383,10 +1383,48 @@ h1, h2, h3, h4, .venture-title, .dashboard-header h2, .section-header {
     font-weight: 600;
 }
 
+/* ---- Login download app button ---- */
+.btn-download-app {
+    margin-top: 16px;
+    padding: 10px 20px;
+    border-radius: 10px;
+    border: none;
+    background: #1a1a1a;
+    color: #fff;
+    font-weight: 600;
+    font-size: 0.95rem;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    transition: background 0.2s;
+}
+.btn-download-app:hover { background: #333; }
+.btn-download-app:disabled { background: #888; cursor: not-allowed; }
+.download-app-msg {
+    margin-top: 8px;
+    font-size: 0.85rem;
+    color: #c0392b;
+    min-height: 1.2em;
+}
+
 /* ---- Venture card edit controls ---- */
 .edit-btn {
     border-radius: 6px;
     transition: opacity 0.2s, background 0.2s;
+}
+
+.work-item-edit-btn {
+    background: none;
+    border: none;
+    color: #888;
+    padding: 2px 4px;
+    font-size: 0.85rem;
+    opacity: 0.6;
+}
+.work-item-edit-btn:hover {
+    opacity: 1;
+    color: #1a1a1a;
 }
 
 /* ---- Pending filter bar ---- */

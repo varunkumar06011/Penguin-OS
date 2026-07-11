@@ -436,6 +436,29 @@ function ensureItemIds(items) {
     return items.map((label, i) => ({ id: `item_${slugId(label)}_${i}`, label }));
 }
 
+function getWorkCategoryDisplayName(cat) {
+    const map = {
+        'CIVIL WORK': 'Civil Work',
+        'ELECTRICAL & PLUMBING WORK': 'Electrical & Plumbing',
+        'POP CEILING': 'Ceiling',
+        'PAINTING': 'Painting',
+        'FLOORING': 'Flooring',
+        'CORRIDORS': 'Corridors',
+        'ELEVATION WORK': 'Elevation Work'
+    };
+    return map[cat] || cat;
+}
+
+function sortWorkCategoryNames(names) {
+    const order = ['CIVIL WORK', 'ELECTRICAL & PLUMBING WORK', 'PAINTING', 'POP CEILING', 'FLOORING', 'CORRIDORS', 'ELEVATION WORK'];
+    const remaining = names.filter(n => !order.includes(n));
+    const sorted = [];
+    order.forEach(key => {
+        if (names.includes(key)) sorted.push(key);
+    });
+    return sorted.concat(remaining);
+}
+
 function ensureWorkCategories(cats) {
     if (!cats || Object.keys(cats).length === 0) return JSON.parse(JSON.stringify(WORK_CATEGORIES));
     const result = {}
@@ -470,11 +493,6 @@ function cellKeyById(block, floor, flat, itemId) {
 
 function ssCellKeyById(itemId) {
     return `superstructure_${itemId}`;
-}
-
-function workViewCellKeyById(block, floor, category, itemId, flat) {
-    const catSlug = slugId(category);
-    return `${block}_floor${floor}_${catSlug}_${itemId}_${flat}`;
 }
 
 // ========================
@@ -1060,10 +1078,11 @@ async function renderWorkView() {
         allChip.dataset.category = '__all__';
         chipBar.appendChild(allChip);
 
-        categoryNames.forEach(cat => {
+        const sortedCategoryNames = sortWorkCategoryNames(categoryNames);
+        sortedCategoryNames.forEach(cat => {
             const chip = document.createElement('button');
             chip.className = 'category-chip';
-            chip.textContent = cat;
+            chip.textContent = getWorkCategoryDisplayName(cat);
             chip.style.cssText = 'padding:6px 14px;border:1px solid #ccc;border-radius:16px;background:#fff;color:#555;cursor:pointer;font-size:0.8rem;';
             chip.dataset.category = cat;
             chipBar.appendChild(chip);
@@ -1103,7 +1122,7 @@ async function renderWorkView() {
     function queueKeys(category, items, flats) {
         items.forEach((itemObj) => {
             flats.forEach(flat => {
-                const cellId = workViewCellKeyById(currentBlock, currentFloor, category, itemObj.id, flat);
+                const cellId = cellKeyById(currentBlock, currentFloor, flat, itemObj.id);
                 requiredKeys.push(cacheKey(cellId));
             });
         });
@@ -1169,7 +1188,7 @@ function createSectionTable(category, items, flats) {
         ctrl.querySelector('[title="Delete category"]').addEventListener('click', () => showConfirm('Delete Category', `Delete '${category}' and all its items?`, () => deleteWorkCategory(category)));
         header.appendChild(ctrl);
     } else {
-        header.textContent = category;
+        header.textContent = getWorkCategoryDisplayName(category);
     }
     section.appendChild(header);
 
@@ -1237,12 +1256,22 @@ function createSectionTable(category, items, flats) {
             if (upBtn) upBtn.addEventListener('click', () => reorderWorkItem(category, itemObj.id, -1));
             if (downBtn) downBtn.addEventListener('click', () => reorderWorkItem(category, itemObj.id, 1));
         } else {
-            tdWork.textContent = itemObj.label;
+            tdWork.innerHTML = `<span class="item-label">${escapeHtml(itemObj.label)}</span>`;
+            const editBtn = document.createElement('button');
+            editBtn.className = 'edit-btn work-item-edit-btn';
+            editBtn.title = 'Edit description';
+            editBtn.innerHTML = '&#9998;';
+            editBtn.style.marginLeft = '8px';
+            editBtn.style.cursor = 'pointer';
+            editBtn.addEventListener('click', () => {
+                startInlineEdit(tdWork, itemObj.label, (newLabel) => renameWorkItem(category, itemObj.id, newLabel));
+            });
+            tdWork.appendChild(editBtn);
         }
         row.appendChild(tdWork);
 
         flats.forEach(flat => {
-            const cellId = workViewCellKeyById(currentBlock, currentFloor, category, itemObj.id, flat);
+            const cellId = cellKeyById(currentBlock, currentFloor, flat, itemObj.id);
             const cellData = cellsCache[cacheKey(cellId)];
             const color = cellData?.color || null;
 
@@ -1308,7 +1337,7 @@ function createSectionTable(category, items, flats) {
         const remarksParts = [];
         let totalImages = 0;
         flats.forEach(flat => {
-            const cellId = workViewCellKeyById(currentBlock, currentFloor, category, itemObj.id, flat);
+            const cellId = cellKeyById(currentBlock, currentFloor, flat, itemObj.id);
             const cellData = cellsCache[cacheKey(cellId)];
             if (cellData?.remarks) {
                 remarksParts.push(`${flat}: ${cellData.remarks}`);
@@ -2158,6 +2187,7 @@ function applyRoleBasedUI() {
     hide('editModeBtn');
     hide('openInvoicesBtn');
     hide('openPayrollBtn');
+    hide('openVendorsBtn');
     hide('openInventoryBtn');
     hide('openPOBtn');
     hide('openReportsBtn');
@@ -2175,6 +2205,7 @@ function applyRoleBasedUI() {
 
     if (currentUserPermissions.viewInvoices) show('openInvoicesBtn');
     if (currentUserPermissions.viewPayroll) show('openPayrollBtn');
+    if (currentUserPermissions.viewVendors) show('openVendorsBtn');
     if (currentUserPermissions.viewInventory) show('openInventoryBtn');
     if (currentUserPermissions.viewPOs) show('openPOBtn');
     show('openReportsBtn');
@@ -2951,7 +2982,7 @@ async function renderHomeReports(container) {
         });
         Object.entries(workCategories).forEach(([category, items]) => {
             items.forEach(itemObj => {
-                requiredKeys.push(cacheKey(workViewCellKeyById(currentBlock, homeQuickReportFloor, category, itemObj.id, flat)));
+                requiredKeys.push(cacheKey(cellKeyById(currentBlock, homeQuickReportFloor, flat, itemObj.id)));
             });
         });
     });
@@ -2979,7 +3010,7 @@ async function renderHomeReports(container) {
         });
         Object.entries(workCategories).forEach(([category, items]) => {
             items.forEach(itemObj => {
-                const cellId = workViewCellKeyById(currentBlock, homeQuickReportFloor, category, itemObj.id, flat);
+                const cellId = cellKeyById(currentBlock, homeQuickReportFloor, flat, itemObj.id);
                 const cellData = cellsCache[cacheKey(cellId)];
                 const color = cellData?.color || null;
                 if (color && statusCounts.hasOwnProperty(color)) statusCounts[color]++;
@@ -3763,6 +3794,16 @@ async function renameWorkItem(category, itemId, newLabel) {
     const old = item.label;
     item.label = newLabel;
     currentVenture.work_categories = cats;
+
+    // Keep flat_view_items in sync so flat view shows the same label
+    if (currentVenture.flat_view_items && currentVenture.flat_view_items.length > 0) {
+        currentVenture.flat_view_items = currentVenture.flat_view_items.map(fi => {
+            if (typeof fi === 'string') return fi === old ? newLabel : fi;
+            if (fi && fi.label === old) return { ...fi, label: newLabel };
+            return fi;
+        });
+    }
+
     await logEdit('rename', 'work_item', itemId, old, newLabel);
     await saveVentureConfig();
     renderWorkView();
@@ -4003,7 +4044,7 @@ async function renderPendingView(targetContainer) {
             });
             Object.entries(workCategories).forEach(([category, items]) => {
                 items.forEach(itemObj => {
-                    requiredKeys.push(cacheKey(workViewCellKeyById(currentBlock, floor, category, itemObj.id, flat)));
+                    requiredKeys.push(cacheKey(cellKeyById(currentBlock, floor, flat, itemObj.id)));
                 });
             });
         });
@@ -4042,7 +4083,7 @@ async function renderPendingView(targetContainer) {
             // Work view items
             Object.entries(workCategories).forEach(([category, items]) => {
                 items.forEach(itemObj => {
-                    const cellId = workViewCellKeyById(currentBlock, floor, category, itemObj.id, flat);
+                    const cellId = cellKeyById(currentBlock, floor, flat, itemObj.id);
                     const cellData = cellsCache[cacheKey(cellId)];
                     const color = cellData?.color || null;
                     if (color !== 'green') {
@@ -5478,6 +5519,8 @@ function renderVendorDirList() {
 }
 
 document.getElementById('openVendorDirectoryBtn').addEventListener('click', openVendorDirectory);
+const openVendorsBtn = document.getElementById('openVendorsBtn');
+if (openVendorsBtn) openVendorsBtn.addEventListener('click', openVendorDirectory);
 document.getElementById('closeVendorDir').addEventListener('click', closeVendorDirectory);
 document.getElementById('vendorDirModal').addEventListener('click', e => {
     if (e.target === document.getElementById('vendorDirModal')) closeVendorDirectory();
@@ -5668,8 +5711,11 @@ async function savePayrollData(month, data, venture) {
 }
 
 async function renderPayrollView() {
-    const venture = payrollActiveVenture();
     const isPanel = payrollPanelMode;
+    if (isPanel && !selectedPayrollVenture && venturesList.length > 0) {
+        selectedPayrollVenture = venturesList[0];
+    }
+    const venture = payrollActiveVenture();
     const isAllMode = isPanel && !selectedPayrollVenture;
     const container = document.getElementById(isPanel ? 'payrollPanelContent' : 'payrollViewContainer');
     if (!container) return;
@@ -5908,10 +5954,10 @@ async function renderPayrollView() {
                 if (!emp) return;
                 showConfirm('Delete Employee', `Delete '${emp.name}' from payroll?`, async () => {
                     payrollData.employees = payrollData.employees.filter(e => e.id !== emp.id);
-                    renderPayrollView();
                     showToast('Employee deleted');
                     try {
                         await savePayrollData(payrollMonthKey(), payrollData);
+                        await renderPayrollView();
                     } catch (err) {
                         showToast('Failed to save deletion', true);
                         console.error(err);
@@ -6033,10 +6079,10 @@ document.getElementById('savePayrollEmp').addEventListener('click', async () => 
     }
 
     closePayrollEmpModal();
-    renderPayrollView();
     showToast('Employee saved');
     try {
         await savePayrollData(payrollMonthKey(), payrollData);
+        await renderPayrollView();
     } catch (err) {
         showToast('Failed to save changes', true);
         console.error(err);
