@@ -5787,7 +5787,9 @@ async function renderPayrollView() {
     container.appendChild(headerBar);
 
     // Load payroll data for the month
+    console.log('[Payroll Load] key:', payrollSettingKey(currentMonth, venture));
     payrollData = await loadPayrollData(currentMonth, venture);
+    console.log('[Payroll Load] result employees:', (payrollData.employees || []).length);
 
     // Populate category datalist
     const datalist = document.getElementById('payrollCategoryList');
@@ -6083,10 +6085,20 @@ document.getElementById('savePayrollEmp').addEventListener('click', async () => 
     }
 
     closePayrollEmpModal();
-    showToast('Employee saved');
     try {
-        await savePayrollData(payrollMonthKey(), payrollData);
+        const month = payrollMonthKey();
+        const venture = payrollActiveVenture();
+        console.log('[Payroll Save] key:', payrollSettingKey(month, venture), 'employees:', payrollData.employees.length);
+        await savePayrollData(month, payrollData);
+        console.log('[Payroll Save] API success');
         await renderPayrollView();
+        const loadedCount = (payrollData.employees || []).length;
+        console.log('[Payroll Render] loaded employees:', loadedCount);
+        if (loadedCount === 0 && payrollData.employees.length === 0) {
+            showToast('Employee saved but list is empty — check console', true);
+        } else {
+            showToast('Employee saved');
+        }
     } catch (err) {
         showToast('Failed to save changes', true);
         console.error(err);
