@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lender Progress Report</title>
+<style>
+    /* ===== Print-optimized A4 layout ===== */
+    @page {
+        size: A4;
+        margin: 14mm 14mm 18mm 14mm;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+        font-size: 11px;
+        color: #1a1a1a;
+        line-height: 1.5;
+        background: #fff;
+    }
+
+    /* ===== Header ===== */
+    .report-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        border-bottom: 3px solid #1a1a1a;
+        padding-bottom: 14px;
+        margin-bottom: 20px;
+    }
+    .report-header-left h1 {
+        font-family: 'Archivo', sans-serif;
+        font-size: 22px;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+        margin-bottom: 4px;
+    }
+    .report-header-left .subtitle {
+        font-size: 10px;
+        color: #666;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+    }
+    .report-header-right {
+        text-align: right;
+        font-size: 10px;
+    }
+    .report-header-right .field {
+        margin-bottom: 3px;
+    }
+    .report-header-right .field strong {
+        color: #666;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        font-size: 9px;
+    }
+    .report-header-right .field span {
+        display: block;
+        font-size: 11px;
+        font-weight: 600;
+    }
+
+    /* ===== Project Info Bar ===== */
+    .project-info-bar {
+        background: #f5f4f0;
+        border-radius: 6px;
+        padding: 14px 18px;
+        margin-bottom: 20px;
+        display: flex;
+        gap: 32px;
+        flex-wrap: wrap;
+    }
+    .project-info-bar .info-item {
+        font-size: 10px;
+    }
+    .project-info-bar .info-item strong {
+        display: block;
+        color: #888;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        font-size: 8.5px;
+        margin-bottom: 2px;
+    }
+    .project-info-bar .info-item span {
+        font-size: 11px;
+        font-weight: 600;
+    }
+
+    /* ===== Overall Completion Hero ===== */
+    .completion-hero {
+        text-align: center;
+        padding: 24px 0;
+        margin-bottom: 20px;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        background: linear-gradient(180deg, #fafaf8 0%, #fff 100%);
+    }
+    .completion-hero .label {
+        font-size: 9px;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: #888;
+        margin-bottom: 6px;
+    }
+    .completion-hero .big-number {
+        font-family: 'Archivo', sans-serif;
+        font-size: 52px;
+        font-weight: 800;
+        line-height: 1;
+        color: #1a4d8f;
+    }
+    .completion-hero .big-number .pct-sign {
+        font-size: 28px;
+        font-weight: 600;
+        vertical-align: top;
+        margin-left: 2px;
+    }
+    .completion-hero .sub {
+        font-size: 10px;
+        color: #666;
+        margin-top: 6px;
+    }
+
+    /* ===== Section Headers ===== */
+    .section-title {
+        font-family: 'Archivo', sans-serif;
+        font-size: 14px;
+        font-weight: 700;
+        margin-bottom: 12px;
+        padding-bottom: 6px;
+        border-bottom: 2px solid #1a1a1a;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .section-title .section-num {
+        background: #1a1a1a;
+        color: #fff;
+        font-size: 10px;
+        width: 20px;
+        height: 20px;
+        border-radius: 4px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+    }
+    .report-section {
+        margin-bottom: 24px;
+    }
+
+    /* ===== Block/Floor Breakdown Table ===== */
+    .breakdown-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 10px;
+    }
+    .breakdown-table th {
+        text-align: left;
+        padding: 8px 10px;
+        background: #1a1a1a;
+        color: #fff;
+        font-size: 9px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        font-weight: 600;
+    }
+    .breakdown-table th.num { text-align: right; }
+    .breakdown-table td {
+        padding: 7px 10px;
+        border-bottom: 1px solid #e8e8e8;
+    }
+    .breakdown-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    .breakdown-table tr.block-row td {
+        background: #f5f4f0;
+        font-weight: 700;
+        font-size: 10.5px;
+    }
+    .breakdown-table tr.floor-row td {
+        padding-left: 24px;
+        color: #444;
+    }
+    .breakdown-table .pct-bar {
+        display: inline-block;
+        height: 8px;
+        border-radius: 4px;
+        background: #e8e8e8;
+        width: 80px;
+        margin-right: 8px;
+        vertical-align: middle;
+        overflow: hidden;
+    }
+    .breakdown-table .pct-bar-fill {
+        height: 100%;
+        border-radius: 4px;
+    }
+    .breakdown-table .pct-bar-fill.high { background: #2ecc71; }
+    .breakdown-table .pct-bar-fill.mid { background: #3498db; }
+    .breakdown-table .pct-bar-fill.low { background: #f1c40f; }
+    .breakdown-table .pct-bar-fill.zero { background: #e74c3c; }
+
+    /* ===== Photo Grid ===== */
+    .photo-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+    }
+    .photo-card {
+        border: 1px solid #e0e0e0;
+        border-radius: 6px;
+        overflow: hidden;
+        page-break-inside: avoid;
+    }
+    .photo-card .photo-img {
+        width: 100%;
+        height: 140px;
+        object-fit: cover;
+        display: block;
+        background: #f0f0f0;
+    }
+    .photo-card .photo-placeholder {
+        width: 100%;
+        height: 140px;
+        background: #f0f0f0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #aaa;
+        font-size: 24px;
+    }
+    .photo-card .photo-meta {
+        padding: 6px 8px;
+        font-size: 9px;
+    }
+    .photo-card .photo-meta .photo-location {
+        font-weight: 700;
+        font-size: 10px;
+    }
+    .photo-card .photo-meta .photo-date {
+        color: #888;
+        margin-top: 1px;
+    }
+
+    /* ===== Financial Summary ===== */
+    .financial-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+        margin-bottom: 12px;
+    }
+    .fin-card {
+        border: 1px solid #e0e0e0;
+        border-radius: 6px;
+        padding: 14px;
+        text-align: center;
+    }
+    .fin-card .fin-label {
+        font-size: 8.5px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: #888;
+        margin-bottom: 4px;
+    }
+    .fin-card .fin-value {
+        font-family: 'Archivo', sans-serif;
+        font-size: 20px;
+        font-weight: 700;
+    }
+    .fin-card .fin-value.green { color: #27ae60; }
+    .fin-card .fin-value.blue { color: #1a4d8f; }
+    .fin-card .fin-value.orange { color: #e67e22; }
+    .fin-card .fin-sub {
+        font-size: 9px;
+        color: #999;
+        margin-top: 2px;
+    }
+    .financial-note {
+        font-size: 9px;
+        color: #888;
+        font-style: italic;
+    }
+
+    /* ===== Certification Section ===== */
+    .cert-section {
+        margin-top: 28px;
+        page-break-inside: avoid;
+    }
+    .cert-section .cert-intro {
+        font-size: 10px;
+        color: #555;
+        margin-bottom: 16px;
+        line-height: 1.6;
+    }
+    .cert-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+    }
+    .cert-block {
+        border: 1px solid #ccc;
+        border-radius: 6px;
+        padding: 18px 16px;
+    }
+    .cert-block .cert-role {
+        font-size: 10px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: #1a1a1a;
+        margin-bottom: 12px;
+    }
+    .cert-block .cert-line {
+        border-bottom: 1px solid #999;
+        height: 24px;
+        margin-bottom: 4px;
+    }
+    .cert-block .cert-line-label {
+        font-size: 8.5px;
+        color: #888;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        margin-bottom: 10px;
+    }
+    .cert-block .cert-signature {
+        height: 40px;
+        margin-bottom: 4px;
+    }
+    .cert-date-row {
+        margin-top: 16px;
+        display: flex;
+        gap: 20px;
+    }
+    .cert-date-row .cert-date-field {
+        flex: 1;
+    }
+    .cert-date-row .cert-date-field .cert-line {
+        border-bottom: 1px solid #999;
+        height: 24px;
+        margin-bottom: 4px;
+    }
+
+    /* ===== Footer ===== */
+    .report-footer {
+        margin-top: 32px;
+        padding-top: 12px;
+        border-top: 1px solid #ddd;
+        font-size: 8.5px;
+        color: #999;
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+    }
+    .report-footer .footer-left {
+        max-width: 60%;
+    }
+    .report-footer .footer-right {
+        text-align: right;
+    }
+    .report-footer .ref-id {
+        font-weight: 700;
+        color: #666;
+        font-size: 9px;
+    }
+
+    /* ===== Print-only ===== */
+    @media print {
+        .no-print { display: none !important; }
+        .report-section { page-break-inside: avoid; }
+        .photo-grid { page-break-inside: avoid; }
+    }
+    @media screen {
+        body {
+            background: #e8e6e2;
+            padding: 24px;
+        }
+        .report-page {
+            max-width: 210mm;
+            margin: 0 auto;
+            background: #fff;
+            padding: 14mm;
+            box-shadow: 0 2px 16px rgba(0,0,0,0.12);
+            border-radius: 4px;
+        }
+    }
+</style>
+</head>
+<body>
+<div class="report-page">
+
+    <!-- ===== HEADER ===== -->
+    <div class="report-header">
+        <div class="report-header-left">
+            <h1>{{ venture.name }}</h1>
+            <div class="subtitle">Construction Progress Report &mdash; For Lender / Bank Review</div>
+        </div>
+        <div class="report-header-right">
+            <div class="field">
+                <strong>Report Date</strong>
+                <span>{{ report_date }}</span>
+            </div>
+            <div class="field">
+                <strong>Prepared By</strong>
+                <span>{{ prepared_by }}</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== PROJECT INFO BAR ===== -->
+    <div class="project-info-bar">
+        <div class="info-item">
+            <strong>Project Address</strong>
+            <span>{{ venture.address or 'Not available' }}</span>
+        </div>
+        {% if venture.rera_registration %}
+        <div class="info-item">
+            <strong>RERA Registration</strong>
+            <span>{{ venture.rera_registration }}</span>
+        </div>
+        {% endif %}
+        <div class="info-item">
+            <strong>Reporting Period</strong>
+            <span>As of {{ report_date }}</span>
+        </div>
+    </div>
+
+    <!-- ===== OVERALL COMPLETION ===== -->
+    <div class="completion-hero">
+        <div class="label">Overall Project Completion</div>
+        <div class="big-number">{{ overall_pct }}<span class="pct-sign">%</span></div>
+        <div class="sub">Aggregated across {{ blocks|length }} block{{ 's' if blocks|length != 1 else '' }}, {{ total_cells }} work item{{ 's' if total_cells != 1 else '' }}</div>
+    </div>
+
+    <!-- ===== BLOCK / FLOOR BREAKDOWN ===== -->
+    <div class="report-section">
+        <div class="section-title">
+            <span class="section-num">1</span>
+            Block &amp; Floor-wise Progress Breakdown
+        </div>
+        <table class="breakdown-table">
+            <thead>
+                <tr>
+                    <th>Block / Floor</th>
+                    <th class="num">Work Items</th>
+                    <th class="num">Completion</th>
+                    <th>Progress</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for block in blocks %}
+                <tr class="block-row">
+                    <td>{{ block.block }}</td>
+                    <td class="num">{{ block.cell_count }}</td>
+                    <td class="num">{{ block.pct_complete }}%</td>
+                    <td>
+                        <span class="pct-bar">
+                            <span class="pct-bar-fill {% if block.pct_complete >= 75 %}high{% elif block.pct_complete >= 40 %}mid{% elif block.pct_complete > 0 %}low{% else %}zero{% endif %}" style="width:{{ block.pct_complete }}%"></span>
+                        </span>
+                    </td>
+                </tr>
+                {% for floor in block.floors %}
+                <tr class="floor-row">
+                    <td>&mdash; {{ floor.floor }}</td>
+                    <td class="num">{{ floor.cell_count }}</td>
+                    <td class="num">{{ floor.pct_complete }}%</td>
+                    <td>
+                        <span class="pct-bar">
+                            <span class="pct-bar-fill {% if floor.pct_complete >= 75 %}high{% elif floor.pct_complete >= 40 %}mid{% elif floor.pct_complete > 0 %}low{% else %}zero{% endif %}" style="width:{{ floor.pct_complete }}%"></span>
+                        </span>
+                    </td>
+                </tr>
+                {% endfor %}
+                {% else %}
+                <tr>
+                    <td colspan="4" style="text-align:center;color:#888;padding:20px;">No progress data available for this project.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- ===== PHOTO GRID ===== -->
+    <div class="report-section">
+        <div class="section-title">
+            <span class="section-num">2</span>
+            Site Progress Photographs
+        </div>
+        <div class="photo-grid">
+            {% for photo in photos %}
+            <div class="photo-card">
+                {% if photo.src %}
+                <img class="photo-img" src="{{ photo.src }}" alt="Site photo">
+                {% else %}
+                <div class="photo-placeholder">&#128247;</div>
+                {% endif %}
+                <div class="photo-meta">
+                    <div class="photo-location">{{ photo.block }} &mdash; {{ photo.floor }}</div>
+                    <div class="photo-date">Captured: {{ photo.date }}</div>
+                </div>
+            </div>
+            {% else %}
+            <div style="grid-column: 1 / -1; color: #888; text-align: center; padding: 20px;">No site photographs available for this project.</div>
+            {% endfor %}
+        </div>
+    </div>
+
+    {% if include_financials and financials %}
+    <!-- ===== FINANCIAL SUMMARY (toggleable) ===== -->
+    <div class="report-section" id="financialSection">
+        <div class="section-title">
+            <span class="section-num">3</span>
+            Financial Summary
+        </div>
+        <div class="financial-grid">
+            <div class="fin-card">
+                <div class="fin-label">Funds Collected</div>
+                <div class="fin-value green">{{ financials.collected | inr }}</div>
+                <div class="fin-sub">From customer invoices (paid)</div>
+            </div>
+            <div class="fin-card">
+                <div class="fin-label">Funds Utilized</div>
+                <div class="fin-value blue">{{ financials.utilized | inr }}</div>
+                <div class="fin-sub">Total expenditures to date</div>
+            </div>
+            <div class="fin-card">
+                <div class="fin-label">Escrow Balance</div>
+                <div class="fin-value orange">{{ financials.escrow_balance | inr }}</div>
+                <div class="fin-sub">Available balance</div>
+            </div>
+        </div>
+        <p class="financial-note">Figures derived from recorded invoices and site expenditures. For detailed transaction-level breakdown, please contact the builder.</p>
+    </div>
+    {% endif %}
+
+    <!-- ===== CERTIFICATION SECTION ===== -->
+    <div class="report-section cert-section">
+        <div class="section-title">
+            <span class="section-num">4</span>
+            Certified By
+        </div>
+        <p class="cert-intro">
+            I/We hereby certify that the construction progress depicted in this report is a true and accurate representation of the work completed as of the report date, based on live project records maintained in the Penguin OS construction tracking system.
+        </p>
+        <div class="cert-grid">
+            <!-- Engineer -->
+            <div class="cert-block">
+                <div class="cert-role">Civil Engineer</div>
+                <div class="cert-line"></div>
+                <div class="cert-line-label">Name &amp; Registration No.</div>
+                <div class="cert-signature"></div>
+                <div class="cert-line"></div>
+                <div class="cert-line-label">Signature</div>
+            </div>
+            <!-- Architect -->
+            <div class="cert-block">
+                <div class="cert-role">Architect</div>
+                <div class="cert-line"></div>
+                <div class="cert-line-label">Name &amp; Registration No.</div>
+                <div class="cert-signature"></div>
+                <div class="cert-line"></div>
+                <div class="cert-line-label">Signature</div>
+            </div>
+        </div>
+        <div class="cert-date-row">
+            <div class="cert-date-field">
+                <div class="cert-line"></div>
+                <div class="cert-line-label">Date</div>
+            </div>
+            <div class="cert-date-field">
+                <div class="cert-line"></div>
+                <div class="cert-line-label">Place</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== FOOTER ===== -->
+    <div class="report-footer">
+        <div class="footer-left">
+            Generated from live project records on {{ report_date }} via Penguin OS construction tracking system.<br>
+            The bank may request underlying cell-level data using the reference ID below.
+        </div>
+        <div class="footer-right">
+            <div class="ref-id">REF: {{ ref_id }}</div>
+            <div>Page 1 of 1</div>
+        </div>
+    </div>
+
+</div>
+</body>
+</html>

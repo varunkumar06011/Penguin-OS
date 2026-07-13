@@ -1,54 +1,5 @@
-/* ========================
-   Font System — Swiggy/Zomato inspired
-   - Display/Branding: Geometric sans-serif (Manrope as OKRA/Metropolis
-     substitute, Futura fallback for local installs)
-   - Body/UI: System sans-serif stack — San Francisco (iOS), Roboto (Android),
-     Segoe UI (Windows), with Inter as web fallback
-   - To enable real OKRA: place font files in /static/fonts/ and uncomment
-     the @font-face blocks below.
-   ======================== */
+/* ============================================================
+   FONT IMPORTS — Archivo (display/headers) + Inter (body)
+   ============================================================ */
 
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-
-/* Okra @font-face blocks — uncomment when font files are added to /static/fonts/
-@font-face {
-    font-family: 'Okra';
-    src: url('/static/fonts/Okra-Regular.woff2') format('woff2'),
-         url('/static/fonts/Okra-Regular.woff') format('woff'),
-         url('/static/fonts/Okra-Regular.ttf') format('truetype');
-    font-weight: 400;
-    font-style: normal;
-    font-display: swap;
-}
-
-@font-face {
-    font-family: 'Okra';
-    src: url('/static/fonts/Okra-Medium.woff2') format('woff2'),
-         url('/static/fonts/Okra-Medium.woff') format('woff'),
-         url('/static/fonts/Okra-Medium.ttf') format('truetype');
-    font-weight: 500;
-    font-style: normal;
-    font-display: swap;
-}
-
-@font-face {
-    font-family: 'Okra';
-    src: url('/static/fonts/Okra-SemiBold.woff2') format('woff2'),
-         url('/static/fonts/Okra-SemiBold.woff') format('woff'),
-         url('/static/fonts/Okra-SemiBold.ttf') format('truetype');
-    font-weight: 600;
-    font-style: normal;
-    font-display: swap;
-}
-
-@font-face {
-    font-family: 'Okra';
-    src: url('/static/fonts/Okra-Bold.woff2') format('woff2'),
-         url('/static/fonts/Okra-Bold.woff') format('woff'),
-         url('/static/fonts/Okra-Bold.ttf') format('truetype');
-    font-weight: 700;
-    font-style: normal;
-    font-display: swap;
-}
-*/
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Inter:wght@400;500;600;700&display=swap');

@@ -911,5 +911,51 @@
     loadPatrolLogsPortal();
     loadVisitorPasses();
 
+    // --- Real-time polling for cross-role data sync ---
+    // Security/admin dashboards get fast updates for SOS and visitor requests;
+    // deliveries and complaints poll at a lighter interval.
+    let rwaPollFast = null;
+    let rwaPollSlow = null;
+
+    function startRWAPolling() {
+        if (rwaPollFast) clearInterval(rwaPollFast);
+        if (rwaPollSlow) clearInterval(rwaPollSlow);
+
+        // Fast poll: SOS alerts + visitor requests (5s)
+        rwaPollFast = setInterval(async () => {
+            if (document.querySelector('.modal.show')) return;
+            if (rwaRole === 'security' || rwaRole === 'admin' || rwaRole === 'manager') {
+                try {
+                    const res = await rwaGet('/api/rwa/sos/active');
+                    const el = document.getElementById('rwaSosAlertsList');
+                    if (el && JSON.stringify(el.dataset.last || '') !== JSON.stringify(res)) {
+                        el.dataset.last = JSON.stringify(res);
+                        if (res && res.length > 0) {
+                            el.innerHTML = res.map(a => '<div class="rwa-sos-alert" style="padding:12px;border:2px solid #e74c3c;border-radius:6px;margin-bottom:8px;"><b>SOS from ' + esc(a.flat_no || a.resident_name || 'Unknown') + '</b><br>' + fmtDate(a.created_at) + ' <button onclick="rwaAckSos(\'' + a.id + '\')" class="btn-primary" style="margin-left:8px;">Acknowledge</button></div>').join('');
+                        } else {
+                            el.innerHTML = '<p style="color:#888;">No active SOS alerts.</p>';
+                        }
+                    }
+                } catch (e) {}
+            }
+        }, 5000);
+
+        // Slow poll: deliveries + complaints (15s)
+        rwaPollSlow = setInterval(async () => {
+            if (document.querySelector('.modal.show')) return;
+            if (rwaRole === 'security' || rwaRole === 'admin' || rwaRole === 'manager') {
+                loadDeliveries();
+                loadComplaints();
+            }
+        }, 15000);
+    }
+
+    // Wrap initRWA to start polling after init completes
+    const _origInitRWA = initRWA;
+    initRWA = async function() {
+        await _origInitRWA();
+        startRWAPolling();
+    };
+
     initRWA();
 })();

@@ -1,0 +1,269 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RERA QPR - Penguin OS</title>
+    <link rel="icon" href="/static/images/favicon.jpg" type="image/jpeg">
+    <link rel="stylesheet" href="/static/css/fonts.css?v=15">
+    <link rel="stylesheet" href="/static/css/theme.css?v=15">
+    <link rel="stylesheet" href="/static/css/style.css?v=15">
+    <style>
+        .rera-body { background: var(--content-bg); min-height: 100vh; }
+        .rera-header { background: #1a1a1a; color: #fff; padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; position: fixed; top: 0; left: 0; right: 0; z-index: 210; height: 60px; box-sizing: border-box; }
+        .rera-header-brand { display: flex; align-items: center; gap: 10px; font-weight: 700; }
+        .rera-main { max-width: 1200px; margin: 0 auto; padding: 84px 24px 24px 24px; }
+        .rera-card { background: #fff; border-radius: var(--card-radius); box-shadow: var(--elevation-1); padding: 20px; margin-bottom: 20px; }
+        .rera-card h3 { margin: 0 0 16px; }
+        .rera-btn { padding: 10px 18px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; font-size: 0.9rem; }
+        .rera-btn-primary { background: #1a1a1a; color: #fff; }
+        .rera-btn-secondary { background: #f0f2f5; color: #1a1a1a; }
+        .rera-btn-success { background: #27ae60; color: #fff; }
+        .rera-btn-danger { background: #c0392b; color: #fff; }
+        .rera-btn-warning { background: #e67e22; color: #fff; }
+        .rera-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+        .rera-table th, .rera-table td { text-align: left; padding: 12px 10px; border-bottom: 1px solid #f0f0f0; }
+        .rera-table th { font-size: 0.72rem; text-transform: uppercase; color: #888; letter-spacing: 0.04em; }
+        .rera-empty { color: #888; text-align: center; padding: 32px; }
+        .rera-form-row { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 14px; }
+        .rera-form-field { flex: 1; min-width: 160px; display: flex; flex-direction: column; gap: 5px; }
+        .rera-form-field label { font-size: 0.78rem; font-weight: 600; color: #555; text-transform: uppercase; letter-spacing: 0.04em; }
+        .rera-form-field input, .rera-form-field select { padding: 10px 12px; border: 1.5px solid #e0e4e8; border-radius: 8px; font-size: 0.95rem; }
+        .rera-back { color: #1a1a1a; text-decoration: none; font-size: 0.9rem; font-weight: 600; }
+        .rera-section-title { font-size: 1.1rem; font-weight: 700; margin: 0 0 12px; padding-bottom: 8px; border-bottom: 2px solid #f0f0f0; }
+
+        /* Checklist indicators */
+        .checklist-dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 8px; }
+        .checklist-dot.green { background: #27ae60; }
+        .checklist-dot.yellow { background: #f1c40f; }
+        .checklist-dot.red { background: #c0392b; }
+        .checklist-row { display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid #f5f5f5; }
+        .checklist-row:last-child { border-bottom: none; }
+        .checklist-field { flex: 1; font-weight: 600; font-size: 0.9rem; }
+        .checklist-source { color: #888; font-size: 0.78rem; margin: 0 16px; }
+        .checklist-detail { font-size: 0.82rem; color: #555; }
+
+        /* Progress bar */
+        .progress-bar-container { background: #e8e8e8; border-radius: 10px; height: 24px; overflow: hidden; position: relative; }
+        .progress-bar-fill { height: 100%; border-radius: 10px; transition: width 0.5s ease; display: flex; align-items: center; justify-content: center; font-size: 0.72rem; font-weight: 700; color: #fff; }
+        .progress-bar-fill.high { background: linear-gradient(90deg, #27ae60, #2ecc71); }
+        .progress-bar-fill.mid { background: linear-gradient(90deg, #2980b9, #3498db); }
+        .progress-bar-fill.low { background: linear-gradient(90deg, #e67e22, #f39c12); }
+        .progress-bar-fill.zero { background: linear-gradient(90deg, #c0392b, #e74c3c); }
+
+        /* Stat cards */
+        .stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; margin-bottom: 20px; }
+        .stat-card { background: #fff; border-radius: var(--card-radius); box-shadow: var(--elevation-1); padding: 20px; }
+        .stat-card h4 { margin: 0 0 8px; font-size: 0.78rem; text-transform: uppercase; color: #888; letter-spacing: 0.04em; }
+        .stat-card .stat-value { font-size: 1.6rem; font-weight: 700; }
+        .stat-card .stat-sub { font-size: 0.78rem; color: #888; margin-top: 4px; }
+
+        /* Countdown badge */
+        .countdown-badge { display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px; border-radius: 8px; font-weight: 700; font-size: 0.9rem; }
+        .countdown-badge.urgent { background: #fce4e4; color: #c0392b; }
+        .countdown-badge.warning { background: #fef5e7; color: #e67e22; }
+        .countdown-badge.ok { background: #e8f8f0; color: #27ae60; }
+
+        /* Locked badge */
+        .locked-badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; background: #d4edda; color: #155724; }
+        .draft-badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; background: #fff3cd; color: #856404; }
+
+        /* Form B report sections */
+        .formb-section { margin-bottom: 24px; }
+        .formb-section h4 { font-size: 1rem; font-weight: 700; margin: 0 0 12px; padding-bottom: 6px; border-bottom: 2px solid #f0f0f0; }
+        .formb-meta { background: #f8f9fa; border-radius: 8px; padding: 16px; margin-bottom: 20px; }
+        .formb-meta-row { display: flex; gap: 24px; flex-wrap: wrap; }
+        .formb-meta-item { font-size: 0.85rem; }
+        .formb-meta-item strong { color: #555; }
+
+        .rera-tab-content { display: none; }
+        .rera-tab-content.active { display: block; }
+
+        /* Print styles */
+        @media print {
+            .rera-header, .rera-sidebar-item, .rera-btn, .no-print { display: none !important; }
+            .rera-main { padding: 20px; max-width: 100%; }
+            .rera-card { box-shadow: none; border: 1px solid #ddd; }
+        }
+
+        /* Sidebar */
+        #reraApp { display: flex; min-height: 100vh; }
+        #reraSidebar { position: fixed; top: 60px; left: 0; bottom: 0; width: 240px; background: #1a1a1a; color: rgba(255,255,255,0.7); overflow-y: auto; z-index: 200; transform: translateX(-100%); transition: transform 0.25s ease; }
+        #reraApp.sidebar-open #reraSidebar { transform: translateX(0); }
+        #reraSidebarHeader { padding: 16px; border-bottom: 1px solid rgba(255,255,255,0.1); font-weight: 700; color: #fff; }
+        #reraSidebarNav { padding: 8px 0; }
+        .rera-sidebar-section { padding: 14px 16px 6px; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.06em; color: rgba(255,255,255,0.4); }
+        .rera-sidebar-item { display: block; width: 100%; text-align: left; padding: 12px 16px; border: none; background: transparent; color: rgba(255,255,255,0.7); font-size: 0.9rem; font-weight: 600; cursor: pointer; border-left: 4px solid transparent; }
+        .rera-sidebar-item:hover { background: rgba(255,255,255,0.05); color: #fff; }
+        .rera-sidebar-item.active { background: rgba(255,255,255,0.1); color: #fff; border-left-color: #fff; }
+        #reraSidebarToggle { display: none; position: fixed; top: 74px; left: 14px; z-index: 999; background: #1a1a1a; color: #fff; border: none; width: 40px; height: 40px; border-radius: 8px; align-items: center; justify-content: center; font-size: 1.2rem; cursor: pointer; }
+        #reraSidebarScrim { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 199; }
+        #reraApp.sidebar-open #reraSidebarScrim { display: block; }
+        #reraMain { flex: 1; margin-left: 0; min-width: 0; width: 100%; }
+        @media (min-width: 901px) {
+            #reraSidebar { transform: translateX(0); position: fixed; }
+            #reraMain { margin-left: 240px; }
+            #reraSidebarToggle { display: none !important; }
+            #reraSidebarScrim { display: none !important; }
+            .rera-header { padding-left: 264px; }
+        }
+        @media (max-width: 900px) {
+            #reraSidebarToggle { display: flex; }
+            .rera-main { padding-top: 84px; }
+        }
+    </style>
+</head>
+<body class="rera-body">
+    <header class="rera-header">
+        <div class="rera-header-brand">
+            <img src="/static/images/penguin-os-logo.jpg" onerror="this.onerror=null;this.src='data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAUDBAQEAwUEBAQFBQUGBwwIBwcHBw8LCwkMEQ8SEhEPERETFhwXExQaFRERGCEYGh0dHx8fExciJCIeJBweHx7/2wBDAQUFBQcGBw4ICA4eFBEUHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh7/wAARCADIAMgDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD7KpKWigAooooAKKKSgBaKKzPE+v6N4Y0S41rX9St9O0+3XdLPM2APQDuSewHJ7UAadYnizxb4Y8J2f2zxLr2naTCRlTczqhb/AHVPLfgDXyH8Yf2r9f1u6k0T4Z2kmmWjt5a38kW+7nJ4HlpyEz26t9KxfAv7NvxI8fXI8R+P9Wl0K3nId59SczXsoP8AsMfl/wCBkH2rZUrK83Yy9rd2grnuHin9rX4X6U7xaVHrGuyLwGtrYRRn/gUhU/pXD3H7ZdxdTGLQ/hvLcN2EmoFmP/AUjP8AOvUvA/7M3wn8NRxyT6K+v3S4Jn1OTzQT7RjCY/A16zpGj6RpEAg0nS7HT4gMBLa3WJR+CgUc1NbK4WqPdny9a/tPfEqTEh+CuoSxdcxi56fXyjWxpv7W2lW0yxeL/h94j0LnDSKBIB+DhD/Ovpeo7mCC5iMNzDHNG3BSRQwP4Gp5ofylcsu5574K+MvgfxkAfDeqwajKRn7Kj+XdD/tjJtZv+A7q7PTNe0nUZWgtrxPtCnDQSApKp9CrYNcT4x+Bnwu8UP5934VtLG9B3Jeab/osyN/eBTAJ+oNc7ceAfGfhuJIH1Gbx5oUQxH9pZYtasl9Y5uEuAP7j7T6HtXFiI14+9Qaf92Wn3SW3zTOuhKjL3aya81r96e/yaPa6K8q03xVrfh1IZLx5dY0WQ7UndCk0R7o4blXHdG/OvR9F1aw1myW80+4WaI9ezKfQjsa5sFmlLEzdFpxqLeL3+XdeaN8Xl1XDxVRNSg9pLb/gPyZdpaKK9I4AooooAKKKKACiiigAooooAKSlooAKKSmyyRwxPNK6xxopZ3Y4Cgckk9hQBg/ELxhoXgTwpeeJfEN0ILK2XgDl5XP3Y0Hdieg/HoCa+BPGviz4hftFfEi30uwtZXjaQ/2fpkbnyLOPvJI3TOPvOfoOwq5+0P8AEbV/jR8UbfQ/DiTXOkwXP2TRrSP/AJeJGO0zEerds9F/GvrH4Q/D7Q/gb8OGmljjutZuED6ne8De+CdgJ+7EvIHryeprobjh4c8tzBKVaXLHYb...'" style="width:32px;height:32px;border-radius:6px;">
+            <span>RERA QPR</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:16px;">
+            <a href="/" class="rera-btn rera-btn-secondary" style="padding:6px 12px;font-size:0.8rem;">Back to Tracker</a>
+            <button id="reraLogout" class="rera-btn rera-btn-secondary" style="padding:6px 12px;font-size:0.8rem;">Logout</button>
+        </div>
+    </header>
+
+    <div id="reraApp">
+        <aside id="reraSidebar">
+            <div id="reraSidebarHeader">RERA QPR</div>
+            <nav id="reraSidebarNav">
+                <div class="rera-sidebar-section">Modules</div>
+                <button class="rera-sidebar-item active" data-tab="readiness">Readiness Dashboard</button>
+                <button class="rera-sidebar-item" data-tab="draft">Quarterly Draft</button>
+                <button class="rera-sidebar-item" data-tab="filed">Filed Reports</button>
+                <button class="rera-sidebar-item" data-tab="approvals">Statutory Approvals</button>
+                <button class="rera-sidebar-item" data-tab="thresholds">Color Thresholds</button>
+            </nav>
+        </aside>
+        <div id="reraSidebarScrim"></div>
+        <button id="reraSidebarToggle">&#9776;</button>
+
+        <main id="reraMain" class="rera-main">
+
+        <!-- Readiness Dashboard Tab -->
+        <div class="rera-tab-content active" id="tab-readiness">
+            <div class="rera-card">
+                <h3>RERA Readiness Dashboard</h3>
+                <div class="rera-form-row">
+                    <div class="rera-form-field" style="max-width:300px;">
+                        <label>Select Project</label>
+                        <select id="reraReadinessVenture">
+                            <option value="">Loading ventures...</option>
+                        </select>
+                    </div>
+                    <div class="rera-form-field" style="align-self:flex-end;">
+                        <button id="reraLoadReadinessBtn" class="rera-btn rera-btn-primary">Load Dashboard</button>
+                    </div>
+                </div>
+            </div>
+            <div id="reraReadinessContent"></div>
+        </div>
+
+        <!-- Quarterly Draft Tab -->
+        <div class="rera-tab-content" id="tab-draft">
+            <div class="rera-card">
+                <h3>Quarterly Draft Report (Form B)</h3>
+                <div class="rera-form-row">
+                    <div class="rera-form-field" style="max-width:300px;">
+                        <label>Select Project</label>
+                        <select id="reraDraftVenture">
+                            <option value="">Loading ventures...</option>
+                        </select>
+                    </div>
+                    <div class="rera-form-field" style="max-width:200px;">
+                        <label>Quarter</label>
+                        <input type="text" id="reraDraftQuarter" placeholder="2026-Q2">
+                    </div>
+                    <div class="rera-form-field" style="align-self:flex-end;">
+                        <button id="reraGenerateDraftBtn" class="rera-btn rera-btn-primary">Generate Draft</button>
+                    </div>
+                </div>
+            </div>
+            <div id="reraDraftContent"></div>
+        </div>
+
+        <!-- Filed Reports Tab -->
+        <div class="rera-tab-content" id="tab-filed">
+            <div class="rera-card">
+                <h3>Filed / Locked Reports</h3>
+                <div class="rera-form-row">
+                    <div class="rera-form-field" style="max-width:300px;">
+                        <label>Select Project</label>
+                        <select id="reraFiledVenture">
+                            <option value="">Loading ventures...</option>
+                        </select>
+                    </div>
+                    <div class="rera-form-field" style="align-self:flex-end;">
+                        <button id="reraLoadFiledBtn" class="rera-btn rera-btn-primary">Load Reports</button>
+                    </div>
+                </div>
+            </div>
+            <div id="reraFiledContent"></div>
+        </div>
+
+        <!-- Statutory Approvals Tab -->
+        <div class="rera-tab-content" id="tab-approvals">
+            <div class="rera-card">
+                <h3>Statutory Approvals & Renewals</h3>
+                <div class="rera-form-row">
+                    <div class="rera-form-field" style="max-width:300px;">
+                        <label>Select Project</label>
+                        <select id="reraApprovalsVenture">
+                            <option value="">Loading ventures...</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="rera-form-row">
+                    <div class="rera-form-field"><label>Approval Name</label><input type="text" id="reraApName" placeholder="e.g. Building Plan Approval"></div>
+                    <div class="rera-form-field"><label>Issuing Authority</label><input type="text" id="reraApAuthority" placeholder="e.g. GHMC"></div>
+                    <div class="rera-form-field"><label>Issued Date</label><input type="date" id="reraApIssued"></div>
+                    <div class="rera-form-field"><label>Expiry Date</label><input type="date" id="reraApExpiry"></div>
+                    <div class="rera-form-field"><label>Status</label>
+                        <select id="reraApStatus">
+                            <option value="active">Active</option>
+                            <option value="pending">Pending</option>
+                            <option value="expired">Expired</option>
+                            <option value="renewed">Renewed</option>
+                        </select>
+                    </div>
+                    <div class="rera-form-field"><label>Remarks</label><input type="text" id="reraApRemarks" placeholder="Optional notes"></div>
+                    <div class="rera-form-field" style="align-self:flex-end;"><button id="reraAddApprovalBtn" class="rera-btn rera-btn-primary">Add</button></div>
+                </div>
+            </div>
+            <div class="rera-card">
+                <h3>Approvals on Record</h3>
+                <div id="reraApprovalsList"><div class="rera-empty">Select a project to view approvals.</div></div>
+            </div>
+        </div>
+
+        <!-- Color Thresholds Tab -->
+        <div class="rera-tab-content" id="tab-thresholds">
+            <div class="rera-card">
+                <h3>Color â†’ % Completion Thresholds</h3>
+                <p style="color:#666;margin-bottom:16px;">Configure how each cell color maps to a % completion value. Global defaults apply to all projects; per-project overrides take precedence.</p>
+                <div class="rera-form-row">
+                    <div class="rera-form-field" style="max-width:300px;">
+                        <label>Project Override (optional)</label>
+                        <select id="reraThresholdVenture">
+                            <option value="">Global defaults</option>
+                        </select>
+                    </div>
+                </div>
+                <div id="reraThresholdsGrid"></div>
+                <div style="margin-top:16px;">
+                    <button id="reraSaveThresholdsBtn" class="rera-btn rera-btn-primary">Save Thresholds</button>
+                </div>
+            </div>
+        </div>
+
+    </main>
+    </div>
+
+    <script src="/static/js/rera.js"></script>
+</body>
+</html>
+
+
+

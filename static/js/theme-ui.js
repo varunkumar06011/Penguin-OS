@@ -35,7 +35,6 @@
         var toggle = document.getElementById('sidebarToggle');
         var scrim = document.getElementById('sidebarScrim');
         var collapseBtn = document.getElementById('sidebarCollapse');
-        var dashboardBtn = document.getElementById('sidebarDashboard');
         var sidebar = document.getElementById('appSidebar');
 
         if (toggle && !toggle._bound) {
@@ -50,22 +49,16 @@
             collapseBtn.addEventListener('click', collapseSidebar);
             collapseBtn._bound = true;
         }
-        if (dashboardBtn && !dashboardBtn._bound) {
-            dashboardBtn.addEventListener('click', function () {
-                goDashboard();
-                closeSidebar();
-            });
-            dashboardBtn._bound = true;
-        }
 
-        // Any nav item click should close the mobile sidebar overlay.
-        if (sidebar && !sidebar._navBound) {
-            sidebar.querySelectorAll('.sidebar-nav-item, .sidebar-footer .sidebar-nav-item').forEach(function (item) {
-                item.addEventListener('click', function () {
-                    if (window.innerWidth <= 900) closeSidebar();
-                });
+        // Delegate nav item clicks for mobile sidebar close (works with dynamically rendered items)
+        if (sidebar && !sidebar._navDelegated) {
+            sidebar.addEventListener('click', function(e) {
+                var item = e.target.closest('.sidebar-nav-item');
+                if (item && window.innerWidth <= 900) {
+                    closeSidebar();
+                }
             });
-            sidebar._navBound = true;
+            sidebar._navDelegated = true;
         }
     }
 

@@ -1,19 +1,19 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RWA Admin - Penguin OS</title>
     <link rel="icon" href="/static/images/favicon.jpg" type="image/jpeg">
-    <link rel="stylesheet" href="/static/css/fonts.css">
-    <link rel="stylesheet" href="/static/css/style.css">
-    <link rel="stylesheet" href="/static/css/theme.css?v=4">
+    <link rel="stylesheet" href="/static/css/fonts.css?v=15">
+    <link rel="stylesheet" href="/static/css/theme.css?v=15">
+    <link rel="stylesheet" href="/static/css/style.css?v=15">
     <style>
         .rwa-body { background: var(--content-bg); min-height: 100vh; }
         .rwa-header { background: #1a1a1a; color: #fff; padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; position: fixed; top: 0; left: 0; right: 0; z-index: 210; height: 60px; box-sizing: border-box; }
         .rwa-header-brand { display: flex; align-items: center; gap: 10px; font-weight: 700; }
         .rwa-main { max-width: 1200px; margin: 0 auto; padding: 84px 24px 24px 24px; }
-        .rwa-card { background: #fff; border-radius: var(--card-radius); box-shadow: var(--card-shadow); padding: 20px; margin-bottom: 20px; }
+        .rwa-card { background: #fff; border-radius: var(--card-radius); box-shadow: var(--elevation-1); padding: 20px; margin-bottom: 20px; }
         .rwa-card h3 { margin: 0 0 16px; }
         .rwa-btn { padding: 10px 18px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; font-size: 0.9rem; }
         .rwa-btn-primary { background: #1a1a1a; color: #fff; }
@@ -147,7 +147,7 @@
                 <h3>Create Maintenance Invoice</h3>
                 <div class="rwa-form-row">
                     <div class="rwa-form-field"><label>Billing Month</label><input type="month" id="rwaInvMonth"></div>
-                    <div class="rwa-form-field"><label>Amount (₹)</label><input type="number" id="rwaInvAmount" placeholder="2500" step="0.01"></div>
+                    <div class="rwa-form-field"><label>Amount (â‚¹)</label><input type="number" id="rwaInvAmount" placeholder="2500" step="0.01"></div>
                     <div class="rwa-form-field"><label>Due Date</label><input type="date" id="rwaInvDue"></div>
                     <div class="rwa-form-field" style="align-self:flex-end;"><button id="rwaCreateInvBtn" class="rwa-btn rwa-btn-primary">Create</button></div>
                 </div>
@@ -164,7 +164,7 @@
                 <h3>Record Manual Payment</h3>
                 <div class="rwa-form-row">
                     <div class="rwa-form-field" style="flex:2;"><label>Invoice</label><select id="rwaPayInv"><option value="">Select invoice...</option></select></div>
-                    <div class="rwa-form-field"><label>Amount (₹)</label><input type="number" id="rwaPayAmount" step="0.01"></div>
+                    <div class="rwa-form-field"><label>Amount (â‚¹)</label><input type="number" id="rwaPayAmount" step="0.01"></div>
                     <div class="rwa-form-field"><label>Method</label><select id="rwaPayMethod"><option value="manual">Manual</option><option value="cash">Cash</option><option value="upi">UPI</option><option value="cheque">Cheque</option></select></div>
                     <div class="rwa-form-field" style="align-self:flex-end;"><button id="rwaRecordPayBtn" class="rwa-btn rwa-btn-primary">Record</button></div>
                 </div>
@@ -182,8 +182,8 @@
                 <div class="rwa-form-row">
                     <div class="rwa-form-field"><label>Vendor Name</label><input type="text" id="rwaVlName" placeholder="e.g. CleanPro Services"></div>
                     <div class="rwa-form-field"><label>Category</label><input type="text" id="rwaVlCat" placeholder="cleaning / security / maintenance"></div>
-                    <div class="rwa-form-field"><label>Invoice Amount (₹)</label><input type="number" id="rwaVlInvAmt" step="0.01"></div>
-                    <div class="rwa-form-field"><label>Paid Amount (₹)</label><input type="number" id="rwaVlPaidAmt" step="0.01" value="0"></div>
+                    <div class="rwa-form-field"><label>Invoice Amount (â‚¹)</label><input type="number" id="rwaVlInvAmt" step="0.01"></div>
+                    <div class="rwa-form-field"><label>Paid Amount (â‚¹)</label><input type="number" id="rwaVlPaidAmt" step="0.01" value="0"></div>
                     <div class="rwa-form-field" style="align-self:flex-end;"><button id="rwaAddVlBtn" class="rwa-btn rwa-btn-primary">Add</button></div>
                 </div>
             </div>
@@ -342,10 +342,10 @@
                 const items = await apiGet('/api/rwa/invoices');
                 const el = document.getElementById('rwaInvList');
                 const sel = document.getElementById('rwaPayInv');
-                if (sel) { sel.innerHTML = '<option value="">Select invoice...</option>' + items.filter(i => i.status === 'unpaid').map(i => `<option value="${i.id}">${i.invoice_number} — ₹${i.amount}</option>`).join(''); }
+                if (sel) { sel.innerHTML = '<option value="">Select invoice...</option>' + items.filter(i => i.status === 'unpaid').map(i => `<option value="${i.id}">${i.invoice_number} â€” â‚¹${i.amount}</option>`).join(''); }
                 if (!items.length) { el.innerHTML = '<div class="rwa-empty">No invoices.</div>'; return; }
                 let html = '<table class="rwa-table"><thead><tr><th>Invoice #</th><th>Month</th><th>Flat</th><th>Resident</th><th>Amount</th><th>Due Date</th><th>Status</th></tr></thead><tbody>';
-                items.forEach(i => { html += `<tr><td>${i.invoice_number}</td><td>${i.billing_month}</td><td>${i.flat}</td><td>${i.resident_name || '-'}</td><td>₹${i.amount}</td><td>${i.due_date || '-'}</td><td><span class="rwa-status ${i.status}">${i.status}</span></td></tr>`; });
+                items.forEach(i => { html += `<tr><td>${i.invoice_number}</td><td>${i.billing_month}</td><td>${i.flat}</td><td>${i.resident_name || '-'}</td><td>â‚¹${i.amount}</td><td>${i.due_date || '-'}</td><td><span class="rwa-status ${i.status}">${i.status}</span></td></tr>`; });
                 html += '</tbody></table>';
                 el.innerHTML = html;
             } catch (e) { document.getElementById('rwaInvList').innerHTML = '<div class="rwa-empty">Error.</div>'; }
@@ -367,7 +367,7 @@
                 const el = document.getElementById('rwaPayList');
                 if (!items.length) { el.innerHTML = '<div class="rwa-empty">No payments.</div>'; return; }
                 let html = '<table class="rwa-table"><thead><tr><th>Date</th><th>Invoice</th><th>Amount</th><th>Method</th><th>Status</th></tr></thead><tbody>';
-                items.forEach(p => { html += `<tr><td>${p.created_at ? new Date(p.created_at).toLocaleDateString('en-IN') : '-'}</td><td>${p.invoice_number || '-'}</td><td>₹${p.amount}</td><td>${p.method || '-'}</td><td>${p.status}</td></tr>`; });
+                items.forEach(p => { html += `<tr><td>${p.created_at ? new Date(p.created_at).toLocaleDateString('en-IN') : '-'}</td><td>${p.invoice_number || '-'}</td><td>â‚¹${p.amount}</td><td>${p.method || '-'}</td><td>${p.status}</td></tr>`; });
                 html += '</tbody></table>';
                 el.innerHTML = html;
             } catch (e) { document.getElementById('rwaPayList').innerHTML = '<div class="rwa-empty">Error.</div>'; }
@@ -389,7 +389,7 @@
                 const el = document.getElementById('rwaVlList');
                 if (!items.length) { el.innerHTML = '<div class="rwa-empty">No entries.</div>'; return; }
                 let html = '<table class="rwa-table"><thead><tr><th>Vendor</th><th>Category</th><th>Invoice Amt</th><th>Paid Amt</th><th>Outstanding</th><th>Status</th></tr></thead><tbody>';
-                items.forEach(v => { const out = (v.invoice_amount - v.paid_amount).toFixed(2); html += `<tr><td>${v.vendor_name}</td><td>${v.category || '-'}</td><td>₹${v.invoice_amount}</td><td>₹${v.paid_amount}</td><td>₹${out}</td><td><span class="rwa-status ${v.status === 'paid' ? 'completed' : v.status === 'partially_paid' ? 'handover_ready' : 'pending'}">${v.status}</span></td></tr>`; });
+                items.forEach(v => { const out = (v.invoice_amount - v.paid_amount).toFixed(2); html += `<tr><td>${v.vendor_name}</td><td>${v.category || '-'}</td><td>â‚¹${v.invoice_amount}</td><td>â‚¹${v.paid_amount}</td><td>â‚¹${out}</td><td><span class="rwa-status ${v.status === 'paid' ? 'completed' : v.status === 'partially_paid' ? 'handover_ready' : 'pending'}">${v.status}</span></td></tr>`; });
                 html += '</tbody></table>';
                 el.innerHTML = html;
             } catch (e) { document.getElementById('rwaVlList').innerHTML = '<div class="rwa-empty">Error.</div>'; }
@@ -413,9 +413,9 @@
             try {
                 const r = await apiGet('/api/rwa/reports/summary');
                 let html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:16px;">';
-                html += `<div class="rwa-card" style="padding:20px;"><h4 style="margin:0 0 12px;">Invoices</h4><p style="margin:4px 0;">Total Billed: <strong>₹${r.invoices.total_billed.toFixed(2)}</strong></p><p style="margin:4px 0;">Paid: <strong style="color:#27ae60;">₹${r.invoices.total_paid.toFixed(2)}</strong></p><p style="margin:4px 0;">Unpaid: <strong style="color:#c0392b;">₹${r.invoices.total_unpaid.toFixed(2)}</strong></p><p style="margin:4px 0;color:#888;">Count: ${r.invoices.count}</p></div>`;
-                html += `<div class="rwa-card" style="padding:20px;"><h4 style="margin:0 0 12px;">Payments</h4><p style="margin:4px 0;">Collected: <strong style="color:#27ae60;">₹${r.payments.total_collected.toFixed(2)}</strong></p><p style="margin:4px 0;color:#888;">Count: ${r.payments.count}</p></div>`;
-                html += `<div class="rwa-card" style="padding:20px;"><h4 style="margin:0 0 12px;">Vendor Ledger</h4><p style="margin:4px 0;">Invoiced: <strong>₹${r.vendor_ledger.total_invoiced.toFixed(2)}</strong></p><p style="margin:4px 0;">Paid: <strong>₹${r.vendor_ledger.total_paid.toFixed(2)}</strong></p><p style="margin:4px 0;">Outstanding: <strong style="color:#c0392b;">₹${r.vendor_ledger.outstanding.toFixed(2)}</strong></p></div>`;
+                html += `<div class="rwa-card" style="padding:20px;"><h4 style="margin:0 0 12px;">Invoices</h4><p style="margin:4px 0;">Total Billed: <strong>â‚¹${r.invoices.total_billed.toFixed(2)}</strong></p><p style="margin:4px 0;">Paid: <strong style="color:#27ae60;">â‚¹${r.invoices.total_paid.toFixed(2)}</strong></p><p style="margin:4px 0;">Unpaid: <strong style="color:#c0392b;">â‚¹${r.invoices.total_unpaid.toFixed(2)}</strong></p><p style="margin:4px 0;color:#888;">Count: ${r.invoices.count}</p></div>`;
+                html += `<div class="rwa-card" style="padding:20px;"><h4 style="margin:0 0 12px;">Payments</h4><p style="margin:4px 0;">Collected: <strong style="color:#27ae60;">â‚¹${r.payments.total_collected.toFixed(2)}</strong></p><p style="margin:4px 0;color:#888;">Count: ${r.payments.count}</p></div>`;
+                html += `<div class="rwa-card" style="padding:20px;"><h4 style="margin:0 0 12px;">Vendor Ledger</h4><p style="margin:4px 0;">Invoiced: <strong>â‚¹${r.vendor_ledger.total_invoiced.toFixed(2)}</strong></p><p style="margin:4px 0;">Paid: <strong>â‚¹${r.vendor_ledger.total_paid.toFixed(2)}</strong></p><p style="margin:4px 0;">Outstanding: <strong style="color:#c0392b;">â‚¹${r.vendor_ledger.outstanding.toFixed(2)}</strong></p></div>`;
                 html += `<div class="rwa-card" style="padding:20px;"><h4 style="margin:0 0 12px;">Complaints</h4><p style="margin:4px 0;">Open: <strong style="color:#c0392b;">${r.complaints.open}</strong></p><p style="margin:4px 0;color:#888;">Total: ${r.complaints.total}</p></div>`;
                 html += `<div class="rwa-card" style="padding:20px;"><h4 style="margin:0 0 12px;">Patrol</h4><p style="margin:4px 0;">Last 24h: <strong>${r.patrol.last_24h}</strong></p><p style="margin:4px 0;color:#888;">Total: ${r.patrol.total}</p></div>`;
                 html += '</div>';
@@ -434,3 +434,6 @@
     </script>
 </body>
 </html>
+
+
+

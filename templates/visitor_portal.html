@@ -1,21 +1,21 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Visitor Portal - Penguin OS</title>
     <link rel="icon" href="/static/images/favicon.jpg" type="image/jpeg">
-    <link rel="stylesheet" href="/static/css/fonts.css">
-    <link rel="stylesheet" href="/static/css/style.css">
-    <link rel="stylesheet" href="/static/css/theme.css">
+    <link rel="stylesheet" href="/static/css/fonts.css?v=15">
+    <link rel="stylesheet" href="/static/css/theme.css?v=15">
+    <link rel="stylesheet" href="/static/css/style.css?v=15">
     <style>
         .vp-body { background: var(--content-bg); min-height: 100vh; }
         .vp-header { background: #1a1a1a; color: #fff; padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; }
         .vp-header-brand { display: flex; align-items: center; gap: 10px; font-weight: 700; }
         .vp-main { max-width: 1100px; margin: 0 auto; padding: 24px; }
-        .vp-card { background: #fff; border-radius: var(--card-radius); box-shadow: var(--card-shadow); padding: 20px; margin-bottom: 20px; }
+        .vp-card { background: #fff; border-radius: var(--card-radius); box-shadow: var(--elevation-1); padding: 20px; margin-bottom: 20px; }
         .vp-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; margin-bottom: 24px; }
-        .vp-stat { background: #fff; border-radius: var(--card-radius); box-shadow: var(--card-shadow); padding: 16px; text-align: center; }
+        .vp-stat { background: #fff; border-radius: var(--card-radius); box-shadow: var(--elevation-1); padding: 16px; text-align: center; }
         .vp-stat-value { font-size: 1.6rem; font-weight: 700; color: #1a1a1a; }
         .vp-stat-label { font-size: 0.75rem; color: #888; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 4px; }
         .vp-form-row { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 14px; }
@@ -39,14 +39,14 @@
         .vp-status.completed { background: #e2e3e5; color: #383d41; }
         .vp-empty { color: #888; text-align: center; padding: 32px; }
         .vp-otp-input { letter-spacing: 0.4em; font-size: 1.3rem; text-align: center; max-width: 140px; }
-        .vp-resident-card { background: #fff; border-radius: var(--card-radius); box-shadow: var(--card-shadow); padding: 24px; margin-bottom: 16px; }
+        .vp-resident-card { background: #fff; border-radius: var(--card-radius); box-shadow: var(--elevation-1); padding: 24px; margin-bottom: 16px; }
         .vp-resident-card h4 { margin: 0 0 6px; }
         .vp-resident-card p { margin: 0 0 14px; color: #666; }
         .vp-search-bar { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
         .vp-search-bar input, .vp-search-bar select { padding: 10px 12px; border: 1.5px solid #e0e4e8; border-radius: 8px; }
         .vp-layout { display: flex; gap: 20px; align-items: flex-start; }
         .vp-sidebar { flex: 0 0 200px; position: sticky; top: 20px; }
-        .vp-sidebar .vp-nav { background: #fff; border-radius: var(--card-radius); box-shadow: var(--card-shadow); overflow: hidden; }
+        .vp-sidebar .vp-nav { background: #fff; border-radius: var(--card-radius); box-shadow: var(--elevation-1); overflow: hidden; }
         .vp-sidebar .vp-nav button { display: block; width: 100%; text-align: left; padding: 14px 18px; border: none; background: #fff; border-left: 4px solid transparent; font-weight: 600; color: #555; cursor: pointer; border-bottom: 1px solid #f0f0f0; }
         .vp-sidebar .vp-nav button:hover { background: #f8f9fa; color: #1a1a1a; }
         .vp-sidebar .vp-nav button.active { background: #f0f2f5; color: #1a1a1a; border-left-color: #1a1a1a; }
@@ -512,6 +512,32 @@
             return new Date(d).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' });
         }
 
+        const HASH_TO_CATEGORY = {
+            'visitors': 'home', 'deliveries': 'standard', 'patrol': 'elite',
+            'sos': 'home', 'my-requests': 'home', 'complaints': 'prime',
+            'notices': 'prime', 'amenities': 'prime', 'ledger': 'elite',
+            'directory': 'home', 'vendor-ledger': 'elite', 'visitor-policy': 'home',
+            'defect-log': 'prime'
+        };
+        const HASH_TO_RWA_TAB = {
+            'deliveries': 'deliveries', 'complaints': 'complaints',
+            'notices': 'notices', 'amenities': 'amenities',
+            'ledger': 'invoices', 'vendor-ledger': 'invoices',
+            'patrol': 'patrol', 'defect-log': 'planner'
+        };
+        function applyHashTab() {
+            const hash = (window.location.hash || '').replace('#', '');
+            if (!hash) return;
+            const cat = HASH_TO_CATEGORY[hash];
+            if (cat) showCategory(cat);
+            const rwaTab = HASH_TO_RWA_TAB[hash];
+            if (rwaTab) {
+                const tabBtn = document.querySelector('[data-tab="' + rwaTab + '"]');
+                if (tabBtn) tabBtn.click();
+            }
+        }
+        window.addEventListener('hashchange', applyHashTab);
+
         async function init() {
             try {
                 const me = await apiGet('/api/visitor/me');
@@ -527,6 +553,7 @@
                 document.getElementById('vpUserName').textContent = vpUser ? (vpUser.name || vpUser.email || vpUser.mobile) : 'Admin';
 
                 showCategory('home');
+                applyHashTab();
                 loadData();
                 loadResidentProfile();
                 loadDeliveryAlerts();
@@ -611,7 +638,7 @@
                 pendingEl.innerHTML = pending.map(r => `
                     <div class="vp-resident-card">
                         <h4>${r.visitor_name}</h4>
-                        <p>${r.purpose || 'Visit'} · ${r.visitor_count || 1} visitor(s)</p>
+                        <p>${r.purpose || 'Visit'} Â· ${r.visitor_count || 1} visitor(s)</p>
                         <div class="vp-form-row" style="align-items:center;">
                             <div class="vp-form-field" style="max-width:160px;flex:0;">
                                 <label>OTP</label>
@@ -717,7 +744,7 @@
                 if (!r) { alert('Resident not found'); return; }
                 vpResident = r;
                 document.getElementById('vpResidentInfo').style.display = '';
-                document.getElementById('vpResidentInfo').innerHTML = `<strong>${r.name}</strong> · Block ${r.block}, Floor ${r.floor}, Flat ${r.flat}`;
+                document.getElementById('vpResidentInfo').innerHTML = `<strong>${r.name}</strong> Â· Block ${r.block}, Floor ${r.floor}, Flat ${r.flat}`;
                 document.getElementById('vpVisitorForm').style.display = '';
             } catch (e) { alert(e.message); }
         });
@@ -731,7 +758,7 @@
                 if (!r) { alert('Resident not found'); return; }
                 vpDeliveryResident = r;
                 document.getElementById('vpDeliveryResidentInfo').style.display = '';
-                document.getElementById('vpDeliveryResidentInfo').innerHTML = `<strong>${r.name}</strong> · Block ${r.block}, Floor ${r.floor}, Flat ${r.flat}`;
+                document.getElementById('vpDeliveryResidentInfo').innerHTML = `<strong>${r.name}</strong> Â· Block ${r.block}, Floor ${r.floor}, Flat ${r.flat}`;
                 document.getElementById('vpDeliveryForm').style.display = '';
             } catch (e) { alert(e.message); }
         });
@@ -817,7 +844,7 @@
                         <div style="flex:1;min-width:200px;">
                             <h4 style="margin:0 0 4px;">${p.name || '-'}</h4>
                             <p style="margin:0 0 6px;color:#666;">Block ${p.block || '-'}, Floor ${p.floor || '-'}, Flat ${p.flat || '-'}</p>
-                            <p style="margin:0;color:#888;font-size:0.85rem;">${p.mobile || ''}${p.email ? ' · ' + p.email : ''}</p>
+                            <p style="margin:0;color:#888;font-size:0.85rem;">${p.mobile || ''}${p.email ? ' Â· ' + p.email : ''}</p>
                         </div>
                         <div style="text-align:right;">
                             <span class="vp-status ${p.active ? 'approved' : 'rejected'}">${p.active ? 'Active' : 'Inactive'}</span>
@@ -872,12 +899,12 @@
                 const type = (typeof data === 'object' && data.type) ? data.type : null;
                 if (type === 'rwa_visitor_pass') {
                     const r = await apiPost('/api/rwa/visitor-pass/scan', { payload });
-                    resultEl.innerHTML = `<span style="color:#27ae60;font-weight:600;">Entry allowed: ${r.visitor_name} → ${r.flat}</span>`;
+                    resultEl.innerHTML = `<span style="color:#27ae60;font-weight:600;">Entry allowed: ${r.visitor_name} â†’ ${r.flat}</span>`;
                     loadData();
                 } else if (type === 'rwa_delivery_pass') {
                     const r = await apiPost('/api/rwa/delivery/scan', { payload });
                     if (r.action === 'entry') {
-                        resultEl.innerHTML = `<span style="color:#27ae60;font-weight:600;">Delivery entry started. Timer: 20 min</span><br><small>${r.delivery_person_name} · ${r.vehicle_number || 'No vehicle'} · ${r.flat}</small>`;
+                        resultEl.innerHTML = `<span style="color:#27ae60;font-weight:600;">Delivery entry started. Timer: 20 min</span><br><small>${r.delivery_person_name} Â· ${r.vehicle_number || 'No vehicle'} Â· ${r.flat}</small>`;
                     } else {
                         resultEl.innerHTML = `<span style="color:#1a1a1a;font-weight:600;">Delivery exit recorded.</span>`;
                     }
@@ -949,7 +976,10 @@
 
         init();
     </script>
-    <script src="/static/js/rwa.js"></script>
+    <script src="/static/js/rwa.js?v=2"></script>
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 </body>
 </html>
+
+
+

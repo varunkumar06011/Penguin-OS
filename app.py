@@ -15,6 +15,20 @@ try:
 except ImportError:  # Pillow may not be installed in every environment
     Image = None
 
+try:
+    import sys
+    import io as _io
+    _weasy_err = _io.StringIO()
+    _orig_stderr = sys.stderr
+    sys.stderr = _weasy_err
+    from weasyprint import HTML
+    sys.stderr = _orig_stderr
+except (ImportError, OSError):
+    sys.stderr = _orig_stderr
+    HTML = None
+finally:
+    sys.stderr = _orig_stderr
+
 load_dotenv()
 
 IST = timezone(timedelta(hours=5, minutes=30))
@@ -27,6 +41,11 @@ app = Flask(__name__, static_folder=os.path.join(BASE_DIR, 'static'), template_f
 app.secret_key = os.environ.get('SECRET_KEY', 'vgrand-secret-key-2025')
 app.permanent_session_lifetime = timedelta(days=30)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
+
+@app.template_filter('inr')
+def format_inr_filter(num):
+    """Jinja filter: format a number as Indian Rupees (Cr/Lakh)."""
+    return _format_inr(num)
 
 SUPABASE_URL = os.environ.get('SUPABASE_URL', '')
 SUPABASE_ANON_KEY = os.environ.get('SUPABASE_ANON_KEY', '')
@@ -631,6 +650,44 @@ def visitor_security_login():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/users')
+@requires_role('admin')
+def api_users():
+    if not supabase:
+        return jsonify([])
+    try:
+        res = supabase.table('users').select('email, role, active, full_name').execute()
+        return jsonify(res.data or [])
+    except Exception as e:
+        print(f'Error fetching users: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/users/change-password', methods=['POST'])
+@requires_role('admin')
+def api_users_change_password():
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    data = request.get_json() or {}
+    email = data.get('email', '').strip()
+    new_password = data.get('new_password', '')
+    if not email or not new_password:
+        return jsonify({'error': 'Email and new password are required'}), 400
+    if len(new_password) < 6:
+        return jsonify({'error': 'Password must be at least 6 characters'}), 400
+    try:
+        res = supabase.table('users').select('*').ilike('email', email).execute()
+        if not res.data:
+            return jsonify({'error': 'User not found'}), 404
+        user = res.data[0]
+        new_hash = generate_password_hash(new_password)
+        supabase.table('users').update({'password_hash': new_hash}).eq('id', user['id']).execute()
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f'Error changing password: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/visitor/me')
 def visitor_me():
     return jsonify({
@@ -971,7 +1028,7 @@ def api_health():
 # ========================
 
 @app.route('/api/cells')
-@login_required
+@requires_role('supervisor', 'manager', 'admin')
 def api_cells():
     if not supabase:
         fallback = load_json_fallback('cells.json')
@@ -1004,7 +1061,7 @@ def api_cells():
 
 
 @app.route('/api/cell/<cell_id>')
-@login_required
+@requires_role('supervisor', 'manager', 'admin')
 def api_cell(cell_id):
     if not supabase:
         fallback = load_json_fallback('cells.json') or {}
@@ -1027,11 +1084,14 @@ def api_cell(cell_id):
 
 
 @app.route('/api/cell/<cell_id>', methods=['POST'])
-@login_required
+@requires_role_or_override('supervisor')
 def api_cell_post(cell_id):
     body = request.get_json() or {}
     if not supabase:
         return jsonify({'success': True, 'note': 'read-only local mode'})
+    color = body.get('color')
+    if color is not None and color not in ('red', 'yellow', 'blue', 'green', ''):
+        return jsonify({'error': f'Invalid color value: {color}'}), 400
     body = compress_images_in_data(body)
     try:
         supabase.table('cell_data').upsert({
@@ -1045,12 +1105,17 @@ def api_cell_post(cell_id):
 
 
 @app.route('/api/cells/batch', methods=['POST'])
-@login_required
+@requires_role_or_override('supervisor')
 def api_cells_batch():
     body = request.get_json() or {}
     cells = body.get('cells', [])
     if not cells:
         return jsonify({'success': True})
+    for c in cells:
+        d = c.get('data') or {}
+        color = d.get('color')
+        if color is not None and color not in ('red', 'yellow', 'blue', 'green', ''):
+            return jsonify({'error': f'Invalid color value: {color}'}), 400
     if not supabase:
         return jsonify({'success': True, 'count': len(cells), 'note': 'read-only local mode'})
     rows = [{'id': c['id'], 'data': compress_images_in_data(c.get('data', {}))} for c in cells]
@@ -1252,7 +1317,7 @@ def api_po_delete(po_id):
 # ========================
 
 @app.route('/api/vendors')
-@login_required
+@requires_role_or_override('supervisor')
 def api_vendors():
     if not supabase:
         fallback = load_json_fallback('vendors.json')
@@ -1301,13 +1366,12 @@ def api_vendor_delete(vendor_id):
 # ========================
 
 @app.route('/api/settings/<key>')
-@login_required
+@requires_role('manager', 'admin')
 def api_settings_get(key):
     if not supabase:
         return jsonify(None)
     try:
-        # Defensive sort: if duplicate rows exist pre-migration, take the latest id.
-        res = supabase.table('settings').select('*').eq('key', key).order('id', desc=True).execute()
+        res = supabase.table('settings').select('*').eq('key', key).execute()
         if res.data:
             return jsonify(res.data[0]['value'])
         return jsonify(None)
@@ -1338,7 +1402,7 @@ def api_settings_post(key):
 # ========================
 
 @app.route('/api/materials')
-@login_required
+@requires_role_or_override('supervisor')
 def api_materials():
     if not supabase:
         return jsonify([]), 500
@@ -1351,7 +1415,7 @@ def api_materials():
 
 
 @app.route('/api/material', methods=['POST'])
-@login_required
+@requires_role_or_override('supervisor')
 def api_material_post():
     if not supabase:
         return jsonify({'error': 'Supabase not connected'}), 500
@@ -1361,7 +1425,7 @@ def api_material_post():
 
 
 @app.route('/api/material/<material_id>', methods=['DELETE'])
-@login_required
+@requires_role_or_override('supervisor')
 def api_material_delete(material_id):
     if not supabase:
         return jsonify({'error': 'Supabase not connected'}), 500
@@ -1370,7 +1434,7 @@ def api_material_delete(material_id):
 
 
 @app.route('/api/stock')
-@login_required
+@requires_role_or_override('supervisor')
 def api_stock():
     if not supabase:
         return jsonify([]), 500
@@ -1390,7 +1454,7 @@ def api_stock():
 
 
 @app.route('/api/stock', methods=['POST'])
-@login_required
+@requires_role_or_override('supervisor')
 def api_stock_post():
     if not supabase:
         return jsonify({'error': 'Supabase not connected'}), 500
@@ -1400,7 +1464,7 @@ def api_stock_post():
 
 
 @app.route('/api/stock/summary')
-@login_required
+@requires_role_or_override('supervisor')
 def api_stock_summary():
     if not supabase:
         return jsonify([]), 500
@@ -1413,7 +1477,7 @@ def api_stock_summary():
 
 
 @app.route('/api/stock/location-report')
-@login_required
+@requires_role_or_override('supervisor')
 def api_stock_location_report():
     if not supabase:
         return jsonify([]), 500
@@ -1429,7 +1493,7 @@ def api_stock_location_report():
 
 
 @app.route('/api/stock/vendor-report')
-@login_required
+@requires_role_or_override('supervisor')
 def api_stock_vendor_report():
     if not supabase:
         return jsonify([]), 500
@@ -1582,6 +1646,212 @@ def api_instant_reports():
 
 
 # ========================
+# Lender Progress Report PDF
+# ========================
+
+def _lender_color_to_pct(color):
+    """Map cell color to completion percentage for lender reports."""
+    return {'green': 100, 'blue': 75, 'yellow': 40, 'red': 0}.get(color, 0)
+
+
+def _lender_compute_progress(venture_id):
+    """Compute % completion per block/floor from cell_data colors."""
+    if not supabase:
+        return {'blocks': [], 'overall_pct': 0, 'total_cells': 0}
+    try:
+        res = supabase.table('cell_data').select('*').execute()
+        block_stats = {}
+        total_weighted = 0
+        total_cells = 0
+        for row in res.data:
+            d = row.get('data') or {}
+            if d.get('venture_id') != venture_id:
+                continue
+            block = d.get('block', 'Unknown')
+            floor = d.get('floor', 'Unknown')
+            color = d.get('color', 'red')
+            pct = _lender_color_to_pct(color)
+            key = block
+            if key not in block_stats:
+                block_stats[key] = {'block': block, 'floors': {}, 'total_pct': 0, 'cell_count': 0}
+            floor_key = floor
+            if floor_key not in block_stats[key]['floors']:
+                block_stats[key]['floors'][floor_key] = {'floor': floor, 'total_pct': 0, 'cell_count': 0}
+            block_stats[key]['floors'][floor_key]['total_pct'] += pct
+            block_stats[key]['floors'][floor_key]['cell_count'] += 1
+            block_stats[key]['total_pct'] += pct
+            block_stats[key]['cell_count'] += 1
+            total_weighted += pct
+            total_cells += 1
+        blocks = []
+        for block_name, stats in sorted(block_stats.items()):
+            block_pct = round(stats['total_pct'] / stats['cell_count'], 1) if stats['cell_count'] else 0
+            floors = []
+            for floor_name, fs in sorted(stats['floors'].items()):
+                floor_pct = round(fs['total_pct'] / fs['cell_count'], 1) if fs['cell_count'] else 0
+                floors.append({
+                    'floor': fs['floor'],
+                    'cell_count': fs['cell_count'],
+                    'pct_complete': floor_pct
+                })
+            blocks.append({
+                'block': block_name,
+                'cell_count': stats['cell_count'],
+                'pct_complete': block_pct,
+                'floors': floors
+            })
+        overall = round(total_weighted / total_cells, 1) if total_cells else 0
+        return {'blocks': blocks, 'overall_pct': overall, 'total_cells': total_cells}
+    except Exception as e:
+        print(f'Error computing lender report progress: {e}')
+        return {'blocks': [], 'overall_pct': 0, 'total_cells': 0}
+
+
+def _lender_compute_financials(venture_id):
+    """Compute funds collected and utilized for the report."""
+    collected = 0.0
+    utilized = 0.0
+    if not supabase:
+        return {'collected': 0, 'utilized': 0, 'escrow_balance': 0}
+    try:
+        inv_res = supabase.table('invoices').select('*').execute()
+        for inv in inv_res.data or []:
+            d = inv.get('data') or {}
+            v_match = d.get('venture_id') == venture_id or inv.get('venture_id') == venture_id
+            if not v_match:
+                continue
+            status = (d.get('status') or inv.get('status') or '').lower()
+            amt = float(d.get('amount') or inv.get('amount') or 0)
+            if status in ('paid', 'received', 'completed'):
+                collected += amt
+    except Exception as e:
+        print(f'Error fetching invoices for lender report: {e}')
+    try:
+        exp_res = supabase.table('expenditures').select('*').eq('venture_id', venture_id).execute()
+        for exp in exp_res.data or []:
+            d = exp.get('data') or {}
+            utilized += float(d.get('amount', 0))
+    except Exception as e:
+        print(f'Error fetching expenditures for lender report: {e}')
+    return {
+        'collected': round(collected, 2),
+        'utilized': round(utilized, 2),
+        'escrow_balance': round(collected - utilized, 2)
+    }
+
+
+def _lender_latest_photos(venture_id):
+    """Return most recent dated photo per block/floor from cell_data remarkImages."""
+    photos = []
+    if not supabase:
+        return photos
+    try:
+        res = supabase.table('cell_data').select('*').execute()
+        seen = {}
+        for row in res.data:
+            d = row.get('data') or {}
+            if d.get('venture_id') != venture_id:
+                continue
+            block = d.get('block', 'Unknown')
+            floor = d.get('floor', 'Unknown')
+            key = (block, floor)
+            images = d.get('remarkImages') or []
+            timeline = d.get('timeline') or []
+            for img in images:
+                # Try to find a capture date from timeline entries or updated_at
+                capture_date = d.get('updated_at', '')[:10]
+                for entry in timeline:
+                    if entry.get('remarks') and img.get('name') in (entry.get('remarks') or ''):
+                        capture_date = entry.get('date', capture_date)[:10]
+                        break
+                if key not in seen or capture_date > seen[key].get('date', ''):
+                    seen[key] = {
+                        'block': block,
+                        'floor': floor,
+                        'src': img.get('dataUrl', ''),
+                        'date': capture_date
+                    }
+        photos = [seen[k] for k in sorted(seen.keys()) if seen[k].get('src')]
+    except Exception as e:
+        print(f'Error fetching lender report photos: {e}')
+    return photos
+
+
+def _format_inr(num):
+    """Format a number in Indian Rupee crore/lakh notation."""
+    num = float(num)
+    if num >= 10000000:
+        return f"\u20b9 {round(num / 10000000, 2)} Cr"
+    if num >= 100000:
+        return f"\u20b9 {round(num / 100000, 2)} L"
+    return f"\u20b9 {round(num, 2)}"
+
+
+@app.route('/api/reports/lender-report/<project_id>')
+@requires_role_or_override('manager', 'admin')
+def api_lender_report(project_id):
+    """Generate a printable Lender Progress Report PDF."""
+    if not HTML:
+        return jsonify({'error': 'PDF engine not installed. Run: pip install weasyprint'}), 500
+
+    report_date_str = request.args.get('date') or now_ist().strftime('%Y-%m-%d')
+    include_financials = request.args.get('include_financials', 'true').lower() != 'false'
+
+    # Venture / project details
+    venture = {'id': project_id, 'name': project_id, 'address': '', 'rera_registration': ''}
+    prepared_by = ''
+    if supabase:
+        try:
+            vres = supabase.table('ventures').select('*').eq('id', project_id).execute()
+            if vres.data:
+                vdata = vres.data[0].get('data') or {}
+                venture = {
+                    'id': project_id,
+                    'name': vdata.get('name') or vres.data[0].get('name') or project_id,
+                    'address': vdata.get('address', ''),
+                    'rera_registration': vdata.get('rera_registration', '')
+                }
+                # Try to fetch builder name from organization
+                org_id = vdata.get('org_id') or vres.data[0].get('org_id')
+                if org_id:
+                    try:
+                        ores = supabase.table('organizations').select('name').eq('id', org_id).single().execute()
+                        if ores.data:
+                            prepared_by = ores.data.get('name', '')
+                    except Exception:
+                        pass
+        except Exception as e:
+            print(f'Error fetching venture for lender report: {e}')
+
+    progress = _lender_compute_progress(project_id)
+    financials = _lender_compute_financials(project_id) if include_financials else None
+    photos = _lender_latest_photos(project_id)
+
+    ref_id = f"LPR-{project_id.upper()}-{report_date_str.replace('-', '')}"
+
+    rendered = render_template(
+        'lender_report.html',
+        venture=venture,
+        report_date=report_date_str,
+        prepared_by=prepared_by or 'VGrand Infra Pvt. Ltd.',
+        overall_pct=progress['overall_pct'],
+        total_cells=progress['total_cells'],
+        blocks=progress['blocks'],
+        photos=photos,
+        financials=financials,
+        include_financials=include_financials,
+        ref_id=ref_id
+    )
+
+    pdf = HTML(string=rendered).write_pdf()
+    filename = f"Lender_Progress_Report_{venture['name'].replace(' ', '_')}_{report_date_str}.pdf"
+    response = app.make_response(pdf)
+    response.headers['Content-Type'] = 'application/pdf'
+    response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response
+
+
+# ========================
 # Payroll API (Admin-only for release; Manager can view)
 # ========================
 
@@ -1702,7 +1972,7 @@ def api_inventory_audit():
 # ========================
 
 @app.route('/api/expenditures')
-@login_required
+@requires_role_or_override('supervisor')
 def api_expenditures():
     if not supabase:
         return jsonify([])
@@ -1726,7 +1996,7 @@ def api_expenditures():
 
 
 @app.route('/api/expenditure', methods=['POST'])
-@login_required
+@requires_role_or_override('supervisor')
 def api_expenditure_post():
     if not supabase:
         return jsonify({'success': True, 'note': 'read-only local mode'})
@@ -1758,7 +2028,7 @@ def api_expenditure_post():
 
 
 @app.route('/api/expenditure/<exp_id>', methods=['DELETE'])
-@login_required
+@requires_role_or_override('supervisor')
 def api_expenditure_delete(exp_id):
     if not supabase:
         return jsonify({'success': True, 'note': 'read-only local mode'})
@@ -2014,7 +2284,7 @@ def api_interior_design_generate():
 
 
 @app.route('/api/interior-design/<design_id>/status')
-@login_required
+@requires_role_or_override('supervisor')
 def api_interior_design_status(design_id):
     if not supabase:
         return jsonify({'error': 'Supabase not connected'}), 500
@@ -2072,7 +2342,7 @@ def api_interior_design_delete(design_id):
 # ========================
 
 @app.route('/api/marketplace/materials')
-@login_required
+@requires_role_or_override('supervisor')
 def api_marketplace_materials():
     if not supabase:
         return jsonify([])
@@ -2089,7 +2359,7 @@ def api_marketplace_materials():
 
 
 @app.route('/api/marketplace/materials/<material_id>/suppliers')
-@login_required
+@requires_role_or_override('supervisor')
 def api_marketplace_suppliers(material_id):
     if not supabase:
         return jsonify([])
@@ -4053,6 +4323,685 @@ def api_rwa_reports_summary():
     except Exception as e:
         print(f'Error generating report: {e}')
         return jsonify({}), 500
+
+
+# ============================================================
+# RERA Quarterly Progress Report (Form B) Module
+# ============================================================
+
+RERA_DEFAULT_THRESHOLDS = {
+    'red': 0, 'yellow': 40, 'blue': 75, 'green': 100
+}
+
+
+def _rera_current_quarter():
+    """Return (quarter_label, start_date, end_date, filing_deadline) for the current quarter."""
+    now = now_ist()
+    month = now.month
+    year = now.year
+    if month <= 3:
+        q_label = f'{year}-Q1'
+        q_start = date(year, 1, 1)
+        q_end = date(year, 3, 31)
+    elif month <= 6:
+        q_label = f'{year}-Q2'
+        q_start = date(year, 4, 1)
+        q_end = date(year, 6, 30)
+    elif month <= 9:
+        q_label = f'{year}-Q3'
+        q_start = date(year, 7, 1)
+        q_end = date(year, 9, 30)
+    else:
+        q_label = f'{year}-Q4'
+        q_start = date(year, 10, 1)
+        q_end = date(year, 12, 31)
+    filing_deadline = q_end + timedelta(days=15)
+    return q_label, q_start, q_end, filing_deadline
+
+
+def _rera_get_thresholds(venture_id):
+    """Fetch color→pct thresholds, with per-venture overrides merging onto defaults."""
+    thresholds = dict(RERA_DEFAULT_THRESHOLDS)
+    if not supabase:
+        return thresholds
+    try:
+        res = supabase.table('rera_color_thresholds').select('*').execute()
+        for row in res.data or []:
+            v_id = row.get('venture_id')
+            if v_id is None:
+                thresholds[row['color']] = float(row['pct_value'])
+        # Venture-specific overrides
+        for row in res.data or []:
+            if row.get('venture_id') == venture_id and row.get('work_item') is None:
+                thresholds[row['color']] = float(row['pct_value'])
+    except Exception as e:
+        print(f'Error fetching RERA thresholds: {e}')
+    return thresholds
+
+
+def _rera_compute_progress(venture_id, thresholds):
+    """Compute % completion per block/floor from cell_data colors."""
+    if not supabase:
+        return {'blocks': [], 'overall_pct': 0}
+    try:
+        res = supabase.table('cell_data').select('*').execute()
+        block_stats = {}
+        total_weighted = 0
+        total_cells = 0
+        for row in res.data:
+            d = row.get('data') or {}
+            if d.get('venture_id') != venture_id:
+                continue
+            block = d.get('block', 'Unknown')
+            floor = d.get('floor', 'Unknown')
+            color = d.get('color', 'red')
+            pct = thresholds.get(color, 0)
+            key = block
+            if key not in block_stats:
+                block_stats[key] = {'block': block, 'floors': {}, 'total_pct': 0, 'cell_count': 0}
+            floor_key = floor
+            if floor_key not in block_stats[key]['floors']:
+                block_stats[key]['floors'][floor_key] = {'floor': floor, 'total_pct': 0, 'cell_count': 0}
+            block_stats[key]['floors'][floor_key]['total_pct'] += pct
+            block_stats[key]['floors'][floor_key]['cell_count'] += 1
+            block_stats[key]['total_pct'] += pct
+            block_stats[key]['cell_count'] += 1
+            total_weighted += pct
+            total_cells += 1
+        blocks = []
+        for block_name, stats in sorted(block_stats.items()):
+            block_pct = round(stats['total_pct'] / stats['cell_count'], 1) if stats['cell_count'] else 0
+            floors = []
+            for floor_name, fs in sorted(stats['floors'].items()):
+                floor_pct = round(fs['total_pct'] / fs['cell_count'], 1) if fs['cell_count'] else 0
+                floors.append({
+                    'floor': fs['floor'],
+                    'cell_count': fs['cell_count'],
+                    'pct_complete': floor_pct
+                })
+            blocks.append({
+                'block': block_name,
+                'cell_count': stats['cell_count'],
+                'pct_complete': block_pct,
+                'floors': floors
+            })
+        overall = round(total_weighted / total_cells, 1) if total_cells else 0
+        return {'blocks': blocks, 'overall_pct': overall}
+    except Exception as e:
+        print(f'Error computing RERA progress: {e}')
+        return {'blocks': [], 'overall_pct': 0}
+
+
+def _rera_compute_financials(venture_id):
+    """Compute funds collected, utilized, and escrow balance."""
+    collected = 0.0
+    utilized = 0.0
+    if not supabase:
+        return {'collected': 0, 'utilized': 0, 'escrow_balance': 0}
+    try:
+        # Funds collected from invoices
+        inv_res = supabase.table('invoices').select('*').execute()
+        for inv in inv_res.data or []:
+            d = inv.get('data') or {}
+            v_match = d.get('venture_id') == venture_id or inv.get('venture_id') == venture_id
+            if not v_match:
+                continue
+            status = (d.get('status') or inv.get('status') or '').lower()
+            amt = float(d.get('amount') or inv.get('amount') or 0)
+            if status in ('paid', 'received', 'completed'):
+                collected += amt
+    except Exception as e:
+        print(f'Error fetching invoices for RERA: {e}')
+    try:
+        # Funds utilized from expenditures
+        exp_res = supabase.table('expenditures').select('*').eq('venture_id', venture_id).execute()
+        for exp in exp_res.data or []:
+            d = exp.get('data') or {}
+            utilized += float(d.get('amount', 0))
+    except Exception as e:
+        print(f'Error fetching expenditures for RERA: {e}')
+    return {
+        'collected': round(collected, 2),
+        'utilized': round(utilized, 2),
+        'escrow_balance': round(collected - utilized, 2)
+    }
+
+
+def _rera_compute_milestones(venture_id):
+    """Extract milestone dates from cell_data timeline entries."""
+    milestones = []
+    if not supabase:
+        return milestones
+    try:
+        res = supabase.table('cell_data').select('*').execute()
+        seen = {}
+        for row in res.data:
+            d = row.get('data') or {}
+            if d.get('venture_id') != venture_id:
+                continue
+            block = d.get('block', 'Unknown')
+            work_item = d.get('work_item', '')
+            timeline = d.get('timeline') or []
+            for entry in timeline:
+                if entry.get('color') == 'green':
+                    key = f'{block}|{work_item}'
+                    ev_date = entry.get('date', '')
+                    if key not in seen or ev_date < seen[key]['actual_date']:
+                        seen[key] = {
+                            'block': block,
+                            'work_item': work_item,
+                            'actual_date': ev_date,
+                            'changed_by': entry.get('changed_by', '')
+                        }
+        milestones = sorted(seen.values(), key=lambda m: (m['block'], m['work_item']))
+    except Exception as e:
+        print(f'Error computing RERA milestones: {e}')
+    return milestones
+
+
+def _rera_unit_status(venture_id):
+    """Compute unit status: total/sold/available by category."""
+    if not supabase:
+        return {'total': 0, 'sold': 0, 'available': 0, 'has_data': False}
+    try:
+        res = supabase.table('cell_data').select('*').execute()
+        flats = set()
+        for row in res.data:
+            d = row.get('data') or {}
+            if d.get('venture_id') != venture_id:
+                continue
+            cell_id = row.get('id', '')
+            parts = cell_id.split('_item_')
+            if parts:
+                flats.add(parts[0])
+        total = len(flats)
+        return {'total': total, 'sold': 0, 'available': total, 'has_data': total > 0}
+    except Exception as e:
+        print(f'Error computing RERA unit status: {e}')
+        return {'total': 0, 'sold': 0, 'available': 0, 'has_data': False}
+
+
+def _rera_compliance_checklist(venture_id, progress, financials, units, milestones, approvals):
+    """Build Form B compliance checklist with status indicators."""
+    checklist = []
+    # Construction progress
+    has_progress = progress['overall_pct'] > 0 or len(progress['blocks']) > 0
+    checklist.append({
+        'field': 'Construction Progress (% per tower/block)',
+        'status': 'green' if has_progress and progress['overall_pct'] > 0 else ('yellow' if has_progress else 'red'),
+        'source': 'cell_data',
+        'detail': f"{len(progress['blocks'])} blocks, {progress['overall_pct']}% overall"
+    })
+    # Funds collected
+    has_collected = financials['collected'] > 0
+    checklist.append({
+        'field': 'Funds Collected',
+        'status': 'green' if has_collected else 'red',
+        'source': 'invoices (status=paid)',
+        'detail': f"₹{financials['collected']:,.0f}"
+    })
+    # Funds utilized
+    has_utilized = financials['utilized'] > 0
+    checklist.append({
+        'field': 'Funds Utilized',
+        'status': 'green' if has_utilized else 'red',
+        'source': 'expenditures',
+        'detail': f"₹{financials['utilized']:,.0f}"
+    })
+    # Escrow balance
+    checklist.append({
+        'field': 'Escrow Balance',
+        'status': 'green' if has_collected or has_utilized else 'red',
+        'source': 'derived (collected - utilized)',
+        'detail': f"₹{financials['escrow_balance']:,.0f}"
+    })
+    # Unit status
+    checklist.append({
+        'field': 'Unit Status (total/sold/available)',
+        'status': 'green' if units.get('has_data') else 'red',
+        'source': 'cell_data (flat count)',
+        'detail': f"{units.get('total', 0)} units" + ("" if units.get('has_data') else " — no sales data source")
+    })
+    # Milestones
+    checklist.append({
+        'field': 'Milestone Status (key dates)',
+        'status': 'green' if len(milestones) > 0 else 'red',
+        'source': 'cell_data.timeline[]',
+        'detail': f"{len(milestones)} milestones recorded"
+    })
+    # Statutory approvals
+    checklist.append({
+        'field': 'Statutory Approvals / Renewals',
+        'status': 'green' if len(approvals) > 0 else 'red',
+        'source': 'rera_statutory_approvals',
+        'detail': f"{len(approvals)} approvals on record"
+    })
+    return checklist
+
+
+@app.route('/rera')
+@login_required
+def rera_page():
+    return render_template('rera.html')
+
+
+@app.route('/api/rera/readiness/<venture_id>')
+@requires_role('manager', 'admin')
+def api_rera_readiness(venture_id):
+    """RERA Readiness Dashboard: computed %, financials, compliance checklist."""
+    try:
+        thresholds = _rera_get_thresholds(venture_id)
+        progress = _rera_compute_progress(venture_id, thresholds)
+        financials = _rera_compute_financials(venture_id)
+        units = _rera_unit_status(venture_id)
+        milestones = _rera_compute_milestones(venture_id)
+        # Statutory approvals
+        approvals = []
+        if supabase:
+            try:
+                ap_res = supabase.table('rera_statutory_approvals').select('*').eq('venture_id', venture_id).execute()
+                approvals = ap_res.data or []
+            except Exception:
+                pass
+        checklist = _rera_compliance_checklist(venture_id, progress, financials, units, milestones, approvals)
+        q_label, q_start, q_end, filing_deadline = _rera_current_quarter()
+        now = now_ist().date()
+        days_remaining = (filing_deadline - now).days
+        # Check if a report already exists for this quarter
+        existing_report = None
+        if supabase:
+            try:
+                rpt_res = supabase.table('rera_quarterly_reports').select('*').eq('venture_id', venture_id).eq('quarter', q_label).execute()
+                if rpt_res.data:
+                    existing_report = rpt_res.data[0]
+            except Exception:
+                pass
+        return jsonify({
+            'venture_id': venture_id,
+            'progress': progress,
+            'financials': financials,
+            'units': units,
+            'milestones': milestones,
+            'approvals': approvals,
+            'checklist': checklist,
+            'quarter': {
+                'label': q_label,
+                'start': str(q_start),
+                'end': str(q_end),
+                'filing_deadline': str(filing_deadline),
+                'days_remaining': days_remaining
+            },
+            'existing_report': existing_report
+        })
+    except Exception as e:
+        print(f'Error in RERA readiness: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/rera/draft/<venture_id>/<quarter>')
+@requires_role('manager', 'admin')
+def api_rera_draft(venture_id, quarter):
+    """Generate a draft Form B report with all computed fields."""
+    try:
+        thresholds = _rera_get_thresholds(venture_id)
+        progress = _rera_compute_progress(venture_id, thresholds)
+        financials = _rera_compute_financials(venture_id)
+        units = _rera_unit_status(venture_id)
+        milestones = _rera_compute_milestones(venture_id)
+        approvals = []
+        if supabase:
+            try:
+                ap_res = supabase.table('rera_statutory_approvals').select('*').eq('venture_id', venture_id).execute()
+                approvals = ap_res.data or []
+            except Exception:
+                pass
+        # Delays
+        delays = []
+        if supabase:
+            try:
+                dl_res = supabase.table('rera_delay_log').select('*').eq('venture_id', venture_id).eq('quarter', quarter).execute()
+                delays = dl_res.data or []
+            except Exception:
+                pass
+        # Venture metadata
+        venture_name = venture_id
+        if supabase:
+            try:
+                v_res = supabase.table('ventures').select('*').eq('id', venture_id).execute()
+                if v_res.data:
+                    venture_name = (v_res.data[0].get('data') or {}).get('name') or v_res.data[0].get('name') or venture_id
+            except Exception:
+                pass
+        # Parse quarter dates
+        year, q_num = quarter.split('-Q')
+        q_num = int(q_num)
+        year = int(year)
+        if q_num == 1:
+            q_start, q_end = date(year, 1, 1), date(year, 3, 31)
+        elif q_num == 2:
+            q_start, q_end = date(year, 4, 1), date(year, 6, 30)
+        elif q_num == 3:
+            q_start, q_end = date(year, 7, 1), date(year, 9, 30)
+        else:
+            q_start, q_end = date(year, 10, 1), date(year, 12, 31)
+        filing_deadline = q_end + timedelta(days=15)
+        draft = {
+            'venture_id': venture_id,
+            'venture_name': venture_name,
+            'quarter': quarter,
+            'quarter_start': str(q_start),
+            'quarter_end': str(q_end),
+            'filing_deadline': str(filing_deadline),
+            'generated_at': now_ist().isoformat(),
+            'construction_progress': progress,
+            'financial_updates': financials,
+            'unit_status': units,
+            'milestone_status': milestones,
+            'compliance_status': [
+                {
+                    'approval_name': a.get('approval_name', ''),
+                    'issuing_authority': a.get('issuing_authority', ''),
+                    'issued_date': str(a.get('issued_date', '')) if a.get('issued_date') else '',
+                    'expiry_date': str(a.get('expiry_date', '')) if a.get('expiry_date') else '',
+                    'status': a.get('status', 'active'),
+                    'remarks': a.get('remarks', '')
+                }
+                for a in approvals
+            ],
+            'delays_issues': [
+                {
+                    'block': d.get('block', ''),
+                    'floor': d.get('floor', ''),
+                    'work_item': d.get('work_item', ''),
+                    'delay_days': d.get('delay_days', 0),
+                    'reason': d.get('reason', '')
+                }
+                for d in delays
+            ]
+        }
+        return jsonify(draft)
+    except Exception as e:
+        print(f'Error generating RERA draft: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/rera/report/submit', methods=['POST'])
+@requires_role('manager', 'admin')
+def api_rera_report_submit():
+    """Submit & lock a quarterly report — creates an immutable snapshot."""
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    body = request.get_json() or {}
+    venture_id = body.get('venture_id')
+    quarter = body.get('quarter')
+    report_data = body.get('report_data')
+    if not venture_id or not quarter or not report_data:
+        return jsonify({'error': 'venture_id, quarter, and report_data are required'}), 400
+    try:
+        # Parse quarter dates
+        year, q_num = quarter.split('-Q')
+        q_num = int(q_num)
+        year = int(year)
+        if q_num == 1:
+            q_start, q_end = date(year, 1, 1), date(year, 3, 31)
+        elif q_num == 2:
+            q_start, q_end = date(year, 4, 1), date(year, 6, 30)
+        elif q_num == 3:
+            q_start, q_end = date(year, 7, 1), date(year, 9, 30)
+        else:
+            q_start, q_end = date(year, 10, 1), date(year, 12, 31)
+        filing_deadline = q_end + timedelta(days=15)
+        user = session.get('user')
+        submitted_by = user.get('email') if isinstance(user, dict) else str(user)
+        # Check if already exists
+        existing = supabase.table('rera_quarterly_reports').select('*').eq('venture_id', venture_id).eq('quarter', quarter).execute()
+        if existing.data:
+            existing_row = existing.data[0]
+            if existing_row.get('status') in ('locked', 'submitted'):
+                return jsonify({'error': 'Report already submitted/locked for this quarter'}), 409
+            # Update existing draft → locked
+            res = supabase.table('rera_quarterly_reports').update({
+                'status': 'locked',
+                'report_data': report_data,
+                'submitted_by': submitted_by,
+                'submitted_at': now_ist().isoformat(),
+                'filing_deadline': str(filing_deadline)
+            }).eq('id', existing_row['id']).execute()
+        else:
+            res = supabase.table('rera_quarterly_reports').insert({
+                'venture_id': venture_id,
+                'quarter': quarter,
+                'quarter_start': str(q_start),
+                'quarter_end': str(q_end),
+                'filing_deadline': str(filing_deadline),
+                'status': 'locked',
+                'report_data': report_data,
+                'submitted_by': submitted_by,
+                'submitted_at': now_ist().isoformat()
+            }).execute()
+        return jsonify({'success': True, 'id': res.data[0]['id'] if res.data else None})
+    except Exception as e:
+        print(f'Error submitting RERA report: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/rera/reports/<venture_id>')
+@requires_role('manager', 'admin')
+def api_rera_reports_list(venture_id):
+    """List all filed/locked quarterly reports for a venture."""
+    if not supabase:
+        return jsonify([])
+    try:
+        res = supabase.table('rera_quarterly_reports').select('*').eq('venture_id', venture_id).order('created_at', desc=True).execute()
+        return jsonify([{
+            'id': r['id'],
+            'venture_id': r['venture_id'],
+            'quarter': r['quarter'],
+            'quarter_start': str(r.get('quarter_start', '')),
+            'quarter_end': str(r.get('quarter_end', '')),
+            'filing_deadline': str(r.get('filing_deadline', '')),
+            'status': r.get('status', 'draft'),
+            'submitted_by': r.get('submitted_by', ''),
+            'submitted_at': r.get('submitted_at', ''),
+            'created_at': r.get('created_at', '')
+        } for r in (res.data or [])])
+    except Exception as e:
+        print(f'Error listing RERA reports: {e}')
+        return jsonify([])
+
+
+@app.route('/api/rera/report/<report_id>')
+@requires_role('manager', 'admin')
+def api_rera_report_detail(report_id):
+    """View a single locked report with full report_data."""
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    try:
+        res = supabase.table('rera_quarterly_reports').select('*').eq('id', report_id).execute()
+        if not res.data:
+            return jsonify({'error': 'Report not found'}), 404
+        r = res.data[0]
+        return jsonify({
+            'id': r['id'],
+            'venture_id': r['venture_id'],
+            'quarter': r['quarter'],
+            'quarter_start': str(r.get('quarter_start', '')),
+            'quarter_end': str(r.get('quarter_end', '')),
+            'filing_deadline': str(r.get('filing_deadline', '')),
+            'status': r.get('status', 'draft'),
+            'report_data': r.get('report_data', {}),
+            'submitted_by': r.get('submitted_by', ''),
+            'submitted_at': r.get('submitted_at', ''),
+            'created_at': r.get('created_at', '')
+        })
+    except Exception as e:
+        print(f'Error fetching RERA report: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/rera/approvals', methods=['GET', 'POST'])
+@requires_role('admin')
+def api_rera_approvals():
+    """CRUD for statutory approvals."""
+    if not supabase:
+        return jsonify([]) if request.method == 'GET' else jsonify({'success': True, 'note': 'read-only local mode'})
+    if request.method == 'GET':
+        venture_id = request.args.get('venture_id')
+        try:
+            q = supabase.table('rera_statutory_approvals').select('*')
+            if venture_id:
+                q = q.eq('venture_id', venture_id)
+            res = q.order('created_at', desc=True).execute()
+            return jsonify(res.data or [])
+        except Exception as e:
+            print(f'Error fetching RERA approvals: {e}')
+            return jsonify([])
+    else:
+        body = request.get_json() or {}
+        required = ['venture_id', 'approval_name']
+        for field in required:
+            if field not in body or body[field] in (None, ''):
+                return jsonify({'error': f'{field} is required'}), 400
+        try:
+            entry = {
+                'venture_id': body['venture_id'],
+                'approval_name': body['approval_name'],
+                'issuing_authority': body.get('issuing_authority', ''),
+                'issued_date': body.get('issued_date', None),
+                'expiry_date': body.get('expiry_date', None),
+                'status': body.get('status', 'active'),
+                'remarks': body.get('remarks', '')
+            }
+            res = supabase.table('rera_statutory_approvals').insert(entry).execute()
+            return jsonify({'success': True, 'id': res.data[0]['id'] if res.data else None})
+        except Exception as e:
+            print(f'Error creating RERA approval: {e}')
+            return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/rera/approval/<approval_id>', methods=['PUT', 'DELETE'])
+@requires_role('admin')
+def api_rera_approval_modify(approval_id):
+    """Update or delete a statutory approval."""
+    if not supabase:
+        return jsonify({'success': True, 'note': 'read-only local mode'})
+    if request.method == 'DELETE':
+        try:
+            supabase.table('rera_statutory_approvals').delete().eq('id', approval_id).execute()
+            return jsonify({'success': True})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+    else:
+        body = request.get_json() or {}
+        allowed = {k: v for k, v in body.items() if k in (
+            'approval_name', 'issuing_authority', 'issued_date', 'expiry_date', 'status', 'remarks'
+        )}
+        try:
+            supabase.table('rera_statutory_approvals').update(allowed).eq('id', approval_id).execute()
+            return jsonify({'success': True})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/rera/thresholds', methods=['GET', 'POST'])
+@requires_role('admin')
+def api_rera_thresholds():
+    """Get or set color→pct thresholds."""
+    if not supabase:
+        if request.method == 'GET':
+            return jsonify([{'color': k, 'pct_value': v, 'venture_id': None, 'work_item': None}
+                            for k, v in RERA_DEFAULT_THRESHOLDS.items()])
+        return jsonify({'success': True, 'note': 'read-only local mode'})
+    if request.method == 'GET':
+        try:
+            res = supabase.table('rera_color_thresholds').select('*').execute()
+            return jsonify(res.data or [])
+        except Exception as e:
+            print(f'Error fetching RERA thresholds: {e}')
+            return jsonify([])
+    else:
+        body = request.get_json() or {}
+        if isinstance(body, list):
+            results = []
+            for item in body:
+                try:
+                    res = supabase.table('rera_color_thresholds').upsert({
+                        'venture_id': item.get('venture_id'),
+                        'work_item': item.get('work_item'),
+                        'color': item['color'],
+                        'pct_value': float(item['pct_value'])
+                    }).execute()
+                    results.append({'success': True})
+                except Exception as e:
+                    results.append({'error': str(e)})
+            return jsonify({'results': results})
+        else:
+            try:
+                res = supabase.table('rera_color_thresholds').upsert({
+                    'venture_id': body.get('venture_id'),
+                    'work_item': body.get('work_item'),
+                    'color': body['color'],
+                    'pct_value': float(body['pct_value'])
+                }).execute()
+                return jsonify({'success': True, 'id': res.data[0]['id'] if res.data else None})
+            except Exception as e:
+                return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/rera/delays', methods=['GET', 'POST'])
+@requires_role('manager', 'admin')
+def api_rera_delays():
+    """Get or create delay log entries."""
+    if not supabase:
+        return jsonify([]) if request.method == 'GET' else jsonify({'success': True, 'note': 'read-only local mode'})
+    if request.method == 'GET':
+        venture_id = request.args.get('venture_id')
+        quarter = request.args.get('quarter')
+        try:
+            q = supabase.table('rera_delay_log').select('*')
+            if venture_id:
+                q = q.eq('venture_id', venture_id)
+            if quarter:
+                q = q.eq('quarter', quarter)
+            res = q.order('created_at', desc=True).execute()
+            return jsonify(res.data or [])
+        except Exception as e:
+            print(f'Error fetching RERA delays: {e}')
+            return jsonify([])
+    else:
+        body = request.get_json() or {}
+        required = ['venture_id', 'quarter']
+        for field in required:
+            if field not in body or body[field] in (None, ''):
+                return jsonify({'error': f'{field} is required'}), 400
+        try:
+            entry = {
+                'venture_id': body['venture_id'],
+                'quarter': body['quarter'],
+                'block': body.get('block', ''),
+                'floor': body.get('floor', ''),
+                'work_item': body.get('work_item', ''),
+                'delay_days': int(body.get('delay_days', 0)),
+                'reason': body.get('reason', '')
+            }
+            res = supabase.table('rera_delay_log').insert(entry).execute()
+            return jsonify({'success': True, 'id': res.data[0]['id'] if res.data else None})
+        except Exception as e:
+            print(f'Error creating RERA delay log: {e}')
+            return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/rera/delay/<delay_id>', methods=['DELETE'])
+@requires_role('manager', 'admin')
+def api_rera_delay_delete(delay_id):
+    """Delete a delay log entry."""
+    if not supabase:
+        return jsonify({'success': True, 'note': 'read-only local mode'})
+    try:
+        supabase.table('rera_delay_log').delete().eq('id', delay_id).execute()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 if __name__ == '__main__':
