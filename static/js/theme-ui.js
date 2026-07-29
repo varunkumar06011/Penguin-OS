@@ -68,4 +68,63 @@
     } else {
         bindSidebarControls();
     }
+
+    /* ============================================================
+       Sticky tracker header — measure height and set CSS variable
+       so table thead th sticks at the correct offset.
+       ============================================================ */
+    function updateTrackerStickyOffset() {
+        var stickyHeader = document.getElementById('trackerStickyHeader');
+        var trackerView = document.getElementById('trackerView');
+        if (!stickyHeader || !trackerView || trackerView.style.display === 'none') return;
+
+        var height = stickyHeader.offsetHeight;
+        // Account for #appMain padding-top on mobile (hamburger offset)
+        var appMain = document.getElementById('appMain');
+        var extraTop = 0;
+        if (appMain && window.innerWidth <= 900) {
+            var cs = window.getComputedStyle(appMain);
+            extraTop = parseFloat(cs.paddingTop) || 0;
+        }
+        var offset = height + extraTop;
+        trackerView.style.setProperty('--tracker-header-offset', offset + 'px');
+
+        /* Measure Work View section header height for thead th sticky offset */
+        var sectionHeader = document.querySelector('.work-view-container .section-header');
+        if (sectionHeader) {
+            trackerView.style.setProperty('--work-section-h', sectionHeader.offsetHeight + 'px');
+        }
+    }
+
+    // Expose globally so cells.js / features.js can call after rendering
+    window.updateTrackerStickyOffset = updateTrackerStickyOffset;
+
+    // Update on scroll (sticky header height can change if bulk bar appears/disappears)
+    var _stickyRaf = null;
+    function scheduleStickyUpdate() {
+        if (_stickyRaf) return;
+        _stickyRaf = requestAnimationFrame(function() {
+            _stickyRaf = null;
+            updateTrackerStickyOffset();
+        });
+    }
+
+    window.addEventListener('scroll', scheduleStickyUpdate, { passive: true });
+    window.addEventListener('resize', scheduleStickyUpdate, { passive: true });
+
+    // Also observe DOM mutations in the sticky header (e.g. bulk bar visibility change)
+    if (typeof MutationObserver !== 'undefined') {
+        var stickyHeader = document.getElementById('trackerStickyHeader');
+        if (stickyHeader) {
+            var mo = new MutationObserver(scheduleStickyUpdate);
+            mo.observe(stickyHeader, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
+        }
+    }
+
+    // Initial call after DOM ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', updateTrackerStickyOffset);
+    } else {
+        updateTrackerStickyOffset();
+    }
 })();

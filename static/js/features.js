@@ -256,21 +256,151 @@ els.settingsModal.addEventListener('click', (e) => {
     if (e.target === els.settingsModal) closeSettingsModal();
 });
 
-// Manage Users (admin password reset)
-async function openManageUsersModal() {
-    if (els.manageUsersMsg) els.manageUsersMsg.textContent = '';
+// ========================
+// User Management (expanded)
+// ========================
+let _editingUserId = null;
+let _allVenturesForAssignment = [];
+let _userVentureAssignments = [];
+
+async function loadUsersList() {
+    if (!els.userListContainer) return;
+    try {
+        const users = await apiGet('/api/users');
+        if (!users || users.length === 0) {
+            els.userListContainer.innerHTML = '<div style="padding:12px;color:#999;font-size:0.85rem;">No users found.</div>';
+            return;
+        }
+        let html = '<table class="tracker-table"><thead><tr><th>Email</th><th>Name</th><th>Role</th><th>Active</th><th>Ventures</th><th></th></tr></thead><tbody>';
+        for (const u of users) {
+            let ventures = 'All';
+            try {
+                const assigned = await apiGet('/api/users/' + u.id + '/ventures');
+                if (assigned && assigned.length > 0) {
+                    ventures = assigned.map(v => escapeHtml(v)).join(', ');
+                }
+            } catch (e) { /* ignore */ }
+            const activeBadge = u.active
+                ? '<span style="color:#27ae60;font-weight:600;">Yes</span>'
+                : '<span style="color:#e74c3c;font-weight:600;">No</span>';
+            html += `<tr>
+                <td>${escapeHtml(u.email)}</td>
+                <td>${escapeHtml(u.full_name || '-')}</td>
+                <td>${escapeHtml(u.role)}</td>
+                <td>${activeBadge}</td>
+                <td style="font-size:0.8rem;">${ventures}</td>
+                <td>
+                    <button class="btn-text edit-user-btn" data-uid="${u.id}" style="font-size:0.78rem;">Edit</button>
+                    <button class="btn-text deactivate-user-btn" data-uid="${u.id}" data-email="${escapeHtml(u.email)}" style="font-size:0.78rem;color:#c0392b;">${u.active ? 'Deactivate' : 'Activate'}</button>
+                </td>
+            </tr>`;
+        }
+        html += '</tbody></table>';
+        els.userListContainer.innerHTML = html;
+        els.userListContainer.querySelectorAll('.edit-user-btn').forEach(btn => {
+            btn.addEventListener('click', () => editUser(btn.dataset.uid));
+        });
+        els.userListContainer.querySelectorAll('.deactivate-user-btn').forEach(btn => {
+            btn.addEventListener('click', () => toggleUserActive(btn.dataset.uid, btn.dataset.email));
+        });
+    } catch (err) {
+        els.userListContainer.innerHTML = '<div style="padding:12px;color:#c0392b;font-size:0.85rem;">Failed to load users.</div>';
+    }
+}
+
+async function loadVenturesForAssignment() {
+    try {
+        _allVenturesForAssignment = await apiGet('/api/ventures/with-names') || [];
+    } catch (e) {
+        _allVenturesForAssignment = [];
+    }
+}
+
+function renderVentureCheckboxes(selectedIds) {
+    if (!els.ventureCheckboxList) return;
+    let html = '';
+    _allVenturesForAssignment.forEach(v => {
+        const checked = selectedIds.includes(v.id) ? 'checked' : '';
+        html += `<label style="display:block;padding:4px 0;font-size:0.85rem;"><input type="checkbox" value="${escapeHtml(v.id)}" ${checked} style="margin-right:6px;">${escapeHtml(v.name || v.id)}</label>`;
+    });
+    if (!_allVenturesForAssignment.length) {
+        html = '<div style="color:#999;font-size:0.8rem;padding:4px;">No ventures available.</div>';
+    }
+    els.ventureCheckboxList.innerHTML = html;
+}
+
+async function editUser(userId) {
+    const users = await apiGet('/api/users');
+    const user = (users || []).find(u => u.id === userId);
+    if (!user) return;
+    _editingUserId = userId;
+    els.userFormTitle.textContent = 'Edit User: ' + user.email;
+    els.newUserEmail.value = user.email;
+    els.newUserEmail.disabled = true;
+    els.newUserFullName.value = user.full_name || '';
+    els.newUserRole.value = user.role;
+    els.newUserPassword.value = '';
+    els.newUserPassword.disabled = true;
+    els.newUserPassword.placeholder = 'Use Change Password section below';
+    els.ventureAssignmentSection.style.display = '';
+    els.changePasswordSection.style.display = '';
+    els.manageUsersSave.textContent = 'Update User';
+    try {
+        _userVentureAssignments = await apiGet('/api/users/' + userId + '/ventures') || [];
+    } catch (e) {
+        _userVentureAssignments = [];
+    }
+    renderVentureCheckboxes(_userVentureAssignments);
+    if (els.manageUsersMsg) { els.manageUsersMsg.textContent = ''; els.manageUsersMsg.style.color = '#c0392b'; }
+}
+
+function resetUserForm() {
+    _editingUserId = null;
+    els.userFormTitle.textContent = 'Create New User';
+    els.newUserEmail.value = '';
+    els.newUserEmail.disabled = false;
+    els.newUserFullName.value = '';
+    els.newUserPassword.value = '';
+    els.newUserPassword.disabled = false;
+    els.newUserPassword.placeholder = 'Min 6 characters';
+    els.newUserRole.value = 'supervisor';
+    els.ventureAssignmentSection.style.display = 'none';
+    els.changePasswordSection.style.display = 'none';
+    els.manageUsersSave.textContent = 'Save User';
     if (els.manageUsersPassword) els.manageUsersPassword.value = '';
     if (els.manageUsersConfirmPassword) els.manageUsersConfirmPassword.value = '';
-    if (els.manageUsersSelect) {
-        els.manageUsersSelect.innerHTML = '<option value="">Loading users...</option>';
+    if (els.manageUsersMsg) { els.manageUsersMsg.textContent = ''; els.manageUsersMsg.style.color = '#c0392b'; }
+}
+
+async function toggleUserActive(userId, email) {
+    const users = await apiGet('/api/users');
+    const user = (users || []).find(u => u.id === userId);
+    if (!user) return;
+    if (user.active) {
+        showConfirm('Deactivate User', `Deactivate ${email}? They will be logged out within 60 seconds.`, async () => {
+            try {
+                await apiPost('/api/users/' + userId, { active: false });
+                showToast('User deactivated');
+                loadUsersList();
+            } catch (err) {
+                showToast(err.message || 'Failed to deactivate', true);
+            }
+        });
+    } else {
         try {
-            const users = await apiGet('/api/users');
-            els.manageUsersSelect.innerHTML = '<option value="">Select a user</option>' +
-                (users || []).map(u => `<option value="${escapeHtml(u.email)}">${escapeHtml(u.email)} (${escapeHtml(u.role)})</option>`).join('');
+            await apiPost('/api/users/' + userId, { active: true });
+            showToast('User activated');
+            loadUsersList();
         } catch (err) {
-            els.manageUsersSelect.innerHTML = '<option value="">Failed to load users</option>';
+            showToast(err.message || 'Failed to activate', true);
         }
     }
+}
+
+async function openManageUsersModal() {
+    resetUserForm();
+    await loadVenturesForAssignment();
+    await loadUsersList();
     if (els.manageUsersModal) els.manageUsersModal.classList.add('show');
 }
 
@@ -294,41 +424,60 @@ if (els.manageUsersModal) {
 }
 if (els.manageUsersSave) {
     els.manageUsersSave.addEventListener('click', async () => {
-        const email = els.manageUsersSelect ? els.manageUsersSelect.value : '';
-        const password = els.manageUsersPassword ? els.manageUsersPassword.value : '';
-        const confirm = els.manageUsersConfirmPassword ? els.manageUsersConfirmPassword.value : '';
-        if (!email) {
-            if (els.manageUsersMsg) els.manageUsersMsg.textContent = 'Please select a user.';
-            return;
-        }
-        if (password.length < 6) {
-            if (els.manageUsersMsg) els.manageUsersMsg.textContent = 'Password must be at least 6 characters.';
-            return;
-        }
-        if (password !== confirm) {
-            if (els.manageUsersMsg) els.manageUsersMsg.textContent = 'Passwords do not match.';
-            return;
-        }
-        try {
-            const res = await apiPost('/api/users/change-password', { email, new_password: password });
-            if (res && res.success) {
+        if (els.manageUsersMsg) { els.manageUsersMsg.textContent = ''; els.manageUsersMsg.style.color = '#c0392b'; }
+        const email = els.newUserEmail.value.trim();
+        const fullName = els.newUserFullName.value.trim();
+        const role = els.newUserRole.value;
+        const password = els.newUserPassword.value;
+        const changePwd = els.manageUsersPassword ? els.manageUsersPassword.value : '';
+        const confirmPwd = els.manageUsersConfirmPassword ? els.manageUsersConfirmPassword.value : '';
+
+        if (_editingUserId) {
+            // Update existing user
+            try {
+                await apiPost('/api/users/' + _editingUserId, { full_name: fullName, role: role });
+                // Venture assignments
+                const checkedIds = Array.from(els.ventureCheckboxList.querySelectorAll('input[type=checkbox]:checked')).map(cb => cb.value);
+                await apiPost('/api/users/' + _editingUserId + '/ventures', { venture_ids: checkedIds });
+                // Change password if provided
+                if (changePwd) {
+                    if (changePwd.length < 6) {
+                        if (els.manageUsersMsg) els.manageUsersMsg.textContent = 'Password must be at least 6 characters.';
+                        return;
+                    }
+                    if (changePwd !== confirmPwd) {
+                        if (els.manageUsersMsg) els.manageUsersMsg.textContent = 'Passwords do not match.';
+                        return;
+                    }
+                    await apiPost('/api/users/change-password', { email: email, new_password: changePwd });
+                }
                 if (els.manageUsersMsg) {
                     els.manageUsersMsg.style.color = '#27ae60';
-                    els.manageUsersMsg.textContent = 'Password updated successfully.';
+                    els.manageUsersMsg.textContent = 'User updated successfully.';
                 }
-                if (els.manageUsersPassword) els.manageUsersPassword.value = '';
-                if (els.manageUsersConfirmPassword) els.manageUsersConfirmPassword.value = '';
-                setTimeout(closeManageUsersModal, 1200);
-            } else {
-                if (els.manageUsersMsg) {
-                    els.manageUsersMsg.style.color = '#c0392b';
-                    els.manageUsersMsg.textContent = res.error || 'Failed to update password.';
-                }
+                setTimeout(() => { closeManageUsersModal(); loadUsersList(); }, 1000);
+            } catch (err) {
+                if (els.manageUsersMsg) els.manageUsersMsg.textContent = err.message || 'Failed to update user.';
             }
-        } catch (err) {
-            if (els.manageUsersMsg) {
-                els.manageUsersMsg.style.color = '#c0392b';
-                els.manageUsersMsg.textContent = err.message || 'Failed to update password.';
+        } else {
+            // Create new user
+            if (!email) {
+                if (els.manageUsersMsg) els.manageUsersMsg.textContent = 'Email is required.';
+                return;
+            }
+            if (password.length < 6) {
+                if (els.manageUsersMsg) els.manageUsersMsg.textContent = 'Password must be at least 6 characters.';
+                return;
+            }
+            try {
+                await apiPost('/api/users/create', { email, password, full_name: fullName, role });
+                if (els.manageUsersMsg) {
+                    els.manageUsersMsg.style.color = '#27ae60';
+                    els.manageUsersMsg.textContent = 'User created successfully.';
+                }
+                setTimeout(() => { resetUserForm(); loadUsersList(); }, 1000);
+            } catch (err) {
+                if (els.manageUsersMsg) els.manageUsersMsg.textContent = err.message || 'Failed to create user.';
             }
         }
     });
@@ -375,8 +524,81 @@ if (settingsCategoryBtn && settingsCategoryInput) {
     });
 }
 
-els.saveSettingsBtn.addEventListener('click', async () => {
-    // Sync work items from DOM
+// ========================
+// Apply Changes Dialog
+// ========================
+let _pendingSettings = null;
+
+function collectSettingsFromModal() {
+    const settings = {};
+
+    // Work Items (flat_view_items)
+    const newItems = [];
+    els.workItemsList.querySelectorAll('li').forEach(row => {
+        const nameSpan = row.querySelector('.work-item-name');
+        newItems.push(nameSpan.textContent.trim());
+    });
+    settings.flat_view_items = newItems.filter(w => w.length > 0);
+
+    // Super Structure Items
+    const superList = document.getElementById('superItemsList');
+    if (superList) {
+        const superItems = [];
+        superList.querySelectorAll('li').forEach(row => {
+            const span = row.querySelector('.work-item-name');
+            const label = span.textContent.trim();
+            if (label) superItems.push({ id: 'ss_' + slugId(label) + '_' + Date.now(), label });
+        });
+        settings.super_structure_items = superItems;
+    }
+
+    // Work Categories
+    if (currentVenture && currentVenture.work_categories) {
+        settings.work_categories = currentVenture.work_categories;
+    }
+
+    // Blocks
+    if (currentVenture && currentVenture.blocks) {
+        settings.blocks = currentVenture.blocks;
+    }
+
+    return settings;
+}
+
+function populateApplyVentureSelect() {
+    if (!els.applyVentureSelect) return;
+    els.applyVentureSelect.innerHTML = '';
+    (venturesList || []).forEach(v => {
+        const opt = document.createElement('option');
+        opt.value = v.id;
+        opt.textContent = v.name || v.id;
+        if (currentVenture && v.id === currentVenture.id) opt.selected = true;
+        els.applyVentureSelect.appendChild(opt);
+    });
+}
+
+function openApplyChangesModal() {
+    _pendingSettings = collectSettingsFromModal();
+    populateApplyVentureSelect();
+
+    // Reset to default: selected venture
+    const selectedRadio = document.querySelector('input[name="applyScope"][value="selected"]');
+    if (selectedRadio) selectedRadio.checked = true;
+    if (els.applyVenturePicker) els.applyVenturePicker.style.display = '';
+    if (els.applyAllWarning) els.applyAllWarning.style.display = 'none';
+    if (els.applyChangesMsg) { els.applyChangesMsg.textContent = ''; els.applyChangesMsg.style.color = '#c0392b'; }
+    if (els.applyVentureSearch) els.applyVentureSearch.value = '';
+
+    if (els.applyChangesModal) els.applyChangesModal.classList.add('show');
+}
+
+function closeApplyChangesModal() {
+    if (els.applyChangesModal) els.applyChangesModal.classList.remove('show');
+    _pendingSettings = null;
+}
+
+els.saveSettingsBtn.addEventListener('click', () => {
+    // Sync work items from DOM into workItems and currentVenture
     const newItems = [];
     els.workItemsList.querySelectorAll('li').forEach(row => {
         const nameSpan = row.querySelector('.work-item-name');
@@ -386,18 +608,7 @@ els.saveSettingsBtn.addEventListener('click', async () => {
     if (currentVenture) {
         currentVenture.flat_view_items = workItems;
     }
-    await saveWorkItems(workItems);
-    // Save work categories changes (rename/delete already save inline; this captures any pending state)
-    if (currentVenture) {
-        await saveVentureConfig();
-    }
-    // Save venture blocks changes
-    if (currentVenture) {
-        await saveVentureConfig();
-        // Refresh block tabs if visible
-        renderBlockTabs();
-    }
-    // Save super structure items from DOM
+    // Sync super structure items from DOM into currentVenture
     if (currentVenture) {
         const superList = document.getElementById('superItemsList');
         if (superList) {
@@ -408,18 +619,126 @@ els.saveSettingsBtn.addEventListener('click', async () => {
                 if (label) superItems.push({ id: 'ss_' + slugId(label) + '_' + Date.now(), label });
             });
             currentVenture.super_structure_items = superItems;
-            await saveVentureConfig();
         }
     }
-    closeSettingsModal();
-    if (currentView === 'flat') {
-        renderGrid();
-    } else if (currentView === 'work') {
-        renderWorkView();
-    } else {
-        renderSuperStructure();
-    }
+    // Open the Apply Changes dialog instead of saving immediately
+    openApplyChangesModal();
 });
+
+// Radio toggle: show/hide venture picker and warning
+document.querySelectorAll('input[name="applyScope"]').forEach(radio => {
+    radio.addEventListener('change', () => {
+        const isAll = radio.value === 'all';
+        if (els.applyVenturePicker) els.applyVenturePicker.style.display = isAll ? 'none' : '';
+        if (els.applyAllWarning) els.applyAllWarning.style.display = isAll ? 'block' : 'none';
+    });
+});
+
+// Search filter for venture select
+if (els.applyVentureSearch) {
+    els.applyVentureSearch.addEventListener('input', () => {
+        const q = els.applyVentureSearch.value.toLowerCase();
+        [...els.applyVentureSelect.options].forEach(opt => {
+            opt.style.display = opt.textContent.toLowerCase().includes(q) ? '' : 'none';
+        });
+    });
+}
+
+// Confirm button: apply settings
+if (els.applyChangesConfirm) {
+    els.applyChangesConfirm.addEventListener('click', async () => {
+        if (!_pendingSettings) return;
+        const scopeRadio = document.querySelector('input[name="applyScope"]:checked');
+        const scope = scopeRadio ? scopeRadio.value : 'selected';
+
+        if (scope === 'all') {
+            // Confirmation for global change
+            showConfirm('Apply to ALL Ventures',
+                'This will overwrite configuration for ALL ventures. This cannot be undone. Continue?',
+                async () => {
+                    await doApplySettings('all', null);
+                });
+        } else {
+            const ventureId = els.applyVentureSelect ? els.applyVentureSelect.value : '';
+            if (!ventureId) {
+                if (els.applyChangesMsg) els.applyChangesMsg.textContent = 'Please select a venture.';
+                return;
+            }
+            await doApplySettings('selected', ventureId);
+        }
+    });
+}
+
+async function doApplySettings(scope, ventureId) {
+    if (els.applyChangesMsg) { els.applyChangesMsg.textContent = 'Applying...'; els.applyChangesMsg.style.color = '#666'; }
+    try {
+        const body = { scope, settings: _pendingSettings };
+        if (scope === 'selected') body.venture_id = ventureId;
+        const res = await apiPost('/api/ventures/apply-settings', body);
+        if (res && res.success) {
+            if (els.applyChangesMsg) {
+                els.applyChangesMsg.style.color = '#27ae60';
+                els.applyChangesMsg.textContent = `Changes applied to ${res.updated || 1} venture(s).`;
+            }
+            // Update local cache
+            if (scope === 'all') {
+                // Reload ventures list
+                const fresh = await apiGet('/api/ventures');
+                if (fresh) venturesList = fresh;
+            } else {
+                // Update the specific venture in local list
+                const idx = venturesList.findIndex(v => v.id === ventureId);
+                if (idx >= 0) {
+                    for (const key in _pendingSettings) {
+                        venturesList[idx][key] = _pendingSettings[key];
+                    }
+                }
+            }
+            // If currentVenture was affected, update it too
+            if (currentVenture) {
+                const updated = venturesList.find(v => v.id === currentVenture.id);
+                if (updated) {
+                    currentVenture = updated;
+                }
+            }
+            setTimeout(() => {
+                closeApplyChangesModal();
+                closeSettingsModal();
+                if (currentView === 'flat') {
+                    renderGrid();
+                } else if (currentView === 'work') {
+                    renderWorkView();
+                } else {
+                    renderSuperStructure();
+                }
+                renderBlockTabs();
+            }, 800);
+        } else {
+            if (els.applyChangesMsg) {
+                els.applyChangesMsg.style.color = '#c0392b';
+                els.applyChangesMsg.textContent = (res && res.error) || 'Failed to apply changes.';
+            }
+        }
+    } catch (err) {
+        if (els.applyChangesMsg) {
+            els.applyChangesMsg.style.color = '#c0392b';
+            els.applyChangesMsg.textContent = err.message || 'Failed to apply changes.';
+        }
+    }
+}
+
+// Close/cancel handlers
+if (els.closeApplyChanges) {
+    els.closeApplyChanges.addEventListener('click', closeApplyChangesModal);
+}
+if (els.applyChangesCancel) {
+    els.applyChangesCancel.addEventListener('click', closeApplyChangesModal);
+}
+if (els.applyChangesModal) {
+    els.applyChangesModal.addEventListener('click', (e) => {
+        if (e.target === els.applyChangesModal) closeApplyChangesModal();
+    });
+}
 
 // ========================
 // Dynamic Navigation
@@ -579,17 +898,24 @@ function renderVentureDashboard() {
         const totalUnits = venturesList.reduce((s, v) => s + (v.blocks ? v.blocks.reduce((bs, b) => bs + (b.floors || 1) * (b.flats_per_floor || 1), 0) : 0), 0);
         const totalWorkItems = venturesList.reduce((s, v) => s + (v.flat_view_items ? v.flat_view_items.length : 0), 0);
 
+        const kpiIcons = {
+            ventures: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V7l8-4 8 4v14M9 21v-6h6v6M9 11h.01M15 11h.01"/></svg>',
+            units: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg>',
+            work: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>',
+            blocks: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>'
+        };
+
         const kpis = [
-            { icon: 'AV', iconClass: 'blue', label: 'Active Ventures', value: venturesList.length, sub: totalBlocks + ' blocks total' },
-            { icon: 'TU', iconClass: 'green', label: 'Total Units', value: totalUnits.toLocaleString(), sub: 'across all ventures' },
-            { icon: 'WI', iconClass: 'amber', label: 'Work Items', value: totalWorkItems, sub: 'tracking categories' },
-            { icon: 'BL', iconClass: 'dark', label: 'Blocks', value: totalBlocks, sub: 'under construction' },
+            { svg: kpiIcons.ventures, iconClass: 'blue', label: 'Active Ventures', value: venturesList.length, sub: totalBlocks + ' blocks total' },
+            { svg: kpiIcons.units, iconClass: 'green', label: 'Total Units', value: totalUnits.toLocaleString(), sub: 'across all ventures' },
+            { svg: kpiIcons.work, iconClass: 'amber', label: 'Work Items', value: totalWorkItems, sub: 'tracking categories' },
+            { svg: kpiIcons.blocks, iconClass: 'dark', label: 'Blocks', value: totalBlocks, sub: 'under construction' },
         ];
         kpis.forEach(k => {
             const card = document.createElement('div');
             card.className = 'kpi-card';
             card.innerHTML = `
-                <div class="kpi-icon ${k.iconClass}">${k.icon}</div>
+                <div class="kpi-icon ${k.iconClass}">${k.svg}</div>
                 <div class="kpi-label">${k.label}</div>
                 <div class="kpi-value">${k.value}</div>
                 <div class="kpi-sub">${k.sub}</div>
@@ -608,14 +934,17 @@ function renderVentureDashboard() {
         // Compute progress from cellsCache if available
         let completed = 0, total = 0;
         if (venture.blocks) {
+            const flatItems = venture.flat_view_items || DEFAULT_WORK_ITEMS;
             venture.blocks.forEach(b => {
                 for (let f = 1; f <= (b.floors || 1); f++) {
                     for (let flat = 1; flat <= (b.flats_per_floor || 1); flat++) {
-                        const flatNum = ((f - 1) * (b.flats_per_floor || 1) + flat).toString().padStart(3, '0');
-                        const cellId = `${venture.id}|${b.id}|${f}|${flatNum}`;
-                        const cell = cellsCache[cellId];
-                        total++;
-                        if (cell && cell.color === 'green') completed++;
+                        const flatNum = (f * 100) + flat;
+                        flatItems.forEach(item => {
+                            const ck = `${venture.id}_${cellKeyById(b.id, f, flatNum, item.id)}`;
+                            const cell = cellsCache[ck];
+                            total++;
+                            if (cell && cell.color === 'green') completed++;
+                        });
                     }
                 }
             });
@@ -1029,6 +1358,179 @@ async function renderHomeReports(container) {
     });
 }
 
+// ========================
+// Overview Page (cross-venture summary)
+// ========================
+function renderOverviewPage() {
+    hideAllMainPanels();
+    const page = document.getElementById('overviewPage');
+    if (!page) return;
+    page.style.display = '';
+    if (typeof setActiveNav === 'function') setActiveNav('sidebarOverview');
+
+    const kpiRow = document.getElementById('overviewKpiRow');
+    kpiRow.innerHTML = '';
+
+    let totalCells = 0;
+    const statusCounts = { red: 0, yellow: 0, blue: 0, green: 0, none: 0 };
+    const totalBlocks = venturesList.reduce((s, v) => s + (v.blocks ? v.blocks.length : 0), 0);
+    const totalUnits = venturesList.reduce((s, v) => s + (v.blocks ? v.blocks.reduce((bs, b) => bs + (b.floors || 1) * (b.flats_per_floor || 1), 0) : 0), 0);
+    const totalWorkItems = venturesList.reduce((s, v) => s + (v.flat_view_items ? v.flat_view_items.length : 0), 0);
+    const ventureProgress = [];
+
+    venturesList.forEach(venture => {
+        if (!venture.blocks) return;
+        let vCompleted = 0, vTotal = 0;
+        const vStatusCounts = { red: 0, yellow: 0, blue: 0, green: 0, none: 0 };
+        const workCategories = venture.work_categories ? ensureWorkCategories(venture.work_categories) : null;
+        const flatItems = venture.flat_view_items || DEFAULT_WORK_ITEMS;
+
+        venture.blocks.forEach(b => {
+            for (let f = 1; f <= (b.floors || 1); f++) {
+                for (let flat = 1; flat <= (b.flats_per_floor || 1); flat++) {
+                    const flatNum = (f * 100) + flat;
+                    flatItems.forEach(item => {
+                        const ck = `${venture.id}_${cellKeyById(b.id, f, flatNum, item.id)}`;
+                        const cell = cellsCache[ck];
+                        const color = cell?.color || 'none';
+                        statusCounts[color]++; vStatusCounts[color]++; totalCells++; vTotal++;
+                        if (color === 'green') vCompleted++;
+                    });
+                    if (workCategories) {
+                        Object.entries(workCategories).forEach(([_, items]) => {
+                            items.forEach(itemObj => {
+                                const ck = `${venture.id}_${cellKeyById(b.id, f, flatNum, itemObj.id)}`;
+                                const cell = cellsCache[ck];
+                                const color = cell?.color || 'none';
+                                statusCounts[color]++; vStatusCounts[color]++; totalCells++; vTotal++;
+                                if (color === 'green') vCompleted++;
+                            });
+                        });
+                    }
+                }
+            }
+        });
+
+        ventureProgress.push({
+            name: venture.name,
+            pct: vTotal > 0 ? Math.round((vCompleted / vTotal) * 100) : 0,
+            total: vTotal,
+            completed: vCompleted
+        });
+    });
+
+    const kpiIcons = {
+        ventures: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V7l8-4 8 4v14M9 21v-6h6v6M9 11h.01M15 11h.01"/></svg>',
+        units: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg>',
+        work: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>',
+        cells: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>',
+        completed: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
+        pending: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>'
+    };
+
+    const kpis = [
+        { svg: kpiIcons.ventures, c: 'blue', label: 'Active Ventures', value: venturesList.length, sub: totalBlocks + ' blocks' },
+        { svg: kpiIcons.units, c: 'green', label: 'Total Units', value: totalUnits.toLocaleString(), sub: 'all ventures' },
+        { svg: kpiIcons.work, c: 'amber', label: 'Work Items', value: totalWorkItems, sub: 'categories' },
+        { svg: kpiIcons.cells, c: 'dark', label: 'Total Cells', value: totalCells.toLocaleString(), sub: 'tracked' },
+        { svg: kpiIcons.completed, c: 'green', label: 'Completed', value: statusCounts.green.toLocaleString(), sub: `${totalCells ? Math.round((statusCounts.green / totalCells) * 100) : 0}% overall` },
+        { svg: kpiIcons.pending, c: 'red', label: 'Yet to Start', value: statusCounts.red.toLocaleString(), sub: `${totalCells ? Math.round((statusCounts.red / totalCells) * 100) : 0}% overall` }
+    ];
+    kpis.forEach(k => {
+        const card = document.createElement('div');
+        card.className = 'overview-kpi-card';
+        card.innerHTML = `<div class="ok-icon ${k.c}">${k.svg}</div><div class="ok-body"><div class="ok-label">${k.label}</div><div class="ok-value">${k.value}</div><div class="ok-sub">${k.sub}</div></div>`;
+        kpiRow.appendChild(card);
+    });
+
+    const statusInfo = [
+        { key: 'red', label: 'Yet to start', color: getColorHex('red') },
+        { key: 'yellow', label: 'In progress', color: getColorHex('yellow') },
+        { key: 'blue', label: 'Patch work', color: getColorHex('blue') },
+        { key: 'green', label: 'Completed', color: getColorHex('green') },
+        { key: 'none', label: 'Not started', color: '#ccc' }
+    ];
+    const pieData = statusInfo.filter(info => statusCounts[info.key] > 0);
+    const hasPieData = totalCells > 0 && pieData.length > 0;
+
+    if (window.overviewPieChart) { window.overviewPieChart.destroy(); window.overviewPieChart = null; }
+    const pieCtx = document.getElementById('overviewPieChart');
+    const pieEmpty = document.getElementById('overviewPieEmpty');
+    if (pieCtx) {
+        if (hasPieData) {
+            pieCtx.style.display = '';
+            if (pieEmpty) pieEmpty.style.display = 'none';
+            window.overviewPieChart = new Chart(pieCtx, {
+                type: 'pie',
+                data: {
+                    labels: pieData.map(i => i.label),
+                    datasets: [{ data: pieData.map(i => statusCounts[i.key]), backgroundColor: pieData.map(i => i.color), borderWidth: 2, borderColor: '#fff' }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'bottom', labels: { padding: 16, usePointStyle: true } },
+                        tooltip: {
+                            callbacks: {
+                                label: ctx => {
+                                    const pct = totalCells ? ((ctx.parsed / totalCells) * 100).toFixed(1) : '0.0';
+                                    return `${ctx.label}: ${ctx.parsed} (${pct}%)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        } else {
+            pieCtx.style.display = 'none';
+            if (pieEmpty) pieEmpty.style.display = '';
+        }
+    }
+
+    if (window.overviewBarChart) { window.overviewBarChart.destroy(); window.overviewBarChart = null; }
+    const barCtx = document.getElementById('overviewBarChart');
+    const barEmpty = document.getElementById('overviewBarEmpty');
+    if (barCtx) {
+        if (ventureProgress.length > 0) {
+            barCtx.style.display = '';
+            if (barEmpty) barEmpty.style.display = 'none';
+            window.overviewBarChart = new Chart(barCtx, {
+                type: 'bar',
+                data: {
+                    labels: ventureProgress.map(v => v.name),
+                    datasets: [{ label: 'Completion %', data: ventureProgress.map(v => v.pct), backgroundColor: '#f47521', borderRadius: 6, barThickness: 'flex', maxBarThickness: 32 }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: { y: { beginAtZero: true, max: 100, ticks: { callback: v => v + '%' } } },
+                    plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => `${ctx.parsed.y}% completed` } } }
+                }
+            });
+        } else {
+            barCtx.style.display = 'none';
+            if (barEmpty) barEmpty.style.display = '';
+        }
+    }
+
+    const vList = document.getElementById('overviewVentures');
+    vList.innerHTML = '<h3>Venture Completion</h3>';
+    const list = document.createElement('div');
+    list.className = 'overview-vlist';
+    if (ventureProgress.length === 0) {
+        list.innerHTML = '<div class="overview-vrow"><span>No ventures available</span></div>';
+    } else {
+        ventureProgress.forEach(v => {
+            const row = document.createElement('div');
+            row.className = 'overview-vrow';
+            row.innerHTML = `<span class="ov-name">${escapeHtml(v.name)}</span><div class="ov-bar"><div class="ov-bar-fill" style="width:${v.pct}%"></div></div><span class="ov-pct">${v.pct}%</span>`;
+            list.appendChild(row);
+        });
+    }
+    vList.appendChild(list);
+}
+
 let homePayrollData = { employees: [], categories: [] };
 let homePayrollMonth = new Date().toISOString().slice(0, 7);
 let homePayrollEditingId = null;
@@ -1217,6 +1719,9 @@ async function openVenture(venture, opts = {}) {
     } else if (currentView === 'super') {
         await renderSuperStructure();
     }
+
+    // Update sticky header offset after view renders
+    if (window.updateTrackerStickyOffset) window.updateTrackerStickyOffset();
 
     // Render admin/manager widgets if venture is open
     const leakageWidget = document.getElementById('materialLeakageWidget');
@@ -1474,7 +1979,7 @@ async function createVentureFromWizard() {
 // ========================
 
 function hideAllMainPanels() {
-    ['venturesDashboard', 'invoicesPanel', 'poPanel', 'reportsPanel', 'payrollPanel', 'inventoryPanel',
+    ['venturesDashboard', 'overviewPage', 'invoicesPanel', 'poPanel', 'reportsPanel', 'payrollPanel', 'inventoryPanel',
      'instantReportsPanel', 'inventoryAuditPanel',
      'expenditurePanel', 'designGeneratorPanel', 'stockPurchasesPanel', 'trackerView'].forEach(id => {
         const el = document.getElementById(id);

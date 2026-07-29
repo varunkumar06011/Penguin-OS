@@ -1,6 +1,6 @@
-# VGrand Infra Tracking — Construction Software & Society Management Platform
+# Penguin OS — Construction Software & Society Management Platform
 
-**VGrand Infra Tracking** is an all-in-one construction software and building project management platform designed for real estate developers, contractors, and residential societies. It tracks apartment construction progress end-to-end and extends into post-handover operations with a built-in RWA / society management module, visitor management, security patrol, and financial billing.
+**Penguin OS** is an all-in-one construction software and building project management platform designed for real estate developers, contractors, and residential societies. It tracks apartment construction progress end-to-end and extends into post-handover operations with a built-in RWA / society management module, visitor management, security patrol, and financial billing.
 
 If you are looking for free, open-source, self-hosted construction software, a residential building progress tracker, or a lightweight real estate project management tool, this project is a ready-to-run starting point.
 
@@ -54,24 +54,9 @@ If you are looking for free, open-source, self-hosted construction software, a r
 - **Image Handling**: Pillow
 - **Deployment**: Gunicorn-ready
 
-## Demo Login
-
-- **Username**: `Vgrand@123`
-- **Password**: `Vgrand1234`
-
 ## Setup
 
 ### 1. Supabase Configuration
-
-Create a Supabase project and add the connection details to a `.env` file in the repo root:
-
-```env
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_ANON_KEY=your-anon-key
-SUPABASE_SERVICE_KEY=your-service-role-key
-SECRET_KEY=your-flask-secret-key
-```
-
 > For local development the app can run in a read-only fallback mode when Supabase is not configured, but create/update/delete operations will be no-ops.
 
 ### 2. Database Setup
@@ -146,7 +131,7 @@ RWA-specific data (flats, residents, deliveries, vehicles, complaints, amenities
 
 ## License
 
-Internal use for VGrand Infra.
+Internal use for Penguin OS.
 
 ---
 

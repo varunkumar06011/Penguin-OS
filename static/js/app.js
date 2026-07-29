@@ -61,13 +61,13 @@ const SIDEBAR_CONFIG = {
             {
                 title: 'Overview',
                 items: [
-                    { id: 'sidebarDashboard', icon: '\u{1F3E0}', label: 'Dashboard' },
+                    { id: 'sidebarOverview', icon: '\u{1F3E0}', label: 'Overview' },
                 ]
             },
             {
                 title: 'Construction',
                 items: [
-                    { id: 'sidebarDashboard', icon: '\u{1F3D7}\uFE0F', label: 'Tracking', action: 'tracker' },
+                    { id: 'sidebarDashboard', icon: '\u{1F3D7}\uFE0F', label: 'Dashboard', action: 'tracker' },
                     { id: 'openExpenditureBtn', icon: '\u{1F4B8}', label: 'Expenditure' },
                     { id: 'openInventoryBtn', icon: '\u{1F4E6}', label: 'Inventory' },
                 ]
@@ -119,13 +119,13 @@ const SIDEBAR_CONFIG = {
             {
                 title: 'Overview',
                 items: [
-                    { id: 'sidebarDashboard', icon: '\u{1F3E0}', label: 'Dashboard' },
+                    { id: 'sidebarOverview', icon: '\u{1F3E0}', label: 'Overview' },
                 ]
             },
             {
                 title: 'Construction',
                 items: [
-                    { id: 'sidebarDashboard', icon: '\u{1F3D7}\uFE0F', label: 'Tracking', action: 'tracker' },
+                    { id: 'sidebarDashboard', icon: '\u{1F3D7}\uFE0F', label: 'Dashboard', action: 'tracker' },
                     { id: 'openExpenditureBtn', icon: '\u{1F4B8}', label: 'Expenditure' },
                     { id: 'openInventoryBtn', icon: '\u{1F4E6}', label: 'Inventory' },
                 ]
@@ -170,13 +170,13 @@ const SIDEBAR_CONFIG = {
             {
                 title: 'Overview',
                 items: [
-                    { id: 'sidebarDashboard', icon: '\u{1F3E0}', label: 'Dashboard' },
+                    { id: 'sidebarOverview', icon: '\u{1F3E0}', label: 'Overview' },
                 ]
             },
             {
                 title: 'Construction',
                 items: [
-                    { id: 'sidebarDashboard', icon: '\u{1F3D7}\uFE0F', label: 'Tracking', action: 'tracker' },
+                    { id: 'sidebarDashboard', icon: '\u{1F3D7}\uFE0F', label: 'Dashboard', action: 'tracker' },
                     { id: 'openExpenditureBtn', icon: '\u{1F4B8}', label: 'Expenditure' },
                     { id: 'openInventoryBtn', icon: '\u{1F4E6}', label: 'Inventory' },
                     { id: 'openStockPurchasesBtn', icon: '\u{1F6D2}', label: 'Stock Purchases' },
@@ -723,6 +723,14 @@ const els = {
     popupTitle: document.getElementById('popupTitle'),
     popupCurrentStatus: document.getElementById('popupCurrentStatus'),
     clearStatusBtn: document.getElementById('clearStatusBtn'),
+    cellUsageSection: document.getElementById('cellUsageSection'),
+    cellUsageList: document.getElementById('cellUsageList'),
+    usageMaterialSelect: document.getElementById('usageMaterialSelect'),
+    usageQtyInput: document.getElementById('usageQtyInput'),
+    usageWasteInput: document.getElementById('usageWasteInput'),
+    usageReasonInput: document.getElementById('usageReasonInput'),
+    logUsageBtn: document.getElementById('logUsageBtn'),
+    usageMsg: document.getElementById('usageMsg'),
     cancelStatusBtn: document.getElementById('cancelStatusBtn'),
     timelineModal: document.getElementById('timelineModal'),
     timelineTitle: document.getElementById('timelineTitle'),
@@ -741,15 +749,31 @@ const els = {
     closeSettings: document.getElementById('closeSettings'),
     blocksSettingsList: document.getElementById('blocksSettingsList'),
     addBlockBtn: document.getElementById('addBlockBtn'),
+    applyChangesModal: document.getElementById('applyChangesModal'),
+    closeApplyChanges: document.getElementById('closeApplyChanges'),
+    applyChangesCancel: document.getElementById('applyChangesCancel'),
+    applyChangesConfirm: document.getElementById('applyChangesConfirm'),
+    applyChangesMsg: document.getElementById('applyChangesMsg'),
+    applyVentureSelect: document.getElementById('applyVentureSelect'),
+    applyVentureSearch: document.getElementById('applyVentureSearch'),
+    applyAllWarning: document.getElementById('applyAllWarning'),
     manageUsersBtn: document.getElementById('manageUsersBtn'),
     manageUsersModal: document.getElementById('manageUsersModal'),
     closeManageUsers: document.getElementById('closeManageUsers'),
     manageUsersCancel: document.getElementById('manageUsersCancel'),
     manageUsersSave: document.getElementById('manageUsersSave'),
-    manageUsersSelect: document.getElementById('manageUsersSelect'),
     manageUsersPassword: document.getElementById('manageUsersPassword'),
     manageUsersConfirmPassword: document.getElementById('manageUsersConfirmPassword'),
     manageUsersMsg: document.getElementById('manageUsersMsg'),
+    userListContainer: document.getElementById('userListContainer'),
+    newUserEmail: document.getElementById('newUserEmail'),
+    newUserFullName: document.getElementById('newUserFullName'),
+    newUserPassword: document.getElementById('newUserPassword'),
+    newUserRole: document.getElementById('newUserRole'),
+    userFormTitle: document.getElementById('userFormTitle'),
+    ventureAssignmentSection: document.getElementById('ventureAssignmentSection'),
+    ventureCheckboxList: document.getElementById('ventureCheckboxList'),
+    changePasswordSection: document.getElementById('changePasswordSection'),
 };
 
 // ========================
@@ -1025,6 +1049,15 @@ function renderSidebar() {
         const handler = NAV_PANEL_HANDLERS[item.id];
         if (handler) handler();
     });
+
+    // Bind overview button if present
+    const overviewBtn = document.getElementById('sidebarOverview');
+    if (overviewBtn && !overviewBtn._bound) {
+        overviewBtn.addEventListener('click', () => {
+            if (typeof renderOverviewPage === 'function') renderOverviewPage();
+        });
+        overviewBtn._bound = true;
+    }
 
     // Bind dashboard button if present
     const dashBtn = document.getElementById('sidebarDashboard');

@@ -6,6 +6,7 @@ import base64
 import io
 from datetime import timedelta, datetime, date, timezone
 from functools import wraps
+import time
 from dotenv import load_dotenv
 from supabase import create_client, Client
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -87,10 +88,32 @@ FLOORS = ["1st Floor", "2nd Floor", "3rd Floor", "4th Floor", "5th Floor"]
 FLATS_PER_FLOOR = 6
 
 
+_active_cache = {}  # {user_id: (is_active, timestamp)}
+
+def _is_user_active(user_id):
+    now = time.time()
+    cached = _active_cache.get(user_id)
+    if cached and (now - cached[1]) < 60:
+        return cached[0]
+    if not supabase:
+        return True
+    try:
+        res = supabase.table('users').select('active').eq('id', user_id).execute()
+        is_active = bool(res.data and res.data[0].get('active', False))
+    except Exception:
+        is_active = True
+    _active_cache[user_id] = (is_active, now)
+    return is_active
+
+
 def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         if 'user' not in session:
+            return redirect(url_for('login_page'))
+        user = session['user']
+        if not _is_user_active(user.get('id')):
+            session.pop('user', None)
             return redirect(url_for('login_page'))
         return f(*args, **kwargs)
     return decorated
@@ -124,6 +147,35 @@ def requires_role_or_override(*primary_roles):
             return f(*args, **kwargs)
         return wrapped
     return decorator
+
+
+def _allowed_ventures(user):
+    if not supabase:
+        return set()
+    if user.get('role') in ('admin', 'manager'):
+        org_id = user.get('org_id')
+        res = supabase.table('ventures').select('id').eq('org_id', org_id).execute()
+        return {r['id'] for r in (res.data or [])}
+    rows = supabase.table('user_ventures').select('venture_id').eq('user_id', user['id']).execute()
+    allowed = {r['venture_id'] for r in (rows.data or [])}
+    if not allowed:
+        org_id = user.get('org_id')
+        res = supabase.table('ventures').select('id').eq('org_id', org_id).execute()
+        allowed = {r['id'] for r in (res.data or [])}
+    return allowed
+
+
+def _verify_same_org(target_user_id):
+    if not supabase:
+        return True
+    admin_org = session['user'].get('org_id')
+    try:
+        res = supabase.table('users').select('org_id').eq('id', target_user_id).execute()
+        if not res.data or res.data[0].get('org_id') != admin_org:
+            return False
+    except Exception:
+        return False
+    return True
 
 
 def compress_image_data_url(data_url, max_size=(1024, 1024), quality=65):
@@ -656,7 +708,8 @@ def api_users():
     if not supabase:
         return jsonify([])
     try:
-        res = supabase.table('users').select('email, role, active, full_name').execute()
+        org_id = session['user'].get('org_id')
+        res = supabase.table('users').select('id, email, role, active, full_name').eq('org_id', org_id).execute()
         return jsonify(res.data or [])
     except Exception as e:
         print(f'Error fetching users: {e}')
@@ -680,6 +733,8 @@ def api_users_change_password():
         if not res.data:
             return jsonify({'error': 'User not found'}), 404
         user = res.data[0]
+        if not _verify_same_org(user['id']):
+            return jsonify({'error': 'Forbidden: user belongs to a different organization'}), 403
         new_hash = generate_password_hash(new_password)
         supabase.table('users').update({'password_hash': new_hash}).eq('id', user['id']).execute()
         return jsonify({'success': True})
@@ -1092,13 +1147,23 @@ def api_cell_post(cell_id):
     color = body.get('color')
     if color is not None and color not in ('red', 'yellow', 'blue', 'green', ''):
         return jsonify({'error': f'Invalid color value: {color}'}), 400
+    venture_id = body.get('venture_id')
+    if venture_id:
+        allowed = _allowed_ventures(session['user'])
+        if venture_id not in allowed:
+            return jsonify({'error': 'Forbidden'}), 403
     body = compress_images_in_data(body)
     try:
+        prev_res = supabase.table('cell_data').select('data').eq('id', cell_id).execute()
+        prev_color = None
+        if prev_res.data:
+            prev_data = prev_res.data[0].get('data') or {}
+            prev_color = prev_data.get('color')
         supabase.table('cell_data').upsert({
             'id': cell_id,
             'data': body
         }, on_conflict='id').execute()
-        return jsonify({'success': True})
+        return jsonify({'success': True, 'previous_color': prev_color})
     except Exception as e:
         print(f'Error saving cell {cell_id}: {e}')
         return jsonify({'success': True, 'note': 'read-only local mode'})
@@ -1120,8 +1185,21 @@ def api_cells_batch():
         return jsonify({'success': True, 'count': len(cells), 'note': 'read-only local mode'})
     rows = [{'id': c['id'], 'data': compress_images_in_data(c.get('data', {}))} for c in cells]
     try:
+        downgraded = []
+        for c in cells:
+            cid = c.get('id')
+            new_color = (c.get('data') or {}).get('color')
+            if new_color and new_color != 'green':
+                try:
+                    prev_res = supabase.table('cell_data').select('data').eq('id', cid).execute()
+                    if prev_res.data:
+                        prev_color = (prev_res.data[0].get('data') or {}).get('color')
+                        if prev_color == 'green':
+                            downgraded.append(cid)
+                except Exception:
+                    pass
         supabase.table('cell_data').upsert(rows, on_conflict='id').execute()
-        return jsonify({'success': True, 'count': len(rows)})
+        return jsonify({'success': True, 'count': len(rows), 'downgraded': downgraded})
     except Exception as e:
         print(f'Error in batch upsert: {e}')
         return jsonify({'success': True, 'count': len(cells), 'note': 'read-only local mode'})
@@ -1139,7 +1217,13 @@ def api_ventures():
         return jsonify(fallback or [])
     try:
         res = supabase.table('ventures').select('*').execute()
-        return jsonify([row['data'] for row in res.data])
+        all_ventures = res.data or []
+        user = session['user']
+        if user.get('role') in ('admin', 'manager'):
+            return jsonify([row['data'] for row in all_ventures if row.get('data')])
+        else:
+            allowed = _allowed_ventures(user)
+            return jsonify([row['data'] for row in all_ventures if row.get('data') and row['id'] in allowed])
     except Exception as e:
         print(f'Error fetching ventures: {e}')
         fallback = load_json_fallback('ventures.json')
@@ -1191,8 +1275,12 @@ def api_venture_post(venture_id):
     try:
         v = request.get_json() or {}
         v['id'] = venture_id
+        org_id = session['user'].get('org_id')
+        name = v.get('name') or (v.get('data') or {}).get('name')
         supabase.table('ventures').upsert({
             'id': venture_id,
+            'name': name,
+            'org_id': org_id,
             'data': v
         }, on_conflict='id').execute()
         return jsonify({'success': True})
@@ -1212,6 +1300,81 @@ def api_venture_delete(venture_id):
     except Exception as e:
         print(f'Error deleting venture {venture_id}: {e}')
         return jsonify({'success': True, 'note': 'read-only local mode'})
+
+
+@app.route('/api/ventures/apply-settings', methods=['POST'])
+@requires_role('supervisor', 'manager', 'admin')
+def api_ventures_apply_settings():
+    """Apply configuration changes to a single venture or all ventures.
+
+    Body: {
+        scope: 'selected' | 'all',
+        venture_id: str (required when scope='selected'),
+        settings: {
+            flat_view_items: [...],
+            super_structure_items: [...],
+            work_categories: {...},
+            blocks: [...]
+        }
+    }
+    Only the fields present in `settings` are overwritten; other venture data is preserved.
+    """
+    if not supabase:
+        return jsonify({'success': True, 'note': 'read-only local mode'})
+    data = request.get_json() or {}
+    scope = data.get('scope', 'selected')
+    settings = data.get('settings', {})
+
+    if not settings:
+        return jsonify({'error': 'No settings provided'}), 400
+
+    # Valid setting keys that can be applied
+    valid_keys = {'flat_view_items', 'super_structure_items', 'work_categories', 'blocks'}
+    apply_keys = set(settings.keys()) & valid_keys
+    if not apply_keys:
+        return jsonify({'error': 'No valid setting keys provided'}), 400
+
+    try:
+        if scope == 'all':
+            res = supabase.table('ventures').select('*').execute()
+            if not res.data:
+                return jsonify({'error': 'No ventures found'}), 404
+            updated = 0
+            for row in res.data:
+                vdata = row.get('data') or {}
+                if isinstance(vdata, str):
+                    import json as _json
+                    try:
+                        vdata = _json.loads(vdata)
+                    except Exception:
+                        vdata = {}
+                for key in apply_keys:
+                    vdata[key] = settings[key]
+                supabase.table('ventures').update({'data': vdata}).eq('id', row['id']).execute()
+                updated += 1
+            return jsonify({'success': True, 'updated': updated})
+        else:
+            venture_id = data.get('venture_id', '').strip()
+            if not venture_id:
+                return jsonify({'error': 'venture_id is required for selected scope'}), 400
+            res = supabase.table('ventures').select('*').eq('id', venture_id).execute()
+            if not res.data:
+                return jsonify({'error': 'Venture not found'}), 404
+            row = res.data[0]
+            vdata = row.get('data') or {}
+            if isinstance(vdata, str):
+                import json as _json
+                try:
+                    vdata = _json.loads(vdata)
+                except Exception:
+                    vdata = {}
+            for key in apply_keys:
+                vdata[key] = settings[key]
+            supabase.table('ventures').update({'data': vdata}).eq('id', venture_id).execute()
+            return jsonify({'success': True, 'updated': 1})
+    except Exception as e:
+        print(f'Error applying settings: {e}')
+        return jsonify({'error': str(e)}), 500
 
 
 # ========================
@@ -1289,6 +1452,14 @@ def api_po_post():
         return jsonify({'success': True, 'note': 'read-only local mode'})
     try:
         po = request.get_json() or {}
+        po_number = (po.get('poNumber') or '').strip()
+        if po_number:
+            po_lower = po_number.lower()
+            existing = supabase.table('purchase_orders').select('id,data').execute()
+            for row in (existing.data or []):
+                row_num = ((row.get('data') or {}).get('poNumber') or '').strip().lower()
+                if row_num == po_lower and row['id'] != po.get('id'):
+                    return jsonify({'error': f'PO "{po_number}" already exists'}), 409
         supabase.table('purchase_orders').upsert({
             'id': po['id'],
             'data': po
@@ -1338,6 +1509,14 @@ def api_vendor_post():
         return jsonify({'success': True, 'note': 'read-only local mode'})
     try:
         vendor = request.get_json() or {}
+        name = (vendor.get('name') or '').strip()
+        if name:
+            name_lower = name.lower()
+            existing = supabase.table('vendors').select('id,data').execute()
+            for row in (existing.data or []):
+                row_name = ((row.get('data') or {}).get('name') or '').strip().lower()
+                if row_name == name_lower and row['id'] != vendor.get('id'):
+                    return jsonify({'error': f'Vendor "{name}" already exists'}), 409
         supabase.table('vendors').upsert({
             'id': vendor['id'],
             'data': vendor
@@ -1407,9 +1586,15 @@ def api_materials():
     if not supabase:
         return jsonify([]), 500
     venture_id = request.args.get('venture_id')
+    is_global = request.args.get('global', 'false').lower() == 'true'
     q = supabase.table('materials').select('*')
-    if venture_id:
-        q = q.eq('venture_id', venture_id)
+    if is_global:
+        q = q.is_('venture_id', 'null')
+    elif venture_id:
+        allowed = _allowed_ventures(session['user'])
+        if venture_id not in allowed:
+            return jsonify({'error': 'Forbidden'}), 403
+        q = q.or_(f'venture_id.eq.{venture_id},venture_id.is.null')
     res = q.execute()
     return jsonify(res.data or [])
 
@@ -1420,6 +1605,19 @@ def api_material_post():
     if not supabase:
         return jsonify({'error': 'Supabase not connected'}), 500
     m = request.get_json() or {}
+    if not m.get('id'):
+        m['id'] = str(__import__('uuid').uuid4())
+    # Global materials (venture_id null) restricted to admin/manager
+    if m.get('venture_id') is None:
+        if session['user'].get('role') not in ('admin', 'manager'):
+            return jsonify({'error': 'Only admins and managers can create global materials'}), 403
+        # Enforce (name, unit) uniqueness for global materials
+        name = (m.get('name') or '').strip().lower()
+        unit = (m.get('unit') or '').strip().lower()
+        if name and unit:
+            existing = supabase.table('materials').select('id').is_('venture_id', 'null').ilike('name', name).ilike('unit', unit).execute()
+            if existing.data and not any(r['id'] == m['id'] for r in existing.data):
+                return jsonify({'error': f'A global material named "{m.get("name")}" with unit "{m.get("unit")}" already exists'}), 409
     supabase.table('materials').upsert(m, on_conflict='id').execute()
     return jsonify({'success': True})
 
@@ -1429,6 +1627,17 @@ def api_material_post():
 def api_material_delete(material_id):
     if not supabase:
         return jsonify({'error': 'Supabase not connected'}), 500
+    # Check if material is global (venture_id null)
+    check = supabase.table('materials').select('venture_id').eq('id', material_id).execute()
+    if check.data:
+        mat = check.data[0]
+        if mat.get('venture_id') is None:
+            if session['user'].get('role') not in ('admin', 'manager'):
+                return jsonify({'error': 'Only admins and managers can delete global materials'}), 403
+        else:
+            allowed = _allowed_ventures(session['user'])
+            if mat['venture_id'] not in allowed:
+                return jsonify({'error': 'Forbidden'}), 403
     supabase.table('materials').delete().eq('id', material_id).execute()
     return jsonify({'success': True})
 
@@ -1438,8 +1647,18 @@ def api_material_delete(material_id):
 def api_stock():
     if not supabase:
         return jsonify([]), 500
+    allowed = _allowed_ventures(session['user'])
+    allowed_with_wh = allowed | {'WAREHOUSE'}
+    venture_id = request.args.get('venture_id')
+    if venture_id:
+        if venture_id not in allowed_with_wh:
+            return jsonify({'error': 'Forbidden'}), 403
     q = supabase.table('stock_ledger').select('*')
-    for f in ['venture_id', 'material_id', 'entry_type', 'block', 'floor', 'vendor_id']:
+    if venture_id:
+        q = q.eq('venture_id', venture_id)
+    else:
+        q = q.in_('venture_id', list(allowed_with_wh))
+    for f in ['material_id', 'entry_type', 'block', 'floor', 'vendor_id']:
         v = request.args.get(f)
         if v:
             q = q.eq(f, v)
@@ -1459,6 +1678,19 @@ def api_stock_post():
     if not supabase:
         return jsonify({'error': 'Supabase not connected'}), 500
     entry = request.get_json() or {}
+    entry_type = entry.get('entry_type', '')
+    venture_id = entry.get('venture_id')
+    if venture_id:
+        allowed = _allowed_ventures(session['user'])
+        if venture_id not in allowed and venture_id != 'WAREHOUSE':
+            return jsonify({'error': 'Forbidden'}), 403
+    if entry_type == 'IN':
+        rate = float(entry.get('rate') or 0)
+        if rate <= 0:
+            return jsonify({'error': 'Rate is required for Stock In entries and must be > 0'}), 400
+        entry['cost_per_unit'] = rate
+    if not entry.get('id'):
+        entry['id'] = str(__import__('uuid').uuid4())
     supabase.table('stock_ledger').upsert(entry, on_conflict='id').execute()
     return jsonify({'success': True})
 
@@ -1469,9 +1701,17 @@ def api_stock_summary():
     if not supabase:
         return jsonify([]), 500
     venture_id = request.args.get('venture_id')
+    allowed = _allowed_ventures(session['user'])
     q = supabase.table('stock_balance').select('*')
     if venture_id:
+        if venture_id not in allowed and venture_id != 'WAREHOUSE':
+            return jsonify({'error': 'Forbidden'}), 403
         q = q.eq('venture_id', venture_id)
+    else:
+        allowed_with_wh = allowed | {'WAREHOUSE'}
+        if not allowed_with_wh:
+            return jsonify([])
+        q = q.in_('venture_id', list(allowed_with_wh))
     res = q.execute()
     return jsonify(res.data or [])
 
@@ -1481,11 +1721,17 @@ def api_stock_summary():
 def api_stock_location_report():
     if not supabase:
         return jsonify([]), 500
+    allowed = _allowed_ventures(session['user'])
     venture_id = request.args.get('venture_id')
+    if venture_id:
+        if venture_id not in allowed and venture_id != 'WAREHOUSE':
+            return jsonify({'error': 'Forbidden'}), 403
     material_id = request.args.get('material_id')
     q = supabase.table('stock_ledger').select('*').eq('entry_type', 'OUT')
     if venture_id:
         q = q.eq('venture_id', venture_id)
+    else:
+        q = q.in_('venture_id', list(allowed))
     if material_id:
         q = q.eq('material_id', material_id)
     res = q.execute()
@@ -1497,13 +1743,19 @@ def api_stock_location_report():
 def api_stock_vendor_report():
     if not supabase:
         return jsonify([]), 500
+    allowed = _allowed_ventures(session['user'])
+    allowed_with_wh = allowed | {'WAREHOUSE'}
     vendor_id = request.args.get('vendor_id')
     venture_id = request.args.get('venture_id')
     q = supabase.table('stock_ledger').select('*').eq('entry_type', 'IN')
+    if venture_id:
+        if venture_id not in allowed_with_wh:
+            return jsonify({'error': 'Forbidden'}), 403
+        q = q.eq('venture_id', venture_id)
+    else:
+        q = q.in_('venture_id', list(allowed_with_wh))
     if vendor_id:
         q = q.eq('vendor_id', vendor_id)
-    if venture_id:
-        q = q.eq('venture_id', venture_id)
     res = q.execute()
     return jsonify(res.data or [])
 
@@ -1924,7 +2176,7 @@ def api_inventory_audit():
         return jsonify({'error': 'venture_id is required'}), 400
     try:
         # Get all materials for this venture
-        mats_res = supabase.table('materials').select('*').eq('venture_id', venture_id).execute()
+        mats_res = supabase.table('materials').select('*').or_(f'venture_id.eq.{venture_id},venture_id.is.null').execute()
         materials = mats_res.data or []
         # Get stock balances
         bal_res = supabase.table('stock_balance').select('*').eq('venture_id', venture_id).execute()
@@ -1942,8 +2194,10 @@ def api_inventory_audit():
             mid = mat['id']
             bal = balances.get(mid, {})
             received = float(bal.get('total_in', 0))
-            consumed = float(bal.get('total_out', 0))
-            expected_remaining = received - consumed
+            total_out = float(bal.get('total_out', 0))
+            total_used = float(bal.get('total_used', 0))
+            total_wasted = float(bal.get('total_wasted', 0))
+            expected_remaining = received - total_out
             actual_balance = float(bal.get('balance', 0))
             tolerance = float(mat.get('min_threshold', 0)) * 0.1  # 10% of min_threshold
             discrepancy = abs(expected_remaining - actual_balance) > max(tolerance, 0.01)
@@ -1954,7 +2208,9 @@ def api_inventory_audit():
                 'unit': mat.get('unit', ''),
                 'ordered_qty': round(ordered_qty.get(mid, 0), 2),
                 'received_qty': round(received, 2),
-                'consumed_qty': round(consumed, 2),
+                'consumed_qty': round(total_used, 2),
+                'wasted_qty': round(total_wasted, 2),
+                'total_out_qty': round(total_out, 2),
                 'expected_remaining': round(expected_remaining, 2),
                 'actual_balance': round(actual_balance, 2),
                 'short_delivery': round(short_delivery, 2),
@@ -2054,7 +2310,7 @@ def api_materials_leakage_check():
         return jsonify({'error': 'venture_id is required'}), 400
     try:
         # Materials
-        mats_res = supabase.table('materials').select('*').eq('venture_id', venture_id).execute()
+        mats_res = supabase.table('materials').select('*').or_(f'venture_id.eq.{venture_id},venture_id.is.null').execute()
         materials = mats_res.data or []
         # Stock balances
         bal_res = supabase.table('stock_balance').select('*').eq('venture_id', venture_id).execute()
@@ -2070,12 +2326,16 @@ def api_materials_leakage_check():
         stock_res = supabase.table('stock_ledger').select('*').eq('venture_id', venture_id).execute()
         received_qty = {}
         consumed_qty = {}
+        wasted_qty = {}
         for entry in stock_res.data:
             mid = entry.get('material_id', 'unknown')
             if entry.get('entry_type') == 'IN':
                 received_qty[mid] = received_qty.get(mid, 0) + float(entry.get('qty', 0))
             elif entry.get('entry_type') == 'OUT':
-                consumed_qty[mid] = consumed_qty.get(mid, 0) + float(entry.get('qty', 0))
+                if entry.get('is_wastage'):
+                    wasted_qty[mid] = wasted_qty.get(mid, 0) + float(entry.get('qty', 0))
+                else:
+                    consumed_qty[mid] = consumed_qty.get(mid, 0) + float(entry.get('qty', 0))
         # Build result
         rows = []
         for mat in materials:
@@ -2083,8 +2343,10 @@ def api_materials_leakage_check():
             bal = balances.get(mid, {})
             received = received_qty.get(mid, 0)
             consumed = consumed_qty.get(mid, 0)
+            wasted = wasted_qty.get(mid, 0)
+            total_out = consumed + wasted
             ordered = ordered_qty.get(mid, 0)
-            expected_remaining = received - consumed
+            expected_remaining = received - total_out
             actual_balance = float(bal.get('balance', 0))
             tolerance = float(mat.get('min_threshold', 0)) * 0.1
             discrepancy = abs(expected_remaining - actual_balance) > max(tolerance, 0.01)
@@ -2096,6 +2358,8 @@ def api_materials_leakage_check():
                 'ordered_qty': round(ordered, 2),
                 'received_qty': round(received, 2),
                 'consumed_qty': round(consumed, 2),
+                'wasted_qty': round(wasted, 2),
+                'total_out_qty': round(total_out, 2),
                 'expected_remaining': round(expected_remaining, 2),
                 'actual_balance': round(actual_balance, 2),
                 'short_delivery': round(short_delivery, 2),
@@ -5001,6 +5265,418 @@ def api_rera_delay_delete(delay_id):
         supabase.table('rera_delay_log').delete().eq('id', delay_id).execute()
         return jsonify({'success': True})
     except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ========================
+# Inventory Ready — New Routes
+# ========================
+
+@app.route('/api/cell/<cell_id>/usage', methods=['POST'])
+@requires_role_or_override('supervisor')
+def api_cell_usage(cell_id):
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    body = request.get_json() or {}
+    venture_id = body.get('venture_id')
+    material_id = body.get('material_id')
+    qty_used = float(body.get('qty_used') or 0)
+    qty_wasted = float(body.get('qty_wasted') or 0)
+    if not venture_id or not material_id:
+        return jsonify({'error': 'venture_id and material_id are required'}), 400
+    if qty_used <= 0 and qty_wasted <= 0:
+        return jsonify({'error': 'qty_used or qty_wasted must be > 0'}), 400
+    allowed = _allowed_ventures(session['user'])
+    if venture_id not in allowed:
+        return jsonify({'error': 'Forbidden'}), 403
+    try:
+        result = supabase.rpc('record_cell_usage', {
+            'p_cell_id': cell_id,
+            'p_venture_id': venture_id,
+            'p_block': body.get('block'),
+            'p_floor': body.get('floor'),
+            'p_flat': body.get('flat'),
+            'p_work_item': body.get('work_item'),
+            'p_material_id': material_id,
+            'p_qty_used': qty_used,
+            'p_qty_wasted': qty_wasted,
+            'p_wastage_reason': body.get('wastage_reason'),
+            'p_entry_date': body.get('entry_date') or date.today().isoformat(),
+            'p_created_by': session['user'].get('email')
+        }).execute()
+        return jsonify(result.data or {'success': True})
+    except Exception as e:
+        err = str(e)
+        if 'Insufficient stock' in err:
+            return jsonify({'error': 'Insufficient stock. Ask admin to transfer more stock to this venture, then retry.'}), 400
+        print(f'Error recording cell usage: {e}')
+        return jsonify({'error': err}), 500
+
+
+@app.route('/api/cell/<cell_id>/reverse-usage', methods=['POST'])
+@requires_role_or_override('supervisor')
+def api_cell_reverse_usage(cell_id):
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    body = request.get_json() or {}
+    usage_id = body.get('usage_id')
+    reverse_qty = float(body.get('reverse_qty') or 0)
+    if not usage_id or reverse_qty <= 0:
+        return jsonify({'error': 'usage_id and reverse_qty > 0 are required'}), 400
+    try:
+        result = supabase.rpc('reverse_cell_usage', {
+            'p_usage_id': usage_id,
+            'p_reverse_qty': reverse_qty,
+            'p_reason': body.get('reason'),
+            'p_created_by': session['user'].get('email')
+        }).execute()
+        return jsonify(result.data or {'success': True})
+    except Exception as e:
+        err = str(e)
+        if 'Cannot reverse' in err:
+            return jsonify({'error': err}), 400
+        print(f'Error reversing cell usage: {e}')
+        return jsonify({'error': err}), 500
+
+
+@app.route('/api/cell/<cell_id>/material-usage')
+@requires_role_or_override('supervisor')
+def api_cell_material_usage(cell_id):
+    if not supabase:
+        return jsonify({'usage': [], 'reversals': []})
+    try:
+        usage_res = supabase.table('cell_material_usage').select('*').eq('cell_id', cell_id).order('entry_date', desc=True).execute()
+        usage_rows = usage_res.data or []
+        reversal_rows = []
+        if usage_rows:
+            usage_ids = [u['id'] for u in usage_rows]
+            for uid in usage_ids:
+                rev_res = supabase.table('cell_material_usage_reversals').select('*').eq('usage_id', uid).execute()
+                reversal_rows.extend(rev_res.data or [])
+        return jsonify({'usage': usage_rows, 'reversals': reversal_rows})
+    except Exception as e:
+        print(f'Error fetching cell material usage: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/transfer-stock', methods=['POST'])
+@requires_role('admin', 'manager')
+def api_transfer_stock():
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    body = request.get_json() or {}
+    to_venture = body.get('to_venture_id')
+    material_id = body.get('material_id')
+    qty = float(body.get('qty') or 0)
+    if not to_venture or not material_id or qty <= 0:
+        return jsonify({'error': 'to_venture_id, material_id, and qty > 0 are required'}), 400
+    allowed = _allowed_ventures(session['user'])
+    if to_venture not in allowed:
+        return jsonify({'error': 'Forbidden'}), 403
+    try:
+        result = supabase.rpc('transfer_stock', {
+            'p_to_venture_id': to_venture,
+            'p_material_id': material_id,
+            'p_qty': qty,
+            'p_transfer_date': body.get('transfer_date') or date.today().isoformat(),
+            'p_created_by': session['user'].get('email')
+        }).execute()
+        return jsonify(result.data or {'success': True})
+    except Exception as e:
+        err = str(e)
+        if 'Insufficient warehouse stock' in err:
+            return jsonify({'error': 'Insufficient warehouse stock for this material'}), 400
+        print(f'Error transferring stock: {e}')
+        return jsonify({'error': err}), 500
+
+
+@app.route('/api/stock/projections')
+@requires_role_or_override('supervisor')
+def api_stock_projections():
+    if not supabase:
+        return jsonify([])
+    venture_id = request.args.get('venture_id')
+    if not venture_id:
+        return jsonify({'error': 'venture_id is required'}), 400
+    allowed = _allowed_ventures(session['user'])
+    if venture_id not in allowed and venture_id != 'WAREHOUSE':
+        return jsonify({'error': 'Forbidden'}), 403
+    try:
+        bal_res = supabase.table('stock_balance').select('*').eq('venture_id', venture_id).execute()
+        projections = []
+        for b in (bal_res.data or []):
+            balance = float(b.get('balance', 0))
+            total_used = float(b.get('total_used', 0))
+            avg_daily = total_used / 30 if total_used > 0 else 0
+            eow_balance = balance - (avg_daily * 7)
+            projections.append({
+                'material_id': b['material_id'],
+                'balance': balance,
+                'avg_daily_usage': round(avg_daily, 2),
+                'projected_eow': round(eow_balance, 2),
+                'days_until_empty': round(balance / avg_daily, 1) if avg_daily > 0 else None
+            })
+        return jsonify(projections)
+    except Exception as e:
+        print(f'Error fetching projections: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/stock/venture-usage')
+@requires_role_or_override('supervisor')
+def api_stock_venture_usage():
+    if not supabase:
+        return jsonify([])
+    venture_id = request.args.get('venture_id')
+    if not venture_id:
+        return jsonify({'error': 'venture_id is required'}), 400
+    allowed = _allowed_ventures(session['user'])
+    if venture_id not in allowed:
+        return jsonify({'error': 'Forbidden'}), 403
+    try:
+        q = supabase.table('stock_ledger').select('*').eq('venture_id', venture_id).eq('entry_type', 'OUT')
+        block = request.args.get('block')
+        floor = request.args.get('floor')
+        if block:
+            q = q.eq('block', block)
+        if floor:
+            q = q.eq('floor', floor)
+        res = q.execute()
+        return jsonify(res.data or [])
+    except Exception as e:
+        print(f'Error fetching venture usage: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/stock/wastage-report')
+@requires_role_or_override('supervisor')
+def api_stock_wastage_report():
+    if not supabase:
+        return jsonify([])
+    venture_id = request.args.get('venture_id')
+    if not venture_id:
+        return jsonify({'error': 'venture_id is required'}), 400
+    allowed = _allowed_ventures(session['user'])
+    if venture_id not in allowed:
+        return jsonify({'error': 'Forbidden'}), 403
+    try:
+        res = supabase.table('stock_ledger').select('*').eq('venture_id', venture_id).eq('entry_type', 'OUT').eq('is_wastage', True).execute()
+        return jsonify(res.data or [])
+    except Exception as e:
+        print(f'Error fetching wastage report: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/material-budgets', methods=['GET', 'POST'])
+@requires_role('admin', 'manager')
+def api_material_budgets():
+    if not supabase:
+        return jsonify([]) if request.method == 'GET' else jsonify({'error': 'Supabase not connected'}), 500
+    if request.method == 'GET':
+        venture_id = request.args.get('venture_id')
+        try:
+            q = supabase.table('material_budgets').select('*')
+            if venture_id:
+                q = q.eq('venture_id', venture_id)
+            res = q.execute()
+            return jsonify(res.data or [])
+        except Exception as e:
+            print(f'Error fetching budgets: {e}')
+            return jsonify({'error': str(e)}), 500
+    else:
+        body = request.get_json() or {}
+        venture_id = body.get('venture_id')
+        material_id = body.get('material_id')
+        if not venture_id or not material_id:
+            return jsonify({'error': 'venture_id and material_id are required'}), 400
+        allowed = _allowed_ventures(session['user'])
+        if venture_id not in allowed:
+            return jsonify({'error': 'Forbidden'}), 403
+        try:
+            supabase.table('material_budgets').upsert({
+                'venture_id': venture_id,
+                'material_id': material_id,
+                'budget_qty': float(body.get('budget_qty', 0)),
+                'budget_value': float(body.get('budget_value', 0)),
+                'alert_threshold_pct': float(body.get('alert_threshold_pct', 80)),
+                'updated_at': datetime.utcnow().isoformat()
+            }, on_conflict='venture_id,material_id').execute()
+            return jsonify({'success': True})
+        except Exception as e:
+            print(f'Error saving budget: {e}')
+            return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/inventory/alerts')
+@requires_role_or_override('supervisor')
+def api_inventory_alerts():
+    if not supabase:
+        return jsonify([])
+    try:
+        allowed = _allowed_ventures(session['user'])
+        if not allowed:
+            return jsonify([])
+        q = supabase.table('inventory_alerts').select('*').eq('is_resolved', False).in_('venture_id', list(allowed))
+        res = q.execute()
+        return jsonify(res.data or [])
+    except Exception as e:
+        print(f'Error fetching alerts: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/inventory/resolve-alert/<alert_id>', methods=['POST'])
+@requires_role_or_override('supervisor')
+def api_inventory_resolve_alert(alert_id):
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    try:
+        supabase.table('inventory_alerts').update({'is_resolved': True}).eq('id', alert_id).execute()
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f'Error resolving alert: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+# ========================
+# User Management — New Routes
+# ========================
+
+@app.route('/api/users/create', methods=['POST'])
+@requires_role('admin')
+def api_users_create():
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    body = request.get_json() or {}
+    email = (body.get('email') or '').strip()
+    password = body.get('password', '')
+    full_name = body.get('full_name', '')
+    role = body.get('role', '')
+    if not email or not password:
+        return jsonify({'error': 'Email and password are required'}), 400
+    if role not in ('supervisor', 'manager'):
+        return jsonify({'error': 'Role must be supervisor or manager'}), 400
+    if len(password) < 6:
+        return jsonify({'error': 'Password must be at least 6 characters'}), 400
+    try:
+        existing = supabase.table('users').select('id').ilike('email', email).execute()
+        if existing.data:
+            return jsonify({'error': 'User with this email already exists'}), 409
+        import uuid as _uuid
+        new_user = {
+            'id': str(_uuid.uuid4()),
+            'email': email,
+            'password_hash': generate_password_hash(password),
+            'role': role,
+            'full_name': full_name,
+            'active': True,
+            'org_id': session['user'].get('org_id')
+        }
+        supabase.table('users').insert(new_user).execute()
+        return jsonify({'success': True, 'id': new_user['id']})
+    except Exception as e:
+        print(f'Error creating user: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/users/<user_id>', methods=['PUT'])
+@requires_role('admin')
+def api_users_update(user_id):
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    if not _verify_same_org(user_id):
+        return jsonify({'error': 'Forbidden: user belongs to a different organization'}), 403
+    body = request.get_json() or {}
+    update_fields = {}
+    if 'full_name' in body:
+        update_fields['full_name'] = body['full_name']
+    if 'role' in body:
+        if body['role'] not in ('admin', 'manager', 'supervisor'):
+            return jsonify({'error': 'Invalid role'}), 400
+        update_fields['role'] = body['role']
+    if 'active' in body:
+        if body['active'] is False and str(user_id) == str(session['user'].get('id')):
+            return jsonify({'error': 'Cannot deactivate your own account'}), 400
+        update_fields['active'] = body['active']
+    if not update_fields:
+        return jsonify({'error': 'No fields to update'}), 400
+    try:
+        supabase.table('users').update(update_fields).eq('id', user_id).execute()
+        if 'active' in update_fields:
+            _active_cache.pop(user_id, None)
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f'Error updating user: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/users/<user_id>', methods=['DELETE'])
+@requires_role('admin')
+def api_users_delete(user_id):
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    if str(user_id) == str(session['user'].get('id')):
+        return jsonify({'error': 'Cannot deactivate your own account'}), 400
+    if not _verify_same_org(user_id):
+        return jsonify({'error': 'Forbidden: user belongs to a different organization'}), 403
+    try:
+        supabase.table('users').update({'active': False}).eq('id', user_id).execute()
+        _active_cache.pop(user_id, None)
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f'Error deactivating user: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/users/<user_id>/ventures')
+@requires_role('admin')
+def api_users_ventures(user_id):
+    if not supabase:
+        return jsonify([])
+    if not _verify_same_org(user_id):
+        return jsonify({'error': 'Forbidden'}), 403
+    try:
+        res = supabase.table('user_ventures').select('venture_id').eq('user_id', user_id).execute()
+        return jsonify([r['venture_id'] for r in (res.data or [])])
+    except Exception as e:
+        print(f'Error fetching user ventures: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/users/<user_id>/ventures', methods=['POST'])
+@requires_role('admin')
+def api_users_ventures_set(user_id):
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    if not _verify_same_org(user_id):
+        return jsonify({'error': 'Forbidden'}), 403
+    body = request.get_json() or {}
+    venture_ids = body.get('venture_ids', [])
+    allowed = _allowed_ventures(session['user'])
+    for vid in venture_ids:
+        if vid not in allowed:
+            return jsonify({'error': f'Venture {vid} is not in your organization'}), 403
+    try:
+        supabase.table('user_ventures').delete().eq('user_id', user_id).execute()
+        if venture_ids:
+            rows = [{'user_id': user_id, 'venture_id': vid} for vid in venture_ids]
+            supabase.table('user_ventures').insert(rows).execute()
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f'Error setting user ventures: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/ventures/with-names')
+@requires_role('admin')
+def api_ventures_with_names():
+    if not supabase:
+        return jsonify([])
+    try:
+        org_id = session['user'].get('org_id')
+        res = supabase.table('ventures').select('id, name').eq('org_id', org_id).execute()
+        return jsonify(res.data or [])
+    except Exception as e:
+        print(f'Error fetching ventures with names: {e}')
         return jsonify({'error': str(e)}), 500
 
 

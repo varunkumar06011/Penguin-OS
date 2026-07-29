@@ -45,6 +45,12 @@ async function loadInventoryMaterials(ventureId) {
     } catch (e) { return []; }
 }
 
+async function loadGlobalMaterials() {
+    try {
+        return await apiGet('/api/materials?global=true') || [];
+    } catch (e) { return []; }
+}
+
 async function loadInventoryStock(ventureId) {
     if (!ventureId) return [];
     try {
@@ -70,6 +76,8 @@ async function renderInventoryView() {
     }
 
     inventoryMaterials = await loadInventoryMaterials(venture.id);
+    const globalMats = await loadGlobalMaterials();
+    inventoryMaterials = [...globalMats, ...inventoryMaterials.filter(m => !globalMats.some(g => g.id === m.id))];
     inventoryStockEntries = await loadInventoryStock(venture.id);
     inventoryBalance = await loadInventorySummary(venture.id);
 
@@ -109,6 +117,10 @@ async function renderInventoryView() {
         <button class="inventory-tab ${inventoryTab === 'register' ? 'active' : ''}" data-tab="register">Stock Register</button>
         <button class="inventory-tab ${inventoryTab === 'location' ? 'active' : ''}" data-tab="location">By Location</button>
         <button class="inventory-tab ${inventoryTab === 'vendor' ? 'active' : ''}" data-tab="vendor">By Vendor</button>
+        <button class="inventory-tab ${inventoryTab === 'wastage' ? 'active' : ''}" data-tab="wastage">Wastage</button>
+        <button class="inventory-tab ${inventoryTab === 'transfers' ? 'active' : ''}" data-tab="transfers">Transfers</button>
+        <button class="inventory-tab ${inventoryTab === 'budgets' ? 'active' : ''}" data-tab="budgets">Budgets</button>
+        <button class="inventory-tab ${inventoryTab === 'alerts' ? 'active' : ''}" data-tab="alerts">Alerts</button>
     `;
     container.appendChild(tabBar);
 
@@ -119,17 +131,19 @@ async function renderInventoryView() {
         });
     });
 
-    // Action bar for Stock In / Out
-    const actionBar = document.createElement('div');
-    actionBar.className = 'inventory-actions';
-    actionBar.innerHTML = `
-        <button id="inventoryStockInBtn" class="btn-primary" style="flex:1;max-width:220px;">+ Stock In</button>
-        <button id="inventoryStockOutBtn" class="btn-secondary" style="flex:1;max-width:220px;">+ Stock Out</button>
-    `;
-    container.appendChild(actionBar);
+    // Action bar for Stock In / Out (hide for transfers/budgets/alerts tabs)
+    if (!['transfers', 'budgets', 'alerts', 'wastage'].includes(inventoryTab)) {
+        const actionBar = document.createElement('div');
+        actionBar.className = 'inventory-actions';
+        actionBar.innerHTML = `
+            <button id="inventoryStockInBtn" class="btn-primary" style="flex:1;max-width:220px;">+ Stock In</button>
+            <button id="inventoryStockOutBtn" class="btn-secondary" style="flex:1;max-width:220px;">+ Stock Out</button>
+        `;
+        container.appendChild(actionBar);
 
-    actionBar.querySelector('#inventoryStockInBtn').addEventListener('click', () => openStockEntryModal(null, 'IN'));
-    actionBar.querySelector('#inventoryStockOutBtn').addEventListener('click', () => openStockEntryModal(null, 'OUT'));
+        actionBar.querySelector('#inventoryStockInBtn').addEventListener('click', () => openStockEntryModal(null, 'IN'));
+        actionBar.querySelector('#inventoryStockOutBtn').addEventListener('click', () => openStockEntryModal(null, 'OUT'));
+    }
     header.querySelector('#inventoryAddMaterialBtn').addEventListener('click', () => openMaterialModal(null));
 
     // Render selected tab
@@ -140,7 +154,11 @@ async function renderInventoryView() {
     if (inventoryTab === 'summary') renderInventorySummary(tabContent);
     else if (inventoryTab === 'register') renderInventoryRegister(tabContent);
     else if (inventoryTab === 'location') renderInventoryLocation(tabContent);
-    else renderInventoryVendor(tabContent);
+    else if (inventoryTab === 'vendor') renderInventoryVendor(tabContent);
+    else if (inventoryTab === 'wastage') renderInventoryWastage(tabContent);
+    else if (inventoryTab === 'transfers') renderInventoryTransfers(tabContent);
+    else if (inventoryTab === 'budgets') renderInventoryBudgets(tabContent);
+    else if (inventoryTab === 'alerts') renderInventoryAlerts(tabContent);
 }
 
 function renderInventorySummary(container) {
@@ -473,32 +491,568 @@ function formatDate(d) {
     return dt.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
+// ========================
+// Wastage Tab
+// ========================
+function renderInventoryWastage(container) {
+    const invVenture = inventoryActiveVenture();
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = '<div class="grid-container"><table class="tracker-table"><thead><tr><th>Date</th><th>Material</th><th>Block</th><th>Floor</th><th>Flat</th><th>Work Item</th><th>Wasted Qty</th><th>Cost/Unit</th><th>Total Cost</th><th>Reason</th></tr></thead><tbody id="wastageBody"></tbody></table></div>';
+    container.appendChild(wrapper);
+    const tbody = wrapper.querySelector('#wastageBody');
+    (async () => {
+        try {
+            const rows = await apiGet('/api/stock/wastage-report?venture_id=' + encodeURIComponent(invVenture.id)) || [];
+            if (rows.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#999;padding:24px;">No wastage recorded.</td></tr>';
+                return;
+            }
+            rows.sort((a, b) => (b.entry_date || '').localeCompare(a.entry_date || ''));
+            let totalCost = 0;
+            rows.forEach(r => {
+                const mat = inventoryMaterials.find(m => m.id === r.material_id) || {};
+                const cost = parseFloat(r.cost_per_unit || 0);
+                const qty = parseFloat(r.qty || 0);
+                const lineCost = cost * qty;
+                totalCost += lineCost;
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${formatDate(r.entry_date)}</td>
+                    <td>${escapeHtml(mat.name || r.material_id)}</td>
+                    <td>${escapeHtml(r.block || '-')}</td>
+                    <td>${escapeHtml(r.floor || '-')}</td>
+                    <td>${escapeHtml(r.flat || '-')}</td>
+                    <td>${escapeHtml(r.work_item || '-')}</td>
+                    <td style="color:#e74c3c;font-weight:600;">${formatNumber(qty)}</td>
+                    <td>${cost ? '&#8377;' + formatNumber(cost) : '-'}</td>
+                    <td>${lineCost ? '&#8377;' + formatNumber(lineCost) : '-'}</td>
+                    <td style="font-size:0.8rem;">${escapeHtml(r.remarks || '-')}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+            const tfoot = document.createElement('tfoot');
+            tfoot.innerHTML = `<tr style="font-weight:700;background:#f8f8f8;"><td colspan="8" style="text-align:right;">Total Wastage Cost:</td><td colspan="2" style="color:#e74c3c;">&#8377;${formatNumber(totalCost)}</td></tr>`;
+            tbody.parentElement.appendChild(tfoot);
+        } catch (e) {
+            tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#999;padding:24px;">Failed to load wastage data.</td></tr>';
+        }
+    })();
+}
+
+// ========================
+// Transfers Tab
+// ========================
+function renderInventoryTransfers(container) {
+    const invVenture = inventoryActiveVenture();
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = `
+        <div style="padding:16px 0;">
+            <h4 style="margin:0 0 12px 0;color:#1a2a6c;font-size:0.95rem;">Transfer Stock from Warehouse</h4>
+            <div class="invoice-form-row">
+                <div class="invoice-form-field" style="flex:1;">
+                    <label>Material</label>
+                    <select id="transferMaterial"><option value="">-- Select Material --</option></select>
+                </div>
+                <div class="invoice-form-field" style="flex:1;">
+                    <label>To Venture</label>
+                    <select id="transferToVenture"><option value="">-- Select Venture --</option></select>
+                </div>
+                <div class="invoice-form-field" style="max-width:120px;">
+                    <label>Qty</label>
+                    <input type="number" id="transferQty" min="0" step="0.01" placeholder="0">
+                </div>
+            </div>
+            <div class="invoice-form-actions" style="margin-top:12px;">
+                <button id="executeTransferBtn" class="btn-primary">Transfer</button>
+            </div>
+            <div id="transferMsg" style="margin-top:8px;font-size:0.85rem;min-height:18px;"></div>
+        </div>
+        <div class="grid-container">
+            <table class="tracker-table">
+                <thead><tr><th>Date</th><th>Material</th><th>From</th><th>To</th><th>Qty</th><th>Cost/Unit</th></tr></thead>
+                <tbody id="transferHistoryBody"></tbody>
+            </table>
+        </div>
+    `;
+    container.appendChild(wrapper);
+
+    const matSel = wrapper.querySelector('#transferMaterial');
+    inventoryMaterials.forEach(m => {
+        matSel.innerHTML += `<option value="${m.id}">${escapeHtml(m.name)} (${escapeHtml(m.unit)})</option>`;
+    });
+    const ventSel = wrapper.querySelector('#transferToVenture');
+    venturesList.forEach(v => {
+        if (v.id !== 'WAREHOUSE') {
+            ventSel.innerHTML += `<option value="${v.id}" ${invVenture && invVenture.id === v.id ? 'selected' : ''}>${escapeHtml(v.name)}</option>`;
+        }
+    });
+
+    wrapper.querySelector('#executeTransferBtn').addEventListener('click', async () => {
+        const materialId = matSel.value;
+        const toVenture = ventSel.value;
+        const qty = parseFloat(wrapper.querySelector('#transferQty').value);
+        const msgEl = wrapper.querySelector('#transferMsg');
+        if (!materialId || !toVenture || isNaN(qty) || qty <= 0) {
+            msgEl.style.color = '#c0392b';
+            msgEl.textContent = 'Please fill all fields with valid values.';
+            return;
+        }
+        try {
+            await apiPost('/api/transfer-stock', { to_venture_id: toVenture, material_id: materialId, qty: qty });
+            msgEl.style.color = '#27ae60';
+            msgEl.textContent = 'Stock transferred successfully.';
+            wrapper.querySelector('#transferQty').value = '';
+            renderInventoryView();
+        } catch (err) {
+            msgEl.style.color = '#c0392b';
+            msgEl.textContent = err.message || 'Transfer failed.';
+        }
+    });
+
+    // Load transfer history (OUT entries from WAREHOUSE with consuming_venture_id)
+    const tbody = wrapper.querySelector('#transferHistoryBody');
+    (async () => {
+        try {
+            const transfers = await apiGet('/api/stock?venture_id=WAREHOUSE&entry_type=OUT') || [];
+        if (transfers.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;padding:24px;">No transfers yet.</td></tr>';
+        } else {
+            transfers.sort((a, b) => (b.entry_date || '').localeCompare(a.entry_date || ''));
+            transfers.forEach(row => {
+                const mat = inventoryMaterials.find(m => m.id === row.material_id) || {};
+                const toVent = venturesList.find(v => v.id === row.consuming_venture_id) || {};
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${formatDate(row.entry_date)}</td>
+                    <td>${escapeHtml(mat.name || '-')}</td>
+                    <td>Warehouse</td>
+                    <td>${escapeHtml(toVent.name || row.consuming_venture_id || '-')}</td>
+                    <td>${formatNumber(row.qty)}</td>
+                    <td>${row.cost_per_unit ? '&#8377;' + formatNumber(row.cost_per_unit) : '-'}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+    } catch (e) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;padding:24px;">Failed to load transfers.</td></tr>';
+        }
+    })();
+}
+
+// ========================
+// Budgets Tab
+// ========================
+function renderInventoryBudgets(container) {
+    const invVenture = inventoryActiveVenture();
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = `
+        <div style="padding:16px 0;">
+            <h4 style="margin:0 0 12px 0;color:#1a2a6c;font-size:0.95rem;">Set Material Budget</h4>
+            <div class="invoice-form-row">
+                <div class="invoice-form-field" style="flex:1;">
+                    <label>Material</label>
+                    <select id="budgetMaterial"><option value="">-- Select Material --</option></select>
+                </div>
+                <div class="invoice-form-field" style="max-width:140px;">
+                    <label>Budget Qty</label>
+                    <input type="number" id="budgetQty" min="0" step="0.01" placeholder="0">
+                </div>
+                <div class="invoice-form-field" style="max-width:140px;">
+                    <label>Budget Value (&#8377;)</label>
+                    <input type="number" id="budgetValue" min="0" step="0.01" placeholder="0">
+                </div>
+                <div class="invoice-form-field" style="max-width:100px;">
+                    <label>Alert %</label>
+                    <input type="number" id="budgetThreshold" min="0" max="100" step="1" value="80">
+                </div>
+            </div>
+            <div class="invoice-form-actions" style="margin-top:12px;">
+                <button id="saveBudgetBtn" class="btn-primary">Save Budget</button>
+            </div>
+            <div id="budgetMsg" style="margin-top:8px;font-size:0.85rem;min-height:18px;"></div>
+        </div>
+        <div class="grid-container">
+            <table class="tracker-table">
+                <thead><tr><th>Material</th><th>Budget Qty</th><th>Budget Value</th><th>Alert %</th><th>Consumed</th><th>Status</th></tr></thead>
+                <tbody id="budgetListBody"></tbody>
+            </table>
+        </div>
+    `;
+    container.appendChild(wrapper);
+
+    const matSel = wrapper.querySelector('#budgetMaterial');
+    inventoryMaterials.forEach(m => {
+        matSel.innerHTML += `<option value="${m.id}">${escapeHtml(m.name)} (${escapeHtml(m.unit)})</option>`;
+    });
+
+    wrapper.querySelector('#saveBudgetBtn').addEventListener('click', async () => {
+        const materialId = matSel.value;
+        const qty = parseFloat(wrapper.querySelector('#budgetQty').value);
+        const value = parseFloat(wrapper.querySelector('#budgetValue').value);
+        const threshold = parseFloat(wrapper.querySelector('#budgetThreshold').value);
+        const msgEl = wrapper.querySelector('#budgetMsg');
+        if (!materialId || isNaN(qty) || qty <= 0) {
+            msgEl.style.color = '#c0392b';
+            msgEl.textContent = 'Please select a material and enter a valid budget qty.';
+            return;
+        }
+        try {
+            await apiPost('/api/material-budgets', {
+                venture_id: invVenture.id,
+                material_id: materialId,
+                budget_qty: qty,
+                budget_value: value || 0,
+                alert_threshold_pct: threshold || 80
+            });
+            msgEl.style.color = '#27ae60';
+            msgEl.textContent = 'Budget saved successfully.';
+            renderInventoryView();
+        } catch (err) {
+            msgEl.style.color = '#c0392b';
+            msgEl.textContent = err.message || 'Failed to save budget.';
+        }
+    });
+
+    // Load existing budgets
+    const tbody = wrapper.querySelector('#budgetListBody');
+    (async () => {
+        try {
+            const budgets = await apiGet('/api/material-budgets?venture_id=' + encodeURIComponent(invVenture.id)) || [];
+        if (budgets.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;padding:24px;">No budgets set yet.</td></tr>';
+        } else {
+            budgets.forEach(b => {
+                const mat = inventoryMaterials.find(m => m.id === b.material_id) || {};
+                const balRow = inventoryBalance.find(bal => bal.material_id === b.material_id) || {};
+                const consumed = parseFloat(balRow.total_used || 0);
+                const pct = b.budget_qty > 0 ? Math.round((consumed / b.budget_qty) * 100) : 0;
+                let statusHtml = '<span style="color:#27ae60;">OK</span>';
+                if (pct >= (b.alert_threshold_pct || 80)) statusHtml = '<span style="color:#e74c3c;font-weight:600;">Over Budget Alert</span>';
+                else if (pct >= 50) statusHtml = '<span style="color:#f39c12;">Approaching</span>';
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${escapeHtml(mat.name || b.material_id)}</td>
+                    <td>${formatNumber(b.budget_qty)}</td>
+                    <td>${b.budget_value ? '&#8377;' + formatNumber(b.budget_value) : '-'}</td>
+                    <td>${b.alert_threshold_pct || 80}%</td>
+                    <td>${formatNumber(consumed)} (${pct}%)</td>
+                    <td>${statusHtml}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+    } catch (e) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;padding:24px;">Failed to load budgets.</td></tr>';
+        }
+    })();
+}
+
+// ========================
+// Alerts Tab
+// ========================
+function renderInventoryAlerts(container) {
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = '<div class="grid-container"><table class="tracker-table"><thead><tr><th>Venture</th><th>Material</th><th>Type</th><th>Message</th><th>Created</th><th></th></tr></thead><tbody id="alertsBody"></tbody></table></div>';
+    container.appendChild(wrapper);
+    const tbody = wrapper.querySelector('#alertsBody');
+    try {
+        apiGet('/api/inventory/alerts').then(alerts => {
+            if (!alerts || alerts.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;padding:24px;">No active alerts.</td></tr>';
+                return;
+            }
+            alerts.forEach(a => {
+                const mat = inventoryMaterials.find(m => m.id === a.material_id) || {};
+                const vent = venturesList.find(v => v.id === a.venture_id) || {};
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${escapeHtml(vent.name || a.venture_id || '-')}</td>
+                    <td>${escapeHtml(mat.name || a.material_id || '-')}</td>
+                    <td><span class="inv-badge ${a.alert_type === 'low_stock' ? 'inv-out' : 'inv-adj'}">${escapeHtml(a.alert_type)}</span></td>
+                    <td>${escapeHtml(a.message || '')}</td>
+                    <td>${formatDate(a.created_at)}</td>
+                    <td><button class="btn-text resolve-alert-btn" data-aid="${a.id}" style="font-size:0.78rem;">Resolve</button></td>
+                `;
+                tbody.appendChild(tr);
+            });
+            tbody.querySelectorAll('.resolve-alert-btn').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    try {
+                        await apiPost('/api/inventory/resolve-alert/' + btn.dataset.aid, {});
+                        showToast('Alert resolved');
+                        renderInventoryView();
+                    } catch (err) {
+                        showToast('Failed to resolve alert', true);
+                    }
+                });
+            });
+        }).catch(() => {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;padding:24px;">Failed to load alerts.</td></tr>';
+        });
+    } catch (e) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;padding:24px;">Failed to load alerts.</td></tr>';
+    }
+}
+
+// ========================
+// Creatable Select (Combobox)
+// ========================
+function initCreatableSelect(config) {
+    const input = document.getElementById(config.inputId);
+    const hidden = document.getElementById(config.hiddenId);
+    const dropdown = document.getElementById(config.dropdownId);
+    if (!input || !hidden || !dropdown) return;
+
+    let items = config.getItems() || [];
+    let highlightedIdx = -1;
+    let currentSelection = null;
+
+    function refreshItems() {
+        items = config.getItems() || [];
+    }
+
+    function findExactMatch(query) {
+        const q = query.trim().toLowerCase();
+        return items.find(i => (config.getLabel(i) || '').trim().toLowerCase() === q);
+    }
+
+    function renderDropdown(query) {
+        const q = (query || '').trim().toLowerCase();
+        let filtered = items;
+        if (q) {
+            filtered = items.filter(i => (config.getLabel(i) || '').toLowerCase().includes(q));
+        }
+        let html = '';
+        if (filtered.length > 0) {
+            filtered.forEach((item, idx) => {
+                const label = escapeHtml(config.getLabel(item));
+                const sub = config.getSubLabel ? escapeHtml(config.getSubLabel(item) || '') : '';
+                html += `<div class="creatable-option" data-idx="${idx}" data-id="${escapeHtml(item.id)}">${label}${sub ? ` <span class="create-label">${sub}</span>` : ''}</div>`;
+            });
+        }
+        const exactExists = q && findExactMatch(query);
+        if (q && !exactExists && config.canCreate) {
+            html += `<div class="creatable-option create-option" data-create="1">+ Create "${escapeHtml(query.trim())}"</div>`;
+        }
+        if (!html) {
+            html = '<div class="creatable-empty">No options</div>';
+        }
+        dropdown.innerHTML = html;
+        highlightedIdx = -1;
+
+        dropdown.querySelectorAll('.creatable-option').forEach(opt => {
+            opt.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                if (opt.dataset.create === '1') {
+                    handleCreate(query.trim());
+                } else {
+                    const item = filtered[parseInt(opt.dataset.idx)];
+                    if (item) selectItem(item);
+                }
+            });
+        });
+    }
+
+    function selectItem(item) {
+        currentSelection = item;
+        input.value = config.getLabel(item);
+        hidden.value = item.id;
+        dropdown.classList.remove('show');
+        if (config.onSelect) config.onSelect(item);
+    }
+
+    function clearSelection() {
+        currentSelection = null;
+        hidden.value = '';
+    }
+
+    async function handleCreate(name) {
+        const trimmed = name.trim();
+        if (!trimmed) return;
+        const existing = findExactMatch(trimmed);
+        if (existing) {
+            selectItem(existing);
+            return;
+        }
+        input.disabled = true;
+        input.value = 'Creating...';
+        try {
+            const newItem = await config.onCreate(trimmed);
+            if (newItem) {
+                refreshItems();
+                selectItem(newItem);
+                showToast(config.createLabel || 'Created successfully');
+            }
+        } catch (err) {
+            let msg = err.message || 'Failed to create';
+            try { const m = msg.match(/\{.*\}/); if (m) msg = JSON.parse(m[0]).error || msg; } catch (e2) {}
+            showToast(msg, true);
+            input.value = '';
+            clearSelection();
+        }
+        input.disabled = false;
+    }
+
+    input.addEventListener('focus', () => {
+        refreshItems();
+        renderDropdown(input.value);
+        dropdown.classList.add('show');
+    });
+
+    input.addEventListener('input', () => {
+        clearSelection();
+        renderDropdown(input.value);
+        dropdown.classList.add('show');
+    });
+
+    input.addEventListener('keydown', (e) => {
+        const opts = dropdown.querySelectorAll('.creatable-option');
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            highlightedIdx = Math.min(highlightedIdx + 1, opts.length - 1);
+            updateHighlight(opts);
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            highlightedIdx = Math.max(highlightedIdx - 1, 0);
+            updateHighlight(opts);
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            if (highlightedIdx >= 0 && opts[highlightedIdx]) {
+                opts[highlightedIdx].dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+            } else if (input.value.trim() && config.canCreate) {
+                const exact = findExactMatch(input.value);
+                if (exact) {
+                    selectItem(exact);
+                } else {
+                    handleCreate(input.value.trim());
+                }
+            }
+        } else if (e.key === 'Escape') {
+            dropdown.classList.remove('show');
+        }
+    });
+
+    function updateHighlight(opts) {
+        opts.forEach((o, i) => o.classList.toggle('selected', i === highlightedIdx));
+        if (highlightedIdx >= 0 && opts[highlightedIdx]) {
+            opts[highlightedIdx].scrollIntoView({ block: 'nearest' });
+        }
+    }
+
+    document.addEventListener('click', (e) => {
+        if (!input.contains(e.target) && !dropdown.contains(e.target)) {
+            dropdown.classList.remove('show');
+        }
+    });
+
+    return {
+        setValue: function(item) {
+            if (item) selectItem(item);
+            else { input.value = ''; clearSelection(); }
+        },
+        getValue: function() { return hidden.value; },
+        refresh: refreshItems
+    };
+}
+
+// ========================
+// Stock Entry Modal
+// ========================
+let materialCreatable = null;
+let vendorCreatable = null;
+let poCreatable = null;
+
 function openStockEntryModal(entryId, defaultType) {
     inventoryEntryEditingId = entryId || null;
     document.getElementById('stockEntryTitle').textContent = entryId ? 'Edit Stock Entry' : 'New Stock Entry';
     document.getElementById('stockEntryType').value = defaultType || 'IN';
     document.getElementById('stockEntryDate').value = new Date().toISOString().split('T')[0];
-    document.getElementById('stockEntryMaterial').innerHTML = '<option value="">-- Select Material --</option>';
-    inventoryMaterials.forEach(m => {
-        document.getElementById('stockEntryMaterial').innerHTML += `<option value="${m.id}">${escapeHtml(m.name)} (${escapeHtml(m.unit)})</option>`;
-    });
     document.getElementById('stockEntryQty').value = '';
     document.getElementById('stockEntryRemarks').value = '';
-    document.getElementById('stockEntryVendor').innerHTML = '<option value="">-- Select Vendor --</option>';
-    loadVendors().forEach(v => {
-        document.getElementById('stockEntryVendor').innerHTML += `<option value="${v.id}">${escapeHtml(v.name)}</option>`;
+
+    const invVenture = inventoryActiveVenture();
+    const isAdmin = currentUserRole === 'admin' || currentUserRole === 'manager';
+
+    // Material creatable
+    materialCreatable = initCreatableSelect({
+        inputId: 'stockEntryMaterialInput',
+        hiddenId: 'stockEntryMaterial',
+        dropdownId: 'stockEntryMaterialDropdown',
+        getItems: () => inventoryMaterials,
+        getLabel: (m) => m.name,
+        getSubLabel: (m) => `(${m.unit})`,
+        canCreate: true,
+        createLabel: 'Material created',
+        onCreate: async (name) => {
+            const newMat = {
+                id: generateId(),
+                venture_id: isAdmin ? null : invVenture.id,
+                name: name,
+                unit: 'pcs',
+                min_threshold: 0
+            };
+            await apiPost('/api/material', newMat);
+            inventoryMaterials.push(newMat);
+            return newMat;
+        }
     });
-    document.getElementById('stockEntryRate').value = '';
+
+    // Vendor creatable
+    vendorCreatable = initCreatableSelect({
+        inputId: 'stockEntryVendorInput',
+        hiddenId: 'stockEntryVendor',
+        dropdownId: 'stockEntryVendorDropdown',
+        getItems: () => allVendors,
+        getLabel: (v) => v.name,
+        canCreate: isAdmin,
+        createLabel: 'Vendor created',
+        onCreate: async (name) => {
+            const newVendor = {
+                id: generateId(),
+                name: name,
+                contact: '',
+                phone: '',
+                gst: ''
+            };
+            await apiPost('/api/vendor', newVendor);
+            allVendors.push(newVendor);
+            return newVendor;
+        }
+    });
+
+    // PO creatable
+    poCreatable = initCreatableSelect({
+        inputId: 'stockEntryPOInput',
+        hiddenId: 'stockEntryPO',
+        dropdownId: 'stockEntryPODropdown',
+        getItems: () => allPOs,
+        getLabel: (p) => p.poNumber || p.id,
+        getSubLabel: (p) => p.vendor ? `— ${p.vendor}` : '',
+        canCreate: isAdmin,
+        createLabel: 'Purchase order created',
+        onCreate: async (name) => {
+            const newPO = {
+                id: generateId(),
+                poNumber: name,
+                venture_id: invVenture ? invVenture.id : '',
+                vendor: '',
+                date: new Date().toISOString().split('T')[0],
+                items: [],
+                status: 'open'
+            };
+            await apiPost('/api/po', newPO);
+            allPOs.push(newPO);
+            return newPO;
+        }
+    });
+
+    // Populate invoice dropdown (stays as regular select)
     document.getElementById('stockEntryInvoice').innerHTML = '<option value="">-- Select Invoice --</option>';
     allInvoices.forEach(inv => {
         document.getElementById('stockEntryInvoice').innerHTML += `<option value="${inv.id}">${escapeHtml(inv.invoiceNumber || inv.id)}</option>`;
     });
-    document.getElementById('stockEntryPO').innerHTML = '<option value="">-- Select PO --</option>';
-    allPOs.forEach(po => {
-        document.getElementById('stockEntryPO').innerHTML += `<option value="${po.id}">${escapeHtml(po.poNumber || po.id)}</option>`;
-    });
 
-    const invVenture = inventoryActiveVenture();
+    // Block & Floor selects (stay as regular selects)
     const blockSel = document.getElementById('stockEntryBlock');
     blockSel.innerHTML = '<option value="">-- Select Block --</option>';
     if (invVenture && invVenture.blocks) {
@@ -517,19 +1071,23 @@ function openStockEntryModal(entryId, defaultType) {
     }
     document.getElementById('stockEntryFlat').value = '';
     document.getElementById('stockEntryWorkItem').value = '';
+    document.getElementById('stockEntryRate').value = '';
 
     if (entryId) {
         const entry = inventoryStockEntries.find(e => e.id === entryId);
         if (entry) {
             document.getElementById('stockEntryType').value = entry.entry_type || 'IN';
             document.getElementById('stockEntryDate').value = entry.entry_date || '';
-            document.getElementById('stockEntryMaterial').value = entry.material_id || '';
+            const mat = inventoryMaterials.find(m => m.id === entry.material_id);
+            if (mat && materialCreatable) materialCreatable.setValue(mat);
             document.getElementById('stockEntryQty').value = entry.qty || '';
             document.getElementById('stockEntryRemarks').value = entry.remarks || '';
-            document.getElementById('stockEntryVendor').value = entry.vendor_id || '';
+            const ven = allVendors.find(v => v.id === entry.vendor_id);
+            if (ven && vendorCreatable) vendorCreatable.setValue(ven);
             document.getElementById('stockEntryRate').value = entry.rate || '';
             document.getElementById('stockEntryInvoice').value = entry.invoice_id || '';
-            document.getElementById('stockEntryPO').value = entry.po_id || '';
+            const po = allPOs.find(p => p.id === entry.po_id);
+            if (po && poCreatable) poCreatable.setValue(po);
             document.getElementById('stockEntryBlock').value = entry.block || '';
             document.getElementById('stockEntryFloor').value = entry.floor || '';
             document.getElementById('stockEntryFlat').value = entry.flat || '';
@@ -673,6 +1231,7 @@ document.getElementById('saveStockEntry').addEventListener('click', async () => 
     if (isNaN(qty) || qty <= 0) { showToast('Please enter a valid quantity', true); return; }
 
     const rate = parseFloat(document.getElementById('stockEntryRate').value) || 0;
+    if (type === 'IN' && rate <= 0) { showToast('Rate is required for Stock In entries', true); return; }
     const invVenture = inventoryActiveVenture();
     if (!invVenture) { showToast('No venture selected', true); return; }
     const entry = {
@@ -720,9 +1279,10 @@ document.getElementById('saveMaterial').addEventListener('click', async () => {
 
     const invVenture = inventoryActiveVenture();
     if (!invVenture) { showToast('No venture selected', true); return; }
+    const isAdmin = currentUserRole === 'admin' || currentUserRole === 'manager';
     const material = {
         id: inventoryMaterialEditingId || generateId(),
-        venture_id: invVenture.id,
+        venture_id: isAdmin ? null : invVenture.id,
         name: name,
         category: document.getElementById('materialCategory').value.trim() || null,
         unit: unit,

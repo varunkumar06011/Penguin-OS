@@ -214,11 +214,12 @@ async function renderInventoryAudit() {
                 return;
             }
             let html = '<table class="tracker-table" style="font-size:0.85rem;margin-top:16px;">';
-            html += '<thead><tr><th>Material</th><th>Ordered</th><th>Received</th><th>Consumed</th><th>Expected Rem.</th><th>Actual Bal.</th><th>Short Del.</th><th>Flag</th></tr></thead><tbody>';
+            html += '<thead><tr><th>Material</th><th>Ordered</th><th>Received</th><th>Used</th><th>Wasted</th><th>Expected Rem.</th><th>Actual Bal.</th><th>Short Del.</th><th>Flag</th></tr></thead><tbody>';
             rows.forEach(r => {
                 const flagClass = r.discrepancy_flag ? ' style="background:#f5f5f5;font-weight:600;"' : '';
                 const flagText = r.discrepancy_flag ? '⚠ Discrepancy' : (r.short_delivery > 0 ? 'Short Delivery' : 'OK');
-                html += `<tr${flagClass}><td>${r.material_name}</td><td>${r.ordered_qty} ${r.unit}</td><td>${r.received_qty} ${r.unit}</td><td>${r.consumed_qty} ${r.unit}</td><td>${r.expected_remaining} ${r.unit}</td><td>${r.actual_balance} ${r.unit}</td><td>${r.short_delivery} ${r.unit}</td><td>${flagText}</td></tr>`;
+                const wastedStyle = (r.wasted_qty || 0) > 0 ? ' style="color:#e74c3c;font-weight:600;"' : '';
+                html += `<tr${flagClass}><td>${r.material_name}</td><td>${r.ordered_qty} ${r.unit}</td><td>${r.received_qty} ${r.unit}</td><td>${r.consumed_qty} ${r.unit}</td><td${wastedStyle}>${r.wasted_qty || 0} ${r.unit}</td><td>${r.expected_remaining} ${r.unit}</td><td>${r.actual_balance} ${r.unit}</td><td>${r.short_delivery} ${r.unit}</td><td>${flagText}</td></tr>`;
             });
             html += '</tbody></table>';
             outputDiv.innerHTML = html;
@@ -524,14 +525,15 @@ async function renderMaterialLeakageWidget(container, ventureId) {
         html += '</div>';
 
         html += '<table class="tracker-table" style="font-size:0.82rem;">';
-        html += '<thead><tr><th>Material</th><th>Ordered</th><th>Received</th><th>Consumed</th><th>Expected</th><th>Actual</th><th>Status</th></tr></thead><tbody>';
+        html += '<thead><tr><th>Material</th><th>Ordered</th><th>Received</th><th>Used</th><th>Wasted</th><th>Expected</th><th>Actual</th><th>Status</th></tr></thead><tbody>';
         rows.forEach(r => {
             const isFlagged = r.discrepancy_flag || r.short_delivery_flag;
             const rowStyle = isFlagged ? ' style="background:#f5f5f5;"' : '';
+            const wastedStyle = (r.wasted_qty || 0) > 0 ? ' style="color:#e74c3c;font-weight:600;"' : '';
             let status = 'OK';
             if (r.discrepancy_flag) status = '⚠ Discrepancy';
             else if (r.short_delivery_flag) status = 'Short Delivery';
-            html += `<tr${rowStyle}><td>${r.material_name}</td><td>${r.ordered_qty} ${r.unit}</td><td>${r.received_qty} ${r.unit}</td><td>${r.consumed_qty} ${r.unit}</td><td>${r.expected_remaining} ${r.unit}</td><td>${r.actual_balance} ${r.unit}</td><td>${status}</td></tr>`;
+            html += `<tr${rowStyle}><td>${r.material_name}</td><td>${r.ordered_qty} ${r.unit}</td><td>${r.received_qty} ${r.unit}</td><td>${r.consumed_qty} ${r.unit}</td><td${wastedStyle}>${r.wasted_qty || 0} ${r.unit}</td><td>${r.expected_remaining} ${r.unit}</td><td>${r.actual_balance} ${r.unit}</td><td>${status}</td></tr>`;
         });
         html += '</tbody></table>';
         container.innerHTML = html;

@@ -122,7 +122,11 @@ async function updateCellColor(cellId, color, workItem, flat) {
     const timer = setTimeout(async () => {
         pendingSaves.delete(ck);
         try {
-            await apiPost('/api/cell/' + encodeURIComponent(ck), data);
+            const resp = await apiPost('/api/cell/' + encodeURIComponent(ck), data);
+            // Reversal prompt: if cell was downgraded from green, offer to reverse material usage
+            if (resp && resp.previous_color === 'green' && color && color !== 'green') {
+                promptDowngradeReversal(ck, selectedFlat, selectedWorkItem);
+            }
         } catch (err) {
             console.error('Failed to save cell:', err);
             showToast('Save failed — please retry', true);
@@ -465,6 +469,9 @@ async function renderGrid() {
         archRow.appendChild(archTd);
         els.gridBody.appendChild(archRow);
     }
+
+    // Update sticky header offset after grid render
+    if (window.updateTrackerStickyOffset) window.updateTrackerStickyOffset();
 }
 
 async function renderWorkView() {
@@ -587,6 +594,8 @@ async function renderWorkView() {
             if (e.key === 'Enter') { e.preventDefault(); submitCategory(); }
         });
     }
+
+    if (window.updateTrackerStickyOffset) window.updateTrackerStickyOffset();
 }
 
 function createSectionTable(category, items, flats) {
@@ -802,6 +811,219 @@ function openStatusPopup(cellId, workItem, flat, currentColor) {
     els.popupTitle.textContent = `${flat} - ${workItem}`;
     els.popupCurrentStatus.textContent = currentColor ? COLOR_LABELS[currentColor] : 'None';
     els.statusPopup.classList.add('show');
+    loadCellUsageInPopup(cellId, workItem, flat);
+}
+
+async function loadCellUsageInPopup(cellId, workItem, flat) {
+    if (!els.usageMaterialSelect) return;
+    els.usageMaterialSelect.innerHTML = '<option value="">-- Material --</option>';
+    if (els.usageQtyInput) els.usageQtyInput.value = '';
+    if (els.usageWasteInput) els.usageWasteInput.value = '';
+    if (els.usageReasonInput) els.usageReasonInput.value = '';
+    if (els.usageMsg) { els.usageMsg.textContent = ''; els.usageMsg.style.color = '#c0392b'; }
+    if (els.cellUsageList) els.cellUsageList.innerHTML = '<div style="color:#999;font-size:0.78rem;padding:4px;">Loading...</div>';
+
+    const venture = currentVenture;
+    if (!venture) return;
+
+    try {
+        const mats = await apiGet('/api/materials?venture_id=' + encodeURIComponent(venture.id)) || [];
+        const globalMats = await apiGet('/api/materials?global=true') || [];
+        const allMats = [...globalMats, ...mats.filter(m => !globalMats.some(g => g.id === m.id))];
+        allMats.forEach(m => {
+            els.usageMaterialSelect.innerHTML += `<option value="${m.id}">${escapeHtml(m.name)} (${escapeHtml(m.unit)})</option>`;
+        });
+    } catch (e) { /* ignore */ }
+
+    // Load existing usage for this cell
+    try {
+        const data = await apiGet('/api/cell/' + encodeURIComponent(cellId) + '/material-usage');
+        const usageRows = (data && data.usage) || [];
+        const reversalRows = (data && data.reversals) || [];
+        if (usageRows.length === 0) {
+            if (els.cellUsageList) els.cellUsageList.innerHTML = '<div style="color:#999;font-size:0.78rem;padding:4px;">No usage logged.</div>';
+            return;
+        }
+        let html = '';
+        usageRows.forEach(u => {
+            const reversed = parseFloat(u.reversed_qty || 0);
+            const remaining = parseFloat(u.qty_used || 0) - reversed;
+            const mat = allMats.find(m => m.id === u.material_id);
+            const matName = mat ? mat.name : u.material_id;
+            const reversalCount = reversalRows.filter(r => r.usage_id === u.id).length;
+            const dateStr = u.entry_date ? new Date(u.entry_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '';
+            html += `<div style="padding:4px 0;font-size:0.78rem;border-bottom:1px solid #f0f0f0;">
+                <strong>${escapeHtml(matName)}</strong> <span style="color:#999;">${dateStr}</span> —
+                Used: ${u.qty_used || 0}${u.qty_wasted > 0 ? ', Wasted: ' + u.qty_wasted : ''}
+                ${reversed > 0 ? ', Reversed: ' + reversed : ''}
+                ${reversalCount > 0 ? ` (${reversalCount} reversal${reversalCount > 1 ? 's' : ''})` : ''}
+                ${u.wastage_reason ? ', Reason: ' + escapeHtml(u.wastage_reason) : ''}
+                ${remaining > 0 ? `<button class="btn-text reverse-usage-btn" data-uid="${u.id}" data-remaining="${remaining}" style="font-size:0.72rem;color:#c0392b;margin-left:4px;">Reverse</button>` : '<span style="color:#999;">(fully reversed)</span>'}
+            </div>`;
+        });
+        if (els.cellUsageList) els.cellUsageList.innerHTML = html;
+        if (els.cellUsageList) {
+            els.cellUsageList.querySelectorAll('.reverse-usage-btn').forEach(btn => {
+                btn.addEventListener('click', () => promptReverseUsage(btn.dataset.uid, parseFloat(btn.dataset.remaining)));
+            });
+        }
+    } catch (e) {
+        if (els.cellUsageList) els.cellUsageList.innerHTML = '<div style="color:#999;font-size:0.78rem;padding:4px;">No usage data.</div>';
+    }
+}
+
+function promptReverseUsage(usageId, remainingQty) {
+    const reason = prompt(`Enter quantity to reverse (max ${remainingQty}) and reason:\nFormat: qty|reason\nExample: 5|Wrong entry`);
+    if (!reason) return;
+    const parts = reason.split('|');
+    const reverseQty = parseFloat(parts[0]);
+    const reverseReason = parts.slice(1).join('|').trim();
+    if (isNaN(reverseQty) || reverseQty <= 0 || reverseQty > remainingQty) {
+        if (els.usageMsg) els.usageMsg.textContent = `Invalid quantity. Must be between 0 and ${remainingQty}.`;
+        return;
+    }
+    apiPost('/api/cell/' + encodeURIComponent(selectedCellId) + '/reverse-usage', {
+        usage_id: usageId,
+        reverse_qty: reverseQty,
+        reason: reverseReason
+    }).then(() => {
+        showToast('Usage reversed');
+        loadCellUsageInPopup(selectedCellId, selectedWorkItem, selectedFlat);
+    }).catch(err => {
+        if (els.usageMsg) els.usageMsg.textContent = err.message || 'Failed to reverse usage.';
+    });
+}
+
+async function promptDowngradeReversal(cellId, flat, workItem) {
+    try {
+        const data = await apiGet('/api/cell/' + encodeURIComponent(cellId) + '/material-usage');
+        const usageRows = (data && data.usage) || [];
+        const activeRows = usageRows.filter(u => {
+            const reversed = parseFloat(u.reversed_qty || 0);
+            return (parseFloat(u.qty_used || 0) - reversed) > 0;
+        });
+        if (activeRows.length === 0) return;
+
+        // Build a modal overlay for reversal selection
+        const overlay = document.createElement('div');
+        overlay.className = 'modal show';
+        overlay.style.zIndex = '10000';
+        let rowsHtml = '';
+        activeRows.forEach(u => {
+            const remaining = parseFloat(u.qty_used || 0) - parseFloat(u.reversed_qty || 0);
+            rowsHtml += `<tr>
+                <td>${escapeHtml(u.material_id)}</td>
+                <td>${remaining}</td>
+                <td><input type="number" class="downgrade-reverse-qty" data-uid="${u.id}" data-max="${remaining}" value="${remaining}" min="0" max="${remaining}" step="0.01" style="width:70px;font-size:0.8rem;"></td>
+            </tr>`;
+        });
+        overlay.innerHTML = `<div class="modal-content popup-small">
+            <div class="modal-header">
+                <h3>Reverse Material Usage?</h3>
+                <button class="close-btn downgrade-skip-btn">&times;</button>
+            </div>
+            <div style="padding:16px;">
+                <p style="font-size:0.85rem;color:#666;margin-bottom:12px;">
+                    <strong>${escapeHtml(flat)} - ${escapeHtml(workItem)}</strong> was downgraded from Completed (green).
+                    The following material usage was recorded for this cell. Adjust quantities to reverse and click "Reverse Selected".
+                </p>
+                <table class="tracker-table" style="font-size:0.82rem;">
+                    <thead><tr><th>Material</th><th>Remaining</th><th>Reverse Qty</th></tr></thead>
+                    <tbody>${rowsHtml}</tbody>
+                </table>
+                <div id="downgradeReversalMsg" style="font-size:0.82rem;color:#c0392b;min-height:16px;margin-top:8px;"></div>
+                <div class="popup-actions" style="margin-top:16px;">
+                    <button class="btn-secondary downgrade-skip-btn">Skip</button>
+                    <button class="btn-primary downgrade-reverse-btn">Reverse Selected</button>
+                </div>
+            </div>
+        </div>`;
+        document.body.appendChild(overlay);
+
+        overlay.querySelectorAll('.downgrade-skip-btn').forEach(btn => {
+            btn.addEventListener('click', () => overlay.remove());
+        });
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) overlay.remove();
+        });
+
+        overlay.querySelector('.downgrade-reverse-btn').addEventListener('click', async () => {
+            const msgEl = overlay.querySelector('#downgradeReversalMsg');
+            msgEl.textContent = '';
+            const inputs = overlay.querySelectorAll('.downgrade-reverse-qty');
+            let reversed = 0;
+            for (const inp of inputs) {
+                const qty = parseFloat(inp.value);
+                const max = parseFloat(inp.dataset.max);
+                if (isNaN(qty) || qty <= 0) continue;
+                if (qty > max) {
+                    msgEl.textContent = `Quantity for ${inp.dataset.uid} exceeds remaining (${max}).`;
+                    return;
+                }
+                try {
+                    await apiPost('/api/cell/' + encodeURIComponent(cellId) + '/reverse-usage', {
+                        usage_id: inp.dataset.uid,
+                        reverse_qty: qty,
+                        reason: 'Cell downgraded from green'
+                    });
+                    reversed++;
+                } catch (err) {
+                    msgEl.textContent = err.message || 'Failed to reverse some entries.';
+                    return;
+                }
+            }
+            if (reversed > 0) {
+                showToast(`${reversed} usage entr${reversed > 1 ? 'ies' : 'y'} reversed`);
+            }
+            overlay.remove();
+        });
+    } catch (e) {
+        // Silently fail — don't block the color change
+        console.error('Failed to load usage for downgrade reversal:', e);
+    }
+}
+
+if (els.logUsageBtn) {
+    els.logUsageBtn.addEventListener('click', async () => {
+        if (!selectedCellId) return;
+        const materialId = els.usageMaterialSelect.value;
+        const qtyUsed = parseFloat(els.usageQtyInput.value) || 0;
+        const qtyWasted = parseFloat(els.usageWasteInput.value) || 0;
+        const wastageReason = els.usageReasonInput ? els.usageReasonInput.value.trim() : '';
+        if (!materialId || (qtyUsed <= 0 && qtyWasted <= 0)) {
+            if (els.usageMsg) els.usageMsg.textContent = 'Select a material and enter qty or waste.';
+            return;
+        }
+        if (els.usageMsg) { els.usageMsg.textContent = ''; els.usageMsg.style.color = '#c0392b'; }
+        const venture = currentVenture;
+        if (!venture) return;
+        const cellParts = selectedCellId.split('_');
+        const block = cellParts[0] || '';
+        const floor = cellParts.length > 2 ? cellParts[1] : '';
+        try {
+            await apiPost('/api/cell/' + encodeURIComponent(selectedCellId) + '/usage', {
+                venture_id: venture.id,
+                material_id: materialId,
+                qty_used: qtyUsed,
+                qty_wasted: qtyWasted,
+                wastage_reason: wastageReason || null,
+                block: block,
+                floor: floor,
+                flat: selectedFlat,
+                work_item: selectedWorkItem,
+                entry_date: new Date().toISOString().split('T')[0]
+            });
+            showToast('Usage logged');
+            loadCellUsageInPopup(selectedCellId, selectedWorkItem, selectedFlat);
+        } catch (err) {
+            let msg = err.message || 'Failed to log usage.';
+            try {
+                const jsonMatch = msg.match(/\{.*\}/);
+                if (jsonMatch) msg = JSON.parse(jsonMatch[0]).error || msg;
+            } catch (e2) {}
+            if (els.usageMsg) els.usageMsg.textContent = msg;
+        }
+    });
 }
 
 function closeStatusPopup() {
@@ -918,10 +1140,17 @@ document.querySelectorAll('.bulk-color-btn').forEach(btn => {
 
             // Send in chunks of 50
             try {
+                let allDowngraded = [];
                 for (let i = 0; i < batch.length; i += 50) {
-                    await apiPost('/api/cells/batch', { cells: batch.slice(i, i + 50) });
+                    const resp = await apiPost('/api/cells/batch', { cells: batch.slice(i, i + 50) });
+                    if (resp && resp.downgraded) {
+                        allDowngraded = allDowngraded.concat(resp.downgraded);
+                    }
                 }
                 showToast(`${count} cells updated`);
+                if (allDowngraded.length > 0) {
+                    showToast(`${allDowngraded.length} cell(s) downgraded from green — check usage reversal`, true);
+                }
             } catch (err) {
                 console.error('Bulk save failed:', err);
                 showToast('Bulk save failed — please retry', true);
