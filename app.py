@@ -30,9 +30,26 @@ except (ImportError, OSError):
 finally:
     sys.stderr = _orig_stderr
 
+# Fallback PDF engine (pure Python, no native deps)
+try:
+    from xhtml2pdf import pisa as _pisa
+except ImportError:
+    _pisa = None
+
 load_dotenv()
 
 IST = timezone(timedelta(hours=5, minutes=30))
+
+def render_pdf(html_string):
+    """Render HTML to PDF using WeasyPrint, with xhtml2pdf fallback."""
+    if HTML:
+        return HTML(string=html_string).write_pdf()
+    if _pisa:
+        import io as _io2
+        buf = _io2.BytesIO()
+        _pisa.CreatePDF(_io2.StringIO(html_string), dest=buf)
+        return buf.getvalue()
+    raise RuntimeError('No PDF engine available. Install weasyprint or xhtml2pdf.')
 
 def now_ist():
     return datetime.now(IST)
@@ -1825,44 +1842,236 @@ def api_category_create():
 
 
 # ========================
-# Instant Reports API (Admin-only)
+# Instant Reports API (Admin/Manager/Supervisor)
 # ========================
 
+def _parse_cell_id(cell_id, venture_id):
+    """Parse a cell ID to extract block, floor, flat, work_item.
+    Cell ID format: ventureId_blockId_floorN_flatNum_itemId
+    Returns dict with block, floor, flat, item_id or None if parsing fails."""
+    import re
+    prefix = venture_id + '_'
+    if not cell_id.startswith(prefix):
+        # Try matching by data fields
+        return None
+    rest = cell_id[len(prefix):]
+    # Match: block_floorN_flatNum_itemId
+    m = re.match(r'^(.+)_floor(\d+)_(\d+)_(.+)$', rest)
+    if not m:
+        return None
+    return {
+        'block': m.group(1),
+        'floor': int(m.group(2)),
+        'flat': int(m.group(3)),
+        'item_id': m.group(4)
+    }
+
+
 @app.route('/api/reports/instant')
-@requires_role('admin')
+@requires_role('supervisor', 'manager', 'admin')
 def api_instant_reports():
     if not supabase:
         return jsonify({'error': 'Supabase not connected'}), 500
     venture_id = request.args.get('venture_id')
     if not venture_id:
         return jsonify({'error': 'venture_id is required'}), 400
+    # Optional filters
+    filter_block = request.args.get('block', '')
+    filter_floor = request.args.get('floor', '')
+    filter_flat = request.args.get('flat', '')
+    filter_category = request.args.get('category', '')
+    filter_date_from = request.args.get('date_from', '')
+    filter_date_to = request.args.get('date_to', '')
     try:
-        result = {'venture_id': venture_id, 'blocks': [], 'spend': {}, 'consumption': []}
-        # Cell status summary: % complete per block/floor
+        # Fetch venture data for work_categories and flat_view_items
+        vent_res = supabase.table('ventures').select('*').eq('id', venture_id).execute()
+        venture_data = {}
+        if vent_res.data:
+            venture_data = vent_res.data[0].get('data') or {}
+        flat_view_items = venture_data.get('flat_view_items', [])
+        work_categories = venture_data.get('work_categories', {})
+        blocks = venture_data.get('blocks', [])
+
+        # Build item_id -> category mapping
+        item_to_category = {}
+        if work_categories:
+            for cat_label, items in work_categories.items():
+                for item in items:
+                    if isinstance(item, dict):
+                        item_to_category[item.get('id', '')] = cat_label
+                    elif isinstance(item, str):
+                        item_to_category[item] = cat_label
+        # Also map flat_view_items to "Flat View" category if not in work_categories
+        for item in flat_view_items:
+            if isinstance(item, dict):
+                iid = item.get('id', '')
+                if iid and iid not in item_to_category:
+                    item_to_category[iid] = 'Flat View'
+            elif isinstance(item, str) and item not in item_to_category:
+                item_to_category[item] = 'Flat View'
+
+        # Fetch all cell_data and filter by venture
         cells_res = supabase.table('cell_data').select('*').execute()
-        cell_stats = {}
+        status_counts = {'green': 0, 'yellow': 0, 'blue': 0, 'red': 0, 'none': 0}
+        total_cells = 0
+        work_item_stats = {}
+        category_stats = {}
+        block_stats = {}
+        floor_stats = {}
+        detail_rows = []
+
         for row in cells_res.data:
             d = row.get('data') or {}
-            v_id = d.get('venture_id')
-            if v_id != venture_id:
+            cell_id = row.get('id', '')
+            color = d.get('color', '') or 'none'
+            updated_at = d.get('updated_at', '')
+
+            # Parse cell ID to get block/floor/flat/item
+            parsed = _parse_cell_id(cell_id, venture_id)
+            if parsed:
+                block = parsed['block']
+                floor = parsed['floor']
+                flat = parsed['flat']
+                item_id = parsed['item_id']
+            else:
+                # Fallback to data fields
+                block = d.get('block', '')
+                floor = d.get('floor', '')
+                flat = d.get('flat', '')
+                item_id = d.get('work_item', d.get('item_id', ''))
+                if not block:
+                    continue
+
+            # Apply filters
+            if filter_block and block != filter_block:
                 continue
-            block = d.get('block', 'Unknown')
-            floor = d.get('floor', 'Unknown')
-            color = d.get('color', '')
-            key = f'{block}|{floor}'
-            if key not in cell_stats:
-                cell_stats[key] = {'total': 0, 'completed': 0}
-            cell_stats[key]['total'] += 1
-            if color == 'green':
-                cell_stats[key]['completed'] += 1
-        for key, stats in cell_stats.items():
-            block, floor = key.split('|')
-            pct = round((stats['completed'] / stats['total'] * 100), 1) if stats['total'] else 0
-            result['blocks'].append({
-                'block': block, 'floor': floor,
-                'total': stats['total'], 'completed': stats['completed'],
-                'pct_complete': pct
+            if filter_floor and str(floor) != str(filter_floor):
+                continue
+            if filter_flat and str(flat) != str(filter_flat):
+                continue
+            cat = item_to_category.get(item_id, '')
+            if filter_category and cat != filter_category:
+                continue
+            if filter_date_from and updated_at:
+                cell_date = updated_at[:10]
+                if cell_date < filter_date_from:
+                    continue
+            if filter_date_to and updated_at:
+                cell_date = updated_at[:10]
+                if cell_date > filter_date_to:
+                    continue
+
+            # Count statuses
+            if color not in status_counts:
+                status_counts[color] = 0
+            status_counts[color] += 1
+            total_cells += 1
+
+            # Work item stats
+            if item_id not in work_item_stats:
+                work_item_stats[item_id] = {'total': 0, 'green': 0, 'yellow': 0, 'blue': 0, 'red': 0, 'none': 0}
+            work_item_stats[item_id]['total'] += 1
+            work_item_stats[item_id][color] = (work_item_stats[item_id].get(color, 0) or 0) + 1
+
+            # Category stats
+            if cat:
+                if cat not in category_stats:
+                    category_stats[cat] = {'total': 0, 'green': 0, 'yellow': 0, 'blue': 0, 'red': 0, 'none': 0}
+                category_stats[cat]['total'] += 1
+                category_stats[cat][color] = (category_stats[cat].get(color, 0) or 0) + 1
+
+            # Block stats
+            if block not in block_stats:
+                block_stats[block] = {'total': 0, 'green': 0, 'yellow': 0, 'blue': 0, 'red': 0, 'none': 0}
+            block_stats[block]['total'] += 1
+            block_stats[block][color] = (block_stats[block].get(color, 0) or 0) + 1
+
+            # Floor stats
+            fkey = f'{block}|{floor}'
+            if fkey not in floor_stats:
+                floor_stats[fkey] = {'block': block, 'floor': floor, 'total': 0, 'green': 0, 'yellow': 0, 'blue': 0, 'red': 0, 'none': 0}
+            floor_stats[fkey]['total'] += 1
+            floor_stats[fkey][color] = (floor_stats[fkey].get(color, 0) or 0) + 1
+
+            # Detail row
+            detail_rows.append({
+                'block': block, 'floor': floor, 'flat': flat,
+                'work_item': item_id, 'category': cat,
+                'color': color, 'updated_at': updated_at,
+                'remarks': d.get('remarks', ''),
+                'updated_by': d.get('updated_by', '')
             })
+
+        completed = status_counts.get('green', 0)
+        in_progress = status_counts.get('yellow', 0)
+        patch_work = status_counts.get('blue', 0)
+        yet_to_start = status_counts.get('red', 0)
+        not_started = status_counts.get('none', 0)
+        pending = total_cells - completed
+        completion_pct = round((completed / total_cells * 100), 1) if total_cells else 0
+
+        # Build work item breakdown
+        work_item_breakdown = []
+        for item_id, stats in sorted(work_item_stats.items()):
+            t = stats['total']
+            work_item_breakdown.append({
+                'work_item': item_id,
+                'category': item_to_category.get(item_id, ''),
+                'total': t,
+                'completed': stats.get('green', 0),
+                'in_progress': stats.get('yellow', 0),
+                'patch_work': stats.get('blue', 0),
+                'yet_to_start': stats.get('red', 0),
+                'not_started': stats.get('none', 0),
+                'pending': t - stats.get('green', 0),
+                'pct': round((stats.get('green', 0) / t * 100), 1) if t else 0
+            })
+
+        # Build category summary
+        category_summary = []
+        for cat, stats in sorted(category_stats.items()):
+            t = stats['total']
+            category_summary.append({
+                'category': cat,
+                'total': t,
+                'completed': stats.get('green', 0),
+                'in_progress': stats.get('yellow', 0),
+                'patch_work': stats.get('blue', 0),
+                'yet_to_start': stats.get('red', 0),
+                'not_started': stats.get('none', 0),
+                'pct': round((stats.get('green', 0) / t * 100), 1) if t else 0
+            })
+
+        # Build block summary
+        block_summary = []
+        for blk, stats in sorted(block_stats.items()):
+            t = stats['total']
+            block_summary.append({
+                'block': blk,
+                'total': t,
+                'completed': stats.get('green', 0),
+                'in_progress': stats.get('yellow', 0),
+                'patch_work': stats.get('blue', 0),
+                'yet_to_start': stats.get('red', 0),
+                'not_started': stats.get('none', 0),
+                'pct': round((stats.get('green', 0) / t * 100), 1) if t else 0
+            })
+
+        # Build floor summary
+        floor_summary = []
+        for fkey, stats in sorted(floor_stats.items()):
+            t = stats['total']
+            floor_summary.append({
+                'block': stats['block'], 'floor': stats['floor'],
+                'total': t,
+                'completed': stats.get('green', 0),
+                'in_progress': stats.get('yellow', 0),
+                'patch_work': stats.get('blue', 0),
+                'yet_to_start': stats.get('red', 0),
+                'not_started': stats.get('none', 0),
+                'pct': round((stats.get('green', 0) / t * 100), 1) if t else 0
+            })
+
         # Spend from invoices
         inv_res = supabase.table('invoices').select('*').execute()
         total_invoice = 0
@@ -1871,7 +2080,7 @@ def api_instant_reports():
             if d.get('venture_id') == venture_id or inv.get('venture_id') == venture_id:
                 amt = d.get('amount') or inv.get('amount') or 0
                 total_invoice += float(amt)
-        result['spend']['invoices'] = round(total_invoice, 2)
+
         # Spend from POs
         po_res = supabase.table('purchase_orders').select('*').execute()
         total_po = 0
@@ -1880,7 +2089,7 @@ def api_instant_reports():
             if d.get('venture_id') == venture_id or po.get('venture_id') == venture_id:
                 amt = d.get('billAmount') or d.get('quotedAmount') or po.get('amount') or 0
                 total_po += float(amt)
-        result['spend']['purchase_orders'] = round(total_po, 2)
+
         # Consumption from stock_ledger
         stock_res = supabase.table('stock_ledger').select('*').eq('venture_id', venture_id).execute()
         consumption = {}
@@ -1890,7 +2099,39 @@ def api_instant_reports():
                 if mid not in consumption:
                     consumption[mid] = {'material_id': mid, 'total_qty': 0}
                 consumption[mid]['total_qty'] += float(entry.get('qty', 0))
-        result['consumption'] = list(consumption.values())
+
+        result = {
+            'venture_id': venture_id,
+            'filters': {
+                'block': filter_block, 'floor': filter_floor,
+                'flat': filter_flat, 'category': filter_category,
+                'date_from': filter_date_from, 'date_to': filter_date_to
+            },
+            'summary': {
+                'total_work_items': len(work_item_stats),
+                'total_cells': total_cells,
+                'completed': completed,
+                'in_progress': in_progress,
+                'patch_work': patch_work,
+                'yet_to_start': yet_to_start,
+                'not_started': not_started,
+                'pending': pending,
+                'completion_pct': completion_pct
+            },
+            'status_counts': status_counts,
+            'work_item_breakdown': work_item_breakdown,
+            'category_summary': category_summary,
+            'block_summary': block_summary,
+            'floor_summary': floor_summary,
+            'detail_rows': detail_rows,
+            'spend': {
+                'invoices': round(total_invoice, 2),
+                'purchase_orders': round(total_po, 2)
+            },
+            'consumption': list(consumption.values()),
+            'blocks': floor_summary,  # Backward compat
+            'categories': [c for c in item_to_category.values() if c]
+        }
         return jsonify(result)
     except Exception as e:
         print(f'Error generating instant reports: {e}')
@@ -2043,8 +2284,8 @@ def _format_inr(num):
 @requires_role_or_override('manager', 'admin')
 def api_lender_report(project_id):
     """Generate a printable Lender Progress Report PDF."""
-    if not HTML:
-        return jsonify({'error': 'PDF engine not installed. Run: pip install weasyprint'}), 500
+    if not HTML and not _pisa:
+        return jsonify({'error': 'PDF engine not installed. Run: pip install weasyprint xhtml2pdf'}), 500
 
     report_date_str = request.args.get('date') or now_ist().strftime('%Y-%m-%d')
     include_financials = request.args.get('include_financials', 'true').lower() != 'false'
@@ -2095,7 +2336,7 @@ def api_lender_report(project_id):
         ref_id=ref_id
     )
 
-    pdf = HTML(string=rendered).write_pdf()
+    pdf = render_pdf(rendered)
     filename = f"Lender_Progress_Report_{venture['name'].replace(' ', '_')}_{report_date_str}.pdf"
     response = app.make_response(pdf)
     response.headers['Content-Type'] = 'application/pdf'

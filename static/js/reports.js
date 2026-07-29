@@ -116,70 +116,542 @@ function regenerateReports() {
 }
 
 // ========================
-// Instant Reports Renderer
+// Instant Reports Renderer (Enhanced)
 // ========================
+
+let _irPieChart = null;
+let _irLastData = null;
+let _irLastFilters = null;
 
 async function renderInstantReports() {
     const container = document.getElementById('instantReportsContent');
     if (!container) return;
-    container.innerHTML = '<div style="padding:24px;color:#888;">Loading instant reports...</div>';
-
-    const ventureSelect = document.createElement('select');
-    ventureSelect.className = 'pending-filter-group-select';
-    ventureSelect.style.cssText = 'padding:8px 12px;border:1px solid #ccc;border-radius:6px;font-size:0.9rem;margin:16px 24px;';
-    ventureSelect.innerHTML = '<option value="">-- Select Venture --</option>';
-    venturesList.forEach(v => {
-        ventureSelect.innerHTML += `<option value="${v.id}">${v.name}</option>`;
-    });
     container.innerHTML = '';
-    container.appendChild(ventureSelect);
 
+    // --- Filter Bar ---
+    const filterBar = document.createElement('div');
+    filterBar.className = 'ir-filter-bar';
+
+    const ventureOpts = venturesList.map(v => `<option value="${v.id}">${escapeHtml(v.name)}</option>`).join('');
+    filterBar.innerHTML = `
+        <div class="ir-filter-group">
+            <label>Venture <span class="ir-req">*</span></label>
+            <select id="irVentureSelect" class="ir-filter-select">${ventureOpts}</select>
+        </div>
+        <div class="ir-filter-group">
+            <label>Block</label>
+            <select id="irBlockSelect" class="ir-filter-select"><option value="">All Blocks</option></select>
+        </div>
+        <div class="ir-filter-group">
+            <label>Floor</label>
+            <select id="irFloorSelect" class="ir-filter-select"><option value="">All Floors</option></select>
+        </div>
+        <div class="ir-filter-group">
+            <label>Flat / Unit</label>
+            <select id="irFlatSelect" class="ir-filter-select"><option value="">All Flats</option></select>
+        </div>
+        <div class="ir-filter-group">
+            <label>Category</label>
+            <select id="irCategorySelect" class="ir-filter-select"><option value="">All Categories</option></select>
+        </div>
+        <div class="ir-filter-group">
+            <label>Date From</label>
+            <input type="date" id="irDateFrom" class="ir-filter-input">
+        </div>
+        <div class="ir-filter-group">
+            <label>Date To</label>
+            <input type="date" id="irDateTo" class="ir-filter-input">
+        </div>
+        <div class="ir-filter-actions">
+            <button id="irGenerateBtn" class="btn-primary">Generate Report</button>
+            <button id="irResetBtn" class="btn-secondary">Reset</button>
+        </div>
+    `;
+    container.appendChild(filterBar);
+
+    // --- Export Bar ---
+    const exportBar = document.createElement('div');
+    exportBar.className = 'ir-export-bar';
+    exportBar.innerHTML = `
+        <button id="irExportPdfBtn" class="btn-secondary ir-export-btn" disabled>
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V4.5A1.5 1.5 0 0 1 7.5 3h9A1.5 1.5 0 0 1 18 4.5V9M6 18H4.5A1.5 1.5 0 0 1 3 16.5v-6A1.5 1.5 0 0 1 4.5 9h15a1.5 1.5 0 0 1 1.5 1.5v6a1.5 1.5 0 0 1-1.5 1.5H18M6 14h12v7H6z"/></svg>
+            PDF
+        </button>
+        <button id="irExportExcelBtn" class="btn-secondary ir-export-btn" disabled>
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13l2 2-2 2M12 17h4"/></svg>
+            Excel
+        </button>
+        <button id="irPrintBtn" class="btn-secondary ir-export-btn" disabled>
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7M6 18H4.5A1.5 1.5 0 0 1 3 16.5v-6A1.5 1.5 0 0 1 4.5 9h15a1.5 1.5 0 0 1 1.5 1.5v6a1.5 1.5 0 0 1-1.5 1.5H18M6 14h12v8H6z"/></svg>
+            Print
+        </button>
+    `;
+    container.appendChild(exportBar);
+
+    // --- Output Area ---
     const outputDiv = document.createElement('div');
-    outputDiv.style.cssText = 'padding:0 24px;';
+    outputDiv.id = 'irOutput';
+    outputDiv.className = 'ir-output';
     container.appendChild(outputDiv);
 
-    ventureSelect.addEventListener('change', async () => {
+    // --- Populate block/floor/flat/category selects based on venture ---
+    function populateBlockSelect(venture) {
+        const blockSelect = document.getElementById('irBlockSelect');
+        if (!blockSelect) return;
+        blockSelect.innerHTML = '<option value="">All Blocks</option>';
+        if (venture && venture.blocks) {
+            venture.blocks.forEach(b => {
+                const opt = document.createElement('option');
+                opt.value = b.id;
+                opt.textContent = b.name || b.id;
+                blockSelect.appendChild(opt);
+            });
+        }
+    }
+
+    function populateFloorSelect(venture, blockId) {
+        const floorSelect = document.getElementById('irFloorSelect');
+        if (!floorSelect) return;
+        floorSelect.innerHTML = '<option value="">All Floors</option>';
+        if (venture && venture.blocks) {
+            const block = venture.blocks.find(b => b.id === blockId);
+            if (block) {
+                const floors = block.floors || 5;
+                const labels = ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th', '10th'];
+                for (let i = 1; i <= floors; i++) {
+                    const opt = document.createElement('option');
+                    opt.value = i;
+                    opt.textContent = labels[i - 1] || `${i}th`;
+                    floorSelect.appendChild(opt);
+                }
+            }
+        }
+    }
+
+    function populateFlatSelect(venture, blockId, floor) {
+        const flatSelect = document.getElementById('irFlatSelect');
+        if (!flatSelect) return;
+        flatSelect.innerHTML = '<option value="">All Flats</option>';
+        if (venture && venture.blocks && blockId && floor) {
+            const block = venture.blocks.find(b => b.id === blockId);
+            if (block) {
+                const flatsPerFloor = block.flats_per_floor || FLATS_PER_FLOOR;
+                for (let i = 1; i <= flatsPerFloor; i++) {
+                    const flatNum = (parseInt(floor) * 100) + i;
+                    const opt = document.createElement('option');
+                    opt.value = flatNum;
+                    opt.textContent = flatNum;
+                    flatSelect.appendChild(opt);
+                }
+            }
+        }
+    }
+
+    function populateCategorySelect(venture) {
+        const catSelect = document.getElementById('irCategorySelect');
+        if (!catSelect) return;
+        catSelect.innerHTML = '<option value="">All Categories</option>';
+        if (venture && venture.work_categories) {
+            Object.keys(venture.work_categories).forEach(cat => {
+                const opt = document.createElement('option');
+                opt.value = cat;
+                opt.textContent = cat;
+                catSelect.appendChild(opt);
+            });
+        }
+    }
+
+    // --- Event wiring ---
+    const ventureSelect = document.getElementById('irVentureSelect');
+    const blockSelect = document.getElementById('irBlockSelect');
+    const floorSelect = document.getElementById('irFloorSelect');
+    const flatSelect = document.getElementById('irFlatSelect');
+    const catSelect = document.getElementById('irCategorySelect');
+    const dateFrom = document.getElementById('irDateFrom');
+    const dateTo = document.getElementById('irDateTo');
+    const generateBtn = document.getElementById('irGenerateBtn');
+    const resetBtn = document.getElementById('irResetBtn');
+
+    ventureSelect.addEventListener('change', () => {
+        const v = venturesList.find(vent => vent.id === ventureSelect.value);
+        populateBlockSelect(v);
+        populateFloorSelect(v, '');
+        populateFlatSelect(v, '', '');
+        populateCategorySelect(v);
+        flatSelect.innerHTML = '<option value="">All Flats</option>';
+        generateReport();
+    });
+
+    blockSelect.addEventListener('change', () => {
+        const v = venturesList.find(vent => vent.id === ventureSelect.value);
+        populateFloorSelect(v, blockSelect.value);
+        populateFlatSelect(v, blockSelect.value, '');
+        generateReport();
+    });
+
+    floorSelect.addEventListener('change', () => {
+        const v = venturesList.find(vent => vent.id === ventureSelect.value);
+        populateFlatSelect(v, blockSelect.value, floorSelect.value);
+        generateReport();
+    });
+
+    flatSelect.addEventListener('change', generateReport);
+    catSelect.addEventListener('change', generateReport);
+    dateFrom.addEventListener('change', generateReport);
+    dateTo.addEventListener('change', generateReport);
+
+    generateBtn.addEventListener('click', generateReport);
+
+    resetBtn.addEventListener('click', () => {
+        blockSelect.value = '';
+        floorSelect.value = '';
+        flatSelect.value = '';
+        catSelect.value = '';
+        dateFrom.value = '';
+        dateTo.value = '';
+        const v = venturesList.find(vent => vent.id === ventureSelect.value);
+        populateBlockSelect(v);
+        populateFloorSelect(v, '');
+        populateFlatSelect(v, '', '');
+        populateCategorySelect(v);
+        generateReport();
+    });
+
+    // --- Export buttons ---
+    document.getElementById('irExportPdfBtn').addEventListener('click', () => {
+        window.print();
+    });
+    document.getElementById('irPrintBtn').addEventListener('click', () => {
+        window.print();
+    });
+    document.getElementById('irExportExcelBtn').addEventListener('click', exportInstantReportExcel);
+
+    // --- Generate report ---
+    async function generateReport() {
         const vid = ventureSelect.value;
-        if (!vid) { outputDiv.innerHTML = ''; return; }
-        outputDiv.innerHTML = '<div style="padding:24px;color:#888;">Loading...</div>';
+        if (!vid) {
+            outputDiv.innerHTML = '<div class="ir-empty">Please select a venture to generate a report.</div>';
+            return;
+        }
+
+        const params = new URLSearchParams();
+        params.set('venture_id', vid);
+        if (blockSelect.value) params.set('block', blockSelect.value);
+        if (floorSelect.value) params.set('floor', floorSelect.value);
+        if (flatSelect.value) params.set('flat', flatSelect.value);
+        if (catSelect.value) params.set('category', catSelect.value);
+        if (dateFrom.value) params.set('date_from', dateFrom.value);
+        if (dateTo.value) params.set('date_to', dateTo.value);
+
+        outputDiv.innerHTML = '<div class="ir-loading"><div class="ir-spinner"></div>Generating report...</div>';
+
         try {
-            const data = await apiGet(`/api/reports/instant?venture_id=${encodeURIComponent(vid)}`);
-            let html = '<div style="display:flex;gap:24px;flex-wrap:wrap;padding:16px 0;">';
-
-            // Spend summary
-            html += '<div style="flex:1;min-width:200px;background:#fff;border:1px solid #e0e4e8;border-radius:8px;padding:16px;">';
-            html += '<h4 style="margin:0 0 12px 0;font-size:0.9rem;">Total Spend</h4>';
-            html += `<div style="font-size:1.4rem;font-weight:700;">&#8377; ${(data.spend.invoices + data.spend.purchase_orders).toLocaleString('en-IN')}</div>`;
-            html += `<div style="font-size:0.8rem;color:#888;margin-top:4px;">Invoices: &#8377; ${data.spend.invoices.toLocaleString('en-IN')} | POs: &#8377; ${data.spend.purchase_orders.toLocaleString('en-IN')}</div>`;
-            html += '</div>';
-
-            // Block completion
-            if (data.blocks.length > 0) {
-                html += '<div style="flex:2;min-width:300px;background:#fff;border:1px solid #e0e4e8;border-radius:8px;padding:16px;">';
-                html += '<h4 style="margin:0 0 12px 0;font-size:0.9rem;">Block Completion</h4>';
-                html += '<table class="tracker-table" style="font-size:0.85rem;"><thead><tr><th>Block</th><th>Floor</th><th>Total</th><th>Done</th><th>%</th></tr></thead><tbody>';
-                data.blocks.forEach(b => {
-                    html += `<tr><td>${b.block}</td><td>${b.floor}</td><td>${b.total}</td><td>${b.completed}</td><td>${b.pct_complete}%</td></tr>`;
-                });
-                html += '</tbody></table></div>';
-            }
-
-            // Consumption
-            if (data.consumption.length > 0) {
-                html += '<div style="flex:1;min-width:200px;background:#fff;border:1px solid #e0e4e8;border-radius:8px;padding:16px;">';
-                html += '<h4 style="margin:0 0 12px 0;font-size:0.9rem;">Material Consumption</h4>';
-                data.consumption.forEach(c => {
-                    html += `<div style="font-size:0.8rem;padding:4px 0;">${c.material_id}: ${c.total_qty}</div>`;
-                });
-                html += '</div>';
-            }
-
-            html += '</div>';
-            outputDiv.innerHTML = html;
+            const data = await apiGet(`/api/reports/instant?${params.toString()}`);
+            _irLastData = data;
+            _irLastFilters = {
+                venture: venturesList.find(v => v.id === vid)?.name || vid,
+                block: blockSelect.value || 'All',
+                floor: floorSelect.value || 'All',
+                flat: flatSelect.value || 'All',
+                category: catSelect.value || 'All',
+                dateFrom: dateFrom.value || '',
+                dateTo: dateTo.value || ''
+            };
+            renderInstantReportOutput(outputDiv, data);
+            // Enable export buttons
+            document.getElementById('irExportPdfBtn').disabled = false;
+            document.getElementById('irExportExcelBtn').disabled = false;
+            document.getElementById('irPrintBtn').disabled = false;
         } catch (err) {
-            outputDiv.innerHTML = `<div style="padding:24px;color:#c0392b;">Error: ${err.message}</div>`;
+            outputDiv.innerHTML = `<div class="ir-error">Error: ${escapeHtml(err.message)}</div>`;
+        }
+    }
+
+    // Auto-generate on load if ventures exist
+    if (venturesList.length > 0) {
+        const v = venturesList[0];
+        ventureSelect.value = v.id;
+        populateBlockSelect(v);
+        populateCategorySelect(v);
+        generateReport();
+    } else {
+        outputDiv.innerHTML = '<div class="ir-empty">No ventures available.</div>';
+    }
+}
+
+function renderInstantReportOutput(container, data) {
+    const s = data.summary;
+    const sc = data.status_counts;
+    const total = s.total_cells || 0;
+
+    const pct = (val) => total ? ((val / total) * 100).toFixed(1) : '0.0';
+
+    let html = '';
+
+    // --- Progress Cards ---
+    html += '<div class="ir-cards-row">';
+    const cards = [
+        { label: 'Total Work Items', value: s.total_work_items, icon: '📋', color: 'dark' },
+        { label: 'Total Cells', value: total, icon: '🔲', color: 'blue' },
+        { label: 'Completed', value: s.completed, pct: pct(s.completed), icon: '✅', color: 'green' },
+        { label: 'In Progress', value: s.in_progress, pct: pct(s.in_progress), icon: '🔄', color: 'yellow' },
+        { label: 'Yet to Start', value: s.yet_to_start, pct: pct(s.yet_to_start), icon: '⏳', color: 'red' },
+        { label: 'Patch Work', value: s.patch_work, pct: pct(s.patch_work), icon: '🔧', color: 'blue' },
+        { label: 'Pending', value: s.pending, icon: '⏸', color: 'amber' },
+        { label: 'Completion %', value: s.completion_pct + '%', icon: '📊', color: 'green' },
+    ];
+    cards.forEach(c => {
+        html += `<div class="ir-card ir-card-${c.color}">
+            <div class="ir-card-icon">${c.icon}</div>
+            <div class="ir-card-body">
+                <div class="ir-card-label">${c.label}</div>
+                <div class="ir-card-value">${c.value}</div>
+                ${c.pct !== undefined ? `<div class="ir-card-sub">${c.pct}%</div>` : ''}
+            </div>
+        </div>`;
+    });
+    html += '</div>';
+
+    // --- Charts Row ---
+    html += '<div class="ir-charts-row">';
+    html += '<div class="ir-chart-card"><div class="ir-chart-title">Work Status Distribution</div><div class="ir-chart-wrap"><canvas id="irPieChart"></canvas></div></div>';
+    html += '<div class="ir-chart-card"><div class="ir-chart-title">Category-wise Completion</div><div class="ir-chart-wrap"><canvas id="irBarChart"></canvas></div></div>';
+    html += '</div>';
+
+    // --- Category Summary Table ---
+    if (data.category_summary && data.category_summary.length > 0) {
+        html += '<div class="ir-section"><h3 class="ir-section-title">Category-wise Summary</h3>';
+        html += '<div class="ir-table-wrap"><table class="tracker-table ir-table"><thead><tr>';
+        html += '<th>Category</th><th>Total</th><th>Completed</th><th>In Progress</th><th>Patch Work</th><th>Yet to Start</th><th>Not Started</th><th>Completion %</th>';
+        html += '</tr></thead><tbody>';
+        data.category_summary.forEach(c => {
+            html += `<tr>
+                <td>${escapeHtml(c.category)}</td>
+                <td>${c.total}</td>
+                <td class="ir-td-green">${c.completed}</td>
+                <td class="ir-td-yellow">${c.in_progress}</td>
+                <td class="ir-td-blue">${c.patch_work}</td>
+                <td class="ir-td-red">${c.yet_to_start}</td>
+                <td>${c.not_started}</td>
+                <td><div class="ir-progress-bar"><div class="ir-progress-fill" style="width:${c.pct}%"></div><span>${c.pct}%</span></div></td>
+            </tr>`;
+        });
+        html += '</tbody></table></div></div>';
+    }
+
+    // --- Work Item Breakdown Table ---
+    if (data.work_item_breakdown && data.work_item_breakdown.length > 0) {
+        html += '<div class="ir-section"><h3 class="ir-section-title">Work Item-wise Breakdown</h3>';
+        html += '<div class="ir-table-wrap"><table class="tracker-table ir-table"><thead><tr>';
+        html += '<th>Work Item</th><th>Category</th><th>Total</th><th>Completed</th><th>In Progress</th><th>Patch Work</th><th>Yet to Start</th><th>Not Started</th><th>Pending</th><th>Completion %</th>';
+        html += '</tr></thead><tbody>';
+        data.work_item_breakdown.forEach(w => {
+            html += `<tr>
+                <td>${escapeHtml(w.work_item)}</td>
+                <td>${escapeHtml(w.category || '—')}</td>
+                <td>${w.total}</td>
+                <td class="ir-td-green">${w.completed}</td>
+                <td class="ir-td-yellow">${w.in_progress}</td>
+                <td class="ir-td-blue">${w.patch_work}</td>
+                <td class="ir-td-red">${w.yet_to_start}</td>
+                <td>${w.not_started}</td>
+                <td>${w.pending}</td>
+                <td><div class="ir-progress-bar"><div class="ir-progress-fill" style="width:${w.pct}%"></div><span>${w.pct}%</span></div></td>
+            </tr>`;
+        });
+        html += '</tbody></table></div></div>';
+    }
+
+    // --- Block Summary Table ---
+    if (data.block_summary && data.block_summary.length > 0) {
+        html += '<div class="ir-section"><h3 class="ir-section-title">Block-wise Summary</h3>';
+        html += '<div class="ir-table-wrap"><table class="tracker-table ir-table"><thead><tr>';
+        html += '<th>Block</th><th>Total</th><th>Completed</th><th>In Progress</th><th>Patch Work</th><th>Yet to Start</th><th>Not Started</th><th>Completion %</th>';
+        html += '</tr></thead><tbody>';
+        data.block_summary.forEach(b => {
+            html += `<tr>
+                <td>${escapeHtml(b.block)}</td>
+                <td>${b.total}</td>
+                <td class="ir-td-green">${b.completed}</td>
+                <td class="ir-td-yellow">${b.in_progress}</td>
+                <td class="ir-td-blue">${b.patch_work}</td>
+                <td class="ir-td-red">${b.yet_to_start}</td>
+                <td>${b.not_started}</td>
+                <td><div class="ir-progress-bar"><div class="ir-progress-fill" style="width:${b.pct}%"></div><span>${b.pct}%</span></div></td>
+            </tr>`;
+        });
+        html += '</tbody></table></div></div>';
+    }
+
+    // --- Detail Table ---
+    if (data.detail_rows && data.detail_rows.length > 0) {
+        html += '<div class="ir-section"><h3 class="ir-section-title">Detailed Report</h3>';
+        html += '<div class="ir-table-wrap ir-detail-table"><table class="tracker-table ir-table"><thead><tr>';
+        html += '<th>Block</th><th>Floor</th><th>Flat</th><th>Work Item</th><th>Category</th><th>Status</th><th>Updated</th><th>Updated By</th>';
+        html += '</tr></thead><tbody>';
+        data.detail_rows.forEach(r => {
+            const statusLabel = COLOR_LABELS[r.color] || 'Not Started';
+            const statusClass = r.color || 'none';
+            const dateStr = r.updated_at ? r.updated_at.slice(0, 10) : '—';
+            html += `<tr>
+                <td>${escapeHtml(r.block)}</td>
+                <td>${r.floor}</td>
+                <td>${r.flat}</td>
+                <td>${escapeHtml(r.work_item)}</td>
+                <td>${escapeHtml(r.category || '—')}</td>
+                <td><span class="ir-status-badge ir-status-${statusClass}">${statusLabel}</span></td>
+                <td>${dateStr}</td>
+                <td>${escapeHtml(r.updated_by || '—')}</td>
+            </tr>`;
+        });
+        html += '</tbody></table></div></div>';
+    }
+
+    if (total === 0) {
+        html = '<div class="ir-empty">No data found for the selected filters.</div>';
+    }
+
+    container.innerHTML = html;
+
+    // --- Render Charts ---
+    if (total > 0) {
+        renderInstantReportCharts(data);
+    }
+}
+
+function renderInstantReportCharts(data) {
+    // Destroy existing chart
+    if (_irPieChart) { _irPieChart.destroy(); _irPieChart = null; }
+
+    const pieCanvas = document.getElementById('irPieChart');
+    const barCanvas = document.getElementById('irBarChart');
+    if (!pieCanvas || !barCanvas) return;
+
+    const sc = data.status_counts;
+    const pieData = {
+        labels: ['Completed', 'In Progress', 'Yet to Start', 'Patch Work', 'Not Started'],
+        datasets: [{
+            data: [sc.green || 0, sc.yellow || 0, sc.red || 0, sc.blue || 0, sc.none || 0],
+            backgroundColor: ['#2ecc71', '#f1c40f', '#e74c3c', '#3498db', '#bdc3c7'],
+            borderWidth: 2,
+            borderColor: '#fff'
+        }]
+    };
+
+    _irPieChart = new Chart(pieCanvas, {
+        type: 'pie',
+        data: pieData,
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'bottom', labels: { font: { size: 11 }, padding: 12 } },
+                tooltip: {
+                    callbacks: {
+                        label: function(ctx) {
+                            const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
+                            const pct = total ? ((ctx.parsed / total) * 100).toFixed(1) : 0;
+                            return `${ctx.label}: ${ctx.parsed} (${pct}%)`;
+                        }
+                    }
+                }
+            }
         }
     });
+
+    // Bar chart: category-wise completion
+    const cats = data.category_summary || [];
+    if (cats.length > 0) {
+        new Chart(barCanvas, {
+            type: 'bar',
+            data: {
+                labels: cats.map(c => c.category),
+                datasets: [
+                    { label: 'Completed', data: cats.map(c => c.completed), backgroundColor: '#2ecc71' },
+                    { label: 'In Progress', data: cats.map(c => c.in_progress), backgroundColor: '#f1c40f' },
+                    { label: 'Yet to Start', data: cats.map(c => c.yet_to_start), backgroundColor: '#e74c3c' },
+                    { label: 'Patch Work', data: cats.map(c => c.patch_work), backgroundColor: '#3498db' },
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: { stacked: true, ticks: { font: { size: 10 } } },
+                    y: { stacked: true, beginAtZero: true }
+                },
+                plugins: {
+                    legend: { position: 'bottom', labels: { font: { size: 10 }, padding: 8 } }
+                }
+            }
+        });
+    }
+}
+
+function exportInstantReportExcel() {
+    if (!_irLastData) return;
+    const data = _irLastData;
+    const filters = _irLastFilters || {};
+
+    if (typeof XLSX === 'undefined') {
+        showToast('Excel library not loaded. Please refresh the page.', true);
+        return;
+    }
+
+    const wb = XLSX.utils.book_new();
+
+    // Summary sheet
+    const summaryRows = [
+        ['Instant Report Summary'],
+        ['Generated', new Date().toLocaleString('en-IN')],
+        ['Venture', filters.venture || ''],
+        ['Block', filters.block || 'All'],
+        ['Floor', filters.floor || 'All'],
+        ['Flat', filters.flat || 'All'],
+        ['Category', filters.category || 'All'],
+        ['Date From', filters.dateFrom || ''],
+        ['Date To', filters.dateTo || ''],
+        [],
+        ['Metric', 'Count', 'Percentage'],
+        ['Total Work Items', data.summary.total_work_items, ''],
+        ['Total Cells', data.summary.total_cells, ''],
+        ['Completed', data.summary.completed, data.summary.total_cells ? ((data.summary.completed / data.summary.total_cells) * 100).toFixed(1) + '%' : '0%'],
+        ['In Progress', data.summary.in_progress, data.summary.total_cells ? ((data.summary.in_progress / data.summary.total_cells) * 100).toFixed(1) + '%' : '0%'],
+        ['Yet to Start', data.summary.yet_to_start, data.summary.total_cells ? ((data.summary.yet_to_start / data.summary.total_cells) * 100).toFixed(1) + '%' : '0%'],
+        ['Patch Work', data.summary.patch_work, data.summary.total_cells ? ((data.summary.patch_work / data.summary.total_cells) * 100).toFixed(1) + '%' : '0%'],
+        ['Not Started', data.summary.not_started, data.summary.total_cells ? ((data.summary.not_started / data.summary.total_cells) * 100).toFixed(1) + '%' : '0%'],
+        ['Pending', data.summary.pending, ''],
+        ['Completion %', data.summary.completion_pct + '%', ''],
+    ];
+    const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows);
+    XLSX.utils.book_append_sheet(wb, wsSummary, 'Summary');
+
+    // Work item breakdown
+    if (data.work_item_breakdown && data.work_item_breakdown.length > 0) {
+        const wsItems = XLSX.utils.json_to_sheet(data.work_item_breakdown);
+        XLSX.utils.book_append_sheet(wb, wsItems, 'Work Items');
+    }
+
+    // Category summary
+    if (data.category_summary && data.category_summary.length > 0) {
+        const wsCats = XLSX.utils.json_to_sheet(data.category_summary);
+        XLSX.utils.book_append_sheet(wb, wsCats, 'Categories');
+    }
+
+    // Block summary
+    if (data.block_summary && data.block_summary.length > 0) {
+        const wsBlocks = XLSX.utils.json_to_sheet(data.block_summary);
+        XLSX.utils.book_append_sheet(wb, wsBlocks, 'Blocks');
+    }
+
+    // Detail rows
+    if (data.detail_rows && data.detail_rows.length > 0) {
+        const wsDetail = XLSX.utils.json_to_sheet(data.detail_rows);
+        XLSX.utils.book_append_sheet(wb, wsDetail, 'Details');
+    }
+
+    const filename = `Instant_Report_${(filters.venture || 'report').replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    XLSX.writeFile(wb, filename);
 }
 
 // ========================

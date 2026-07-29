@@ -144,8 +144,9 @@ const SIDEBAR_CONFIG = {
                 items: [
                     { id: 'openRERABtn', icon: '\u{1F4CA}', label: 'RERA QPR', href: '/rera' },
                     { id: 'openLenderReportBtn', icon: '\u{1F3E2}', label: 'Lender Report' },
+                    { id: 'openInstantReportsBtn', icon: '\u26A0\uFE0F', label: 'Instant Reports' },
                     { id: 'openDesignGeneratorBtn', icon: '\u{1F3A8}', label: 'Design Generator' },
-                    { id: 'openStockPurchasesBtn', icon: '\u{1F6D2}', label: 'Stock Purchases' },
+                    { id: 'openStockPurchasesBtn', icon: '\u{1F6D2}', label: 'Stock Purchases'},
                 ]
             },
             {
@@ -186,6 +187,7 @@ const SIDEBAR_CONFIG = {
                 title: 'Reports',
                 items: [
                     { id: 'openReportsBtn', icon: '\u{1F4C8}', label: 'Reports' },
+                    { id: 'openInstantReportsBtn', icon: '\u26A0\uFE0F', label: 'Instant Reports' },
                 ]
             },
         ]
@@ -793,7 +795,7 @@ function buildPermissions(role) {
         p.editWorkItems = false;
         p.editVentures = false;
         p.manageUsers = false;
-        p.viewInstantReports = false;
+        p.viewInstantReports = true;
         p.viewInventoryAudit = false;
         p.viewExpenditures = true;
         p.viewMaterialLeakage = true;
@@ -815,7 +817,7 @@ function buildPermissions(role) {
         p.editWorkItems = true;
         p.editVentures = true;
         p.manageUsers = role === 'admin';
-        p.viewInstantReports = role === 'admin';
+        p.viewInstantReports = true;
         p.viewInventoryAudit = role === 'admin';
         p.viewExpenditures = true;
         p.viewMaterialLeakage = true;

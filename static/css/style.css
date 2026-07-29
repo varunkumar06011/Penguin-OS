@@ -6608,3 +6608,400 @@ video {
         min-height: 40px;
     }
 }
+
+/* ============================================================
+   Instant Reports — Enhanced Filter-Based Reporting
+   ============================================================ */
+
+#instantReportsPanel {
+    padding: 0;
+}
+
+.ir-filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 16px 24px;
+    background: #fff;
+    border-bottom: 1px solid #e8eaed;
+    align-items: flex-end;
+}
+
+.ir-filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 120px;
+}
+
+.ir-filter-group label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.ir-req {
+    color: #e74c3c;
+}
+
+.ir-filter-select,
+.ir-filter-input {
+    padding: 8px 10px;
+    border: 1px solid #d0d4d8;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    background: #fff;
+    min-height: 38px;
+}
+
+.ir-filter-actions {
+    display: flex;
+    gap: 8px;
+    margin-left: auto;
+}
+
+.ir-export-bar {
+    display: flex;
+    gap: 8px;
+    padding: 8px 24px;
+    background: #f8f9fb;
+    border-bottom: 1px solid #e8eaed;
+}
+
+.ir-export-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.82rem;
+    padding: 6px 14px;
+}
+
+.ir-export-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.ir-output {
+    padding: 16px 24px;
+}
+
+.ir-loading {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 40px;
+    color: #888;
+    font-size: 0.9rem;
+}
+
+.ir-spinner {
+    width: 20px;
+    height: 20px;
+    border: 3px solid #e0e4e8;
+    border-top-color: #3498db;
+    border-radius: 50%;
+    animation: ir-spin 0.8s linear infinite;
+}
+
+@keyframes ir-spin {
+    to { transform: rotate(360deg); }
+}
+
+.ir-empty {
+    padding: 40px;
+    text-align: center;
+    color: #999;
+    font-size: 0.9rem;
+}
+
+.ir-error {
+    padding: 24px;
+    color: #c0392b;
+    font-size: 0.9rem;
+}
+
+/* Progress Cards */
+.ir-cards-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.ir-card {
+    background: #fff;
+    border-radius: var(--card-radius, 10px);
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    border-left: 4px solid #ddd;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.ir-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.ir-card-green { border-left-color: #2ecc71; }
+.ir-card-yellow { border-left-color: #f1c40f; }
+.ir-card-red { border-left-color: #e74c3c; }
+.ir-card-blue { border-left-color: #3498db; }
+.ir-card-amber { border-left-color: #f39c12; }
+.ir-card-dark { border-left-color: #1a1a1a; }
+
+.ir-card-icon {
+    font-size: 1.5rem;
+    flex-shrink: 0;
+}
+
+.ir-card-body {
+    flex: 1;
+    min-width: 0;
+}
+
+.ir-card-label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    margin-bottom: 2px;
+}
+
+.ir-card-value {
+    font-size: 1.4rem;
+    font-weight: 800;
+    color: #1a1a1a;
+    line-height: 1.1;
+}
+
+.ir-card-sub {
+    font-size: 0.72rem;
+    color: #aaa;
+    margin-top: 2px;
+}
+
+/* Charts */
+.ir-charts-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.ir-chart-card {
+    background: #fff;
+    border-radius: var(--card-radius, 10px);
+    padding: 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+
+.ir-chart-title {
+    font-size: 0.9rem;
+    font-weight: 700;
+    margin-bottom: 12px;
+    color: #333;
+}
+
+.ir-chart-wrap {
+    position: relative;
+    height: 280px;
+}
+
+/* Sections */
+.ir-section {
+    margin-bottom: 20px;
+}
+
+.ir-section-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    margin: 0 0 10px 0;
+    color: #333;
+    padding-bottom: 6px;
+    border-bottom: 2px solid #f0f0f0;
+}
+
+.ir-table-wrap {
+    background: #fff;
+    border-radius: var(--card-radius, 10px);
+    overflow-x: auto;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+
+.ir-table {
+    font-size: 0.82rem;
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.ir-table th {
+    background: #f8f9fb;
+    font-weight: 700;
+    text-transform: uppercase;
+    font-size: 0.72rem;
+    letter-spacing: 0.03em;
+    color: #666;
+    padding: 10px 8px;
+    text-align: left;
+    white-space: nowrap;
+}
+
+.ir-table td {
+    padding: 8px;
+    border-top: 1px solid #f0f0f0;
+    white-space: nowrap;
+}
+
+.ir-table tbody tr:hover {
+    background: #fafbfc;
+}
+
+.ir-td-green { color: #27ae60; font-weight: 600; }
+.ir-td-yellow { color: #f39c12; font-weight: 600; }
+.ir-td-red { color: #e74c3c; font-weight: 600; }
+.ir-td-blue { color: #3498db; font-weight: 600; }
+
+/* Progress bar in table cells */
+.ir-progress-bar {
+    position: relative;
+    width: 80px;
+    height: 18px;
+    background: #f0f0f0;
+    border-radius: 9px;
+    overflow: hidden;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.ir-progress-fill {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    background: linear-gradient(90deg, #2ecc71, #27ae60);
+    border-radius: 9px;
+    transition: width 0.3s ease;
+}
+
+.ir-progress-bar span {
+    position: relative;
+    z-index: 1;
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: #333;
+}
+
+/* Status badges */
+.ir-status-badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.ir-status-green { background: #e8faf0; color: #27ae60; }
+.ir-status-yellow { background: #fef5e7; color: #f39c12; }
+.ir-status-red { background: #fdeaea; color: #e74c3c; }
+.ir-status-blue { background: #e8f4fd; color: #3498db; }
+.ir-status-none { background: #f0f0f0; color: #999; }
+
+/* Detail table scroll */
+.ir-detail-table {
+    max-height: 500px;
+    overflow-y: auto;
+}
+
+/* Responsive */
+@media (max-width: 900px) {
+    .ir-charts-row {
+        grid-template-columns: 1fr;
+    }
+    .ir-chart-wrap {
+        height: 240px;
+    }
+}
+
+@media (max-width: 768px) {
+    .ir-filter-bar {
+        padding: 12px;
+        gap: 8px;
+    }
+    .ir-filter-group {
+        min-width: 100px;
+        flex: 1 1 calc(50% - 8px);
+    }
+    .ir-filter-actions {
+        margin-left: 0;
+        width: 100%;
+    }
+    .ir-export-bar {
+        padding: 8px 12px;
+        flex-wrap: wrap;
+    }
+    .ir-output {
+        padding: 12px;
+    }
+    .ir-cards-row {
+        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+        gap: 8px;
+    }
+    .ir-card {
+        padding: 10px 12px;
+    }
+    .ir-card-value {
+        font-size: 1.1rem;
+    }
+    .ir-card-icon {
+        font-size: 1.2rem;
+    }
+    .ir-table {
+        font-size: 0.75rem;
+    }
+    .ir-table th,
+    .ir-table td {
+        padding: 6px 4px;
+    }
+}
+
+@media (max-width: 480px) {
+    .ir-filter-group {
+        flex: 1 1 100%;
+    }
+    .ir-cards-row {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+/* Print styles for Instant Reports */
+@media print {
+    .ir-filter-bar,
+    .ir-export-bar,
+    .sidebar,
+    .invoice-panel-header,
+    .breadcrumb-bar {
+        display: none !important;
+    }
+    .ir-output {
+        padding: 0;
+    }
+    .ir-card {
+        break-inside: avoid;
+    }
+    .ir-table-wrap {
+        box-shadow: none;
+        border: 1px solid #ddd;
+    }
+    .ir-section {
+        break-inside: avoid;
+        page-break-inside: avoid;
+    }
+}
