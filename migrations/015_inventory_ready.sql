@@ -197,7 +197,8 @@ END $$;
 -- -----------------------------------------------------------
 -- 10. Updated stock_balance view (preserves total_out for backward compat)
 -- -----------------------------------------------------------
-CREATE OR REPLACE VIEW stock_balance AS
+DROP VIEW IF EXISTS stock_balance;
+CREATE VIEW stock_balance AS
 SELECT
     venture_id,
     material_id,
@@ -217,7 +218,8 @@ GROUP BY venture_id, material_id;
 -- -----------------------------------------------------------
 -- 11. venture_consumption view
 -- -----------------------------------------------------------
-CREATE OR REPLACE VIEW venture_consumption AS
+DROP VIEW IF EXISTS venture_consumption;
+CREATE VIEW venture_consumption AS
 SELECT
     COALESCE(consuming_venture_id, venture_id) AS venture_id,
     material_id,

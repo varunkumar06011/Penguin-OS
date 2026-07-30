@@ -26,11 +26,15 @@ async function getCellData(cellId) {
     // Preloaded at init; if missing, try API fallback
     try {
         const data = await apiGet('/api/cell/' + encodeURIComponent(ck));
-        cellsCache[ck] = data;
-        return data;
+        if (data && Object.keys(data).length > 0) {
+            cellsCache[ck] = data;
+            return data;
+        }
+        cellsCache[ck] = CELL_NOT_FOUND;
+        return CELL_NOT_FOUND;
     } catch (err) {
         console.error('Failed to load cell', ck, err);
-        return null;
+        return CELL_NOT_FOUND;
     }
 }
 
@@ -39,11 +43,15 @@ async function getSsCellData(cellId) {
     if (cellsCache[ck] !== undefined) return cellsCache[ck];
     try {
         const data = await apiGet('/api/cell/' + encodeURIComponent(ck));
-        cellsCache[ck] = data;
-        return data;
+        if (data && Object.keys(data).length > 0) {
+            cellsCache[ck] = data;
+            return data;
+        }
+        cellsCache[ck] = CELL_NOT_FOUND;
+        return CELL_NOT_FOUND;
     } catch (err) {
         console.error('Failed to load ss cell', ck, err);
-        return null;
+        return CELL_NOT_FOUND;
     }
 }
 
@@ -51,18 +59,106 @@ async function ensureCellsInCache(requiredKeys) {
     const missing = requiredKeys.filter(k => cellsCache[k] === undefined);
     if (missing.length === 0) return;
     try {
+        // Fetch all cells for venture+block (no floor filter) to cache every floor at once.
+        // This makes floor switching instant on subsequent visits.
         const params = new URLSearchParams();
         if (currentVenture && currentVenture.id) params.set('venture_id', currentVenture.id);
         if (currentBlock) params.set('block', currentBlock);
-        if (currentFloor !== null && currentFloor !== undefined) params.set('floor', String(currentFloor));
         const qs = params.toString();
         const allCells = await apiGet(`/api/cells${qs ? '?' + qs : ''}`);
         if (allCells) {
             Object.assign(cellsCache, allCells);
         }
+        // Fallback: if filtered query missed some keys (pre-backfill rows lack
+        // venture_id/block/floor in data JSON), fetch those individually by cell ID.
+        const stillMissing = requiredKeys.filter(k => cellsCache[k] === undefined);
+        if (stillMissing.length > 0) {
+            await Promise.all(stillMissing.map(ck =>
+                apiGet('/api/cell/' + encodeURIComponent(ck))
+                    .then(cellData => {
+                        if (cellData && Object.keys(cellData).length > 0) {
+                            cellsCache[ck] = cellData;
+                        } else {
+                            cellsCache[ck] = CELL_NOT_FOUND;
+                        }
+                    })
+                    .catch(() => { cellsCache[ck] = CELL_NOT_FOUND; })
+            ));
+        }
     } catch (e) {
         console.error('Failed to bulk load cells:', e);
     }
+}
+
+/* ============================================================
+   Add Work Description — Compact FAB + Dialog
+   ============================================================ */
+let _workAddCategory = null;
+
+function ensureWorkAddDialog() {
+    if (document.getElementById('workAddDialogOverlay')) return;
+
+    const overlay = document.createElement('div');
+    overlay.id = 'workAddDialogOverlay';
+    overlay.innerHTML = `
+        <div id="workAddDialog" role="dialog" aria-modal="true" aria-labelledby="workAddDialogTitle">
+            <h3 class="work-add-title" id="workAddDialogTitle">Add Work Description</h3>
+            <form class="work-add-form" id="workAddForm" onsubmit="return false;">
+                <label>
+                    Work Description Name
+                    <input type="text" id="workAddInput" placeholder="e.g. Lintel" autocomplete="off">
+                </label>
+                <label class="work-add-scope">
+                    <input type="checkbox" id="workAddScopeAll">
+                    Apply to all ventures
+                </label>
+                <div class="work-add-actions">
+                    <button type="button" class="btn-cancel" id="workAddCancel">Cancel</button>
+                    <button type="submit" class="btn-add" id="workAddSubmit">Add</button>
+                </div>
+            </form>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) closeWorkAddDialog();
+    });
+    document.getElementById('workAddCancel').addEventListener('click', closeWorkAddDialog);
+    document.getElementById('workAddForm').addEventListener('submit', (e) => {
+        e.preventDefault();
+        submitWorkAddDialog();
+    });
+    document.getElementById('workAddInput').addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closeWorkAddDialog();
+    });
+}
+
+function openWorkAddDialog(category) {
+    ensureWorkAddDialog();
+    _workAddCategory = category;
+    const input = document.getElementById('workAddInput');
+    const scopeAll = document.getElementById('workAddScopeAll');
+    if (input) input.value = '';
+    if (scopeAll) scopeAll.checked = false;
+    document.getElementById('workAddDialogOverlay').classList.add('open');
+    if (input) setTimeout(() => input.focus(), 50);
+}
+
+function closeWorkAddDialog() {
+    const overlay = document.getElementById('workAddDialogOverlay');
+    if (overlay) overlay.classList.remove('open');
+    _workAddCategory = null;
+}
+
+async function submitWorkAddDialog() {
+    const input = document.getElementById('workAddInput');
+    const scopeAll = document.getElementById('workAddScopeAll');
+    if (!input || !_workAddCategory) return;
+    const val = input.value.trim();
+    if (!val) return;
+    closeWorkAddDialog();
+    await addWorkItem(_workAddCategory, val, scopeAll && scopeAll.checked);
 }
 
 async function updateCellColor(cellId, color, workItem, flat) {
@@ -82,7 +178,7 @@ async function updateCellColor(cellId, color, workItem, flat) {
     };
 
     const ck = cacheKey(cellId);
-    const existing = cellsCache[ck] || null;
+    const existing = (cellsCache[ck] && !cellsCache[ck]?.__notFound) ? cellsCache[ck] : null;
     if (existing && existing.timeline && existing.timeline.length > 0) {
         const lastEntry = existing.timeline[existing.timeline.length - 1];
         if (lastEntry && lastEntry.color === color) {
@@ -108,6 +204,10 @@ async function updateCellColor(cellId, color, workItem, flat) {
         data = { color: color || null, remarks: autoRemark, timeline: [timelineEntry],
             updated_at: new Date().toISOString(), updated_by: currentUser };
     }
+    // Ensure venture_id/block/floor are present for filtered queries
+    if (currentVenture && currentVenture.id) data.venture_id = currentVenture.id;
+    if (currentBlock) data.block = currentBlock;
+    if (currentFloor !== null && currentFloor !== undefined) data.floor = String(currentFloor);
 
     // --- Optimistic instant update: cache + DOM, no full re-render ---
     cellsCache[ck] = data;
@@ -121,6 +221,7 @@ async function updateCellColor(cellId, color, workItem, flat) {
     if (pendingSaves.has(ck)) clearTimeout(pendingSaves.get(ck));
     const timer = setTimeout(async () => {
         pendingSaves.delete(ck);
+        inFlightSaves++;
         try {
             const resp = await apiPost('/api/cell/' + encodeURIComponent(ck), data);
             // Reversal prompt: if cell was downgraded from green, offer to reverse material usage
@@ -130,6 +231,8 @@ async function updateCellColor(cellId, color, workItem, flat) {
         } catch (err) {
             console.error('Failed to save cell:', err);
             showToast('Save failed — please retry', true);
+        } finally {
+            inFlightSaves--;
         }
     }, 300);
     pendingSaves.set(ck, timer);
@@ -137,7 +240,7 @@ async function updateCellColor(cellId, color, workItem, flat) {
 
 async function saveCellRemarks(cellId, remarks, images) {
     const ck = cacheKey(cellId);
-    const existing = cellsCache[ck] || {};
+    const existing = (cellsCache[ck] && !cellsCache[ck]?.__notFound) ? cellsCache[ck] : {};
     const data = {
         ...existing,
         remarks: remarks,
@@ -145,16 +248,22 @@ async function saveCellRemarks(cellId, remarks, images) {
         updated_at: new Date().toISOString(),
         updated_by: currentUser
     };
+    // Ensure venture_id/block/floor are present for filtered queries
+    if (currentVenture && currentVenture.id) data.venture_id = currentVenture.id;
+    if (currentBlock) data.block = currentBlock;
+    if (currentFloor !== null && currentFloor !== undefined) data.floor = String(currentFloor);
     try {
+        inFlightSaves++;
         await apiPost('/api/cell/' + encodeURIComponent(ck), data);
         cellsCache[ck] = data;
-        if (currentView === 'flat') await renderGrid();
-        else if (currentView === 'work') await renderWorkView();
+        if (currentView === 'work') await renderWorkView();
         else if (currentView === 'super') await renderSuperStructure();
         showToast('Remarks saved');
     } catch (err) {
         console.error('Failed to save remarks:', err);
         showToast('Failed to save \u2014 please retry', true);
+    } finally {
+        inFlightSaves--;
     }
 }
 
@@ -202,7 +311,7 @@ function refreshCurrentVentureFromList() {
 
     currentVenture = updated;
     archivedItems = currentVenture.archived || {};
-    workItems = currentVenture.flat_view_items ? [...currentVenture.flat_view_items] : [...DEFAULT_WORK_ITEMS];
+    workItems = ensureItemIds(currentVenture.flat_view_items ? [...currentVenture.flat_view_items] : [...DEFAULT_WORK_ITEMS]);
 
     if (currentBlockObj) {
         const freshBlock = currentVenture.blocks.find(b => b.id === currentBlockObj.id);
@@ -227,8 +336,7 @@ function refreshCurrentVentureFromList() {
 
     const tracker = document.getElementById('trackerView');
     if (tracker && tracker.style.display !== 'none') {
-        if (currentView === 'flat') renderGrid();
-        else if (currentView === 'work') renderWorkView();
+        if (currentView === 'work') renderWorkView();
         else if (currentView === 'super') renderSuperStructure();
         else if (currentView === 'pending') renderPendingView();
     }
@@ -255,229 +363,27 @@ function getWorkViewCellId(block, floor, category, workIndex, flat) {
 }
 
 async function renderGrid() {
-    document.getElementById('flatViewContainer').style.display = '';
-    els.gridBody.innerHTML = '';
-    const flatsPerFloor = currentBlockObj ? (currentBlockObj.flats_per_floor || FLATS_PER_FLOOR) : FLATS_PER_FLOOR;
-    const flatNumbers = [];
-    for (let i = 1; i <= flatsPerFloor; i++) {
-        flatNumbers.push((currentFloor * 100) + i);
-    }
-
-    const items = getFlatWorkItems();
-    const archived = archivedItems['flat_view'] || [];
-    const activeItems = items.filter(it => !archived.includes(it.id));
-
-    // Update flat view header
-    const gridHeader = document.getElementById('gridHeader');
-    gridHeader.innerHTML = '<th class="work-col">Work Item</th>';
-    flatNumbers.forEach(flat => {
-        const th = document.createElement('th');
-        th.textContent = flat;
-        gridHeader.appendChild(th);
-    });
-    const thRemarks = document.createElement('th');
-    thRemarks.className = 'remarks-col';
-    thRemarks.textContent = 'Remarks';
-    gridHeader.appendChild(thRemarks);
-
-    // Preload all cell data in one bulk request
-    const requiredKeys = [];
-    activeItems.forEach(item => {
-        for (const flat of flatNumbers) {
-            const cellId = cellKeyById(currentBlock, currentFloor, flat, item.id);
-            requiredKeys.push(cacheKey(cellId));
-        }
-    });
-
-    // Show skeleton placeholders while fetching
-    const skeletonRowCount = Math.min(activeItems.length, 8);
-    for (let s = 0; s < skeletonRowCount; s++) {
-        const skRow = document.createElement('tr');
-        const skWork = document.createElement('td');
-        skWork.className = 'work-cell';
-        const skLine = document.createElement('div');
-        skLine.className = 'skeleton skeleton-line';
-        skLine.style.width = '60%';
-        skWork.appendChild(skLine);
-        skRow.appendChild(skWork);
-        for (let f = 0; f < flatNumbers.length; f++) {
-            const skTd = document.createElement('td');
-            const skCell = document.createElement('div');
-            skCell.className = 'skeleton skeleton-cell';
-            skTd.appendChild(skCell);
-            skRow.appendChild(skTd);
-        }
-        const skRemarks = document.createElement('td');
-        skRemarks.className = 'remarks-col';
-        const skRemLine = document.createElement('div');
-        skRemLine.className = 'skeleton skeleton-line';
-        skRemLine.style.width = '80%';
-        skRemarks.appendChild(skRemLine);
-        skRow.appendChild(skRemarks);
-        els.gridBody.appendChild(skRow);
-    }
-
-    await ensureCellsInCache(requiredKeys);
-
-    // Clear skeleton before rendering real content
-    els.gridBody.innerHTML = '';
-
-    activeItems.forEach((item, wi) => {
-        const row = document.createElement('tr');
-
-        const workTd = document.createElement('td');
-        workTd.className = 'work-cell';
-        if (editMode) {
-            workTd.innerHTML = `<span class="item-label">${item.label}</span>`;
-            const controls = document.createElement('div');
-            controls.className = 'edit-controls';
-            controls.style.marginTop = '4px';
-            controls.innerHTML = `<button class="edit-btn" title="Rename">&#9998;</button><button class="edit-btn" title="Delete">&#10006;</button>`;
-            if (wi > 0) controls.innerHTML += `<button class="edit-btn" title="Move up">&#9650;</button>`;
-            if (wi < activeItems.length - 1) controls.innerHTML += `<button class="edit-btn" title="Move down">&#9660;</button>`;
-            workTd.appendChild(controls);
-
-            const renameBtn = controls.querySelector('[title="Rename"]');
-            const deleteBtn = controls.querySelector('[title="Delete"]');
-            renameBtn.addEventListener('click', () => startInlineEdit(workTd, item.label, (newLabel) => renameFlatItem(item.id, newLabel)));
-            deleteBtn.addEventListener('click', () => showConfirm('Delete Item', `Delete '${item.label}'? Existing tracking data will be hidden but not lost.`, () => archiveFlatItem(item.id)));
-
-            const upBtn = controls.querySelector('[title="Move up"]');
-            const downBtn = controls.querySelector('[title="Move down"]');
-            if (upBtn) upBtn.addEventListener('click', () => reorderFlatItem(item.id, -1));
-            if (downBtn) downBtn.addEventListener('click', () => reorderFlatItem(item.id, 1));
-        } else {
-            workTd.textContent = item.label;
-        }
-        row.appendChild(workTd);
-
-        for (const flat of flatNumbers) {
-            const cellId = cellKeyById(currentBlock, currentFloor, flat, item.id);
-            const cellData = cellsCache[cacheKey(cellId)];
-            const color = cellData?.color || null;
-
-            const td = document.createElement('td');
-            const wrapper = document.createElement('div');
-            wrapper.className = 'cell-wrapper';
-
-            const btn = document.createElement('button');
-            btn.className = 'cell-btn ' + (color || 'empty');
-            btn.title = `${flat} - ${item.label}`;
-            btn.dataset.cellId = cacheKey(cellId);
-            if (editMode) btn.disabled = true;
-
-            const imgCount = (cellData?.remarkImages || []).length;
-            const imgIndicator = createImageIndicator(imgCount);
-            if (imgIndicator) btn.appendChild(imgIndicator);
-
-            const history = document.createElement('button');
-            history.className = 'history-link';
-            history.textContent = 'history';
-
-            wrapper.appendChild(btn);
-            wrapper.appendChild(history);
-            td.appendChild(wrapper);
-            row.appendChild(td);
-
-            if (!editMode) {
-                btn.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    if (bulkMode) {
-                        const ck = cacheKey(cellId);
-                        if (bulkSelectedColor) {
-                            updateCellColor(cellId, bulkSelectedColor, item.label, flat);
-                        } else {
-                            if (bulkSelected.has(ck)) {
-                                bulkSelected.delete(ck);
-                                btn.classList.remove('bulk-selected');
-                            } else {
-                                bulkSelected.add(ck);
-                                btn.classList.add('bulk-selected');
-                            }
-                            document.getElementById('bulkCount').textContent =
-                                `${bulkSelected.size} cell${bulkSelected.size !== 1 ? 's' : ''} selected`;
-                        }
-                    } else {
-                        openStatusPopup(cellId, item.label, flat, color);
-                    }
-                });
-            }
-
-            btn.addEventListener('contextmenu', (e) => {
-                e.preventDefault();
-                openTimelineModal(cellId, item.label, flat);
-            });
-
-            history.addEventListener('click', () => {
-                openTimelineModal(cellId, item.label, flat);
-            });
-        }
-
-        const remarksTd = document.createElement('td');
-        remarksTd.className = 'remarks-cell';
-        const remarksParts = [];
-        let totalImages = 0;
-        for (const flat of flatNumbers) {
-            const cellId = cellKeyById(currentBlock, currentFloor, flat, item.id);
-            const cellData = cellsCache[cacheKey(cellId)];
-            if (cellData?.remarks) {
-                remarksParts.push(`${flat}: ${cellData.remarks}`);
-            }
-            totalImages += (cellData?.remarkImages || []).length;
-        }
-        if (totalImages > 0) {
-            remarksParts.unshift(`\u{1F4F7} ${totalImages} photo${totalImages > 1 ? 's' : ''}`);
-        }
-        remarksTd.textContent = remarksParts.join(' | ');
-        remarksTd.title = remarksTd.textContent;
-        row.appendChild(remarksTd);
-
-        els.gridBody.appendChild(row);
-    });
-
-    // Add item row in edit mode
-    if (editMode) {
-        const addRow = document.createElement('tr');
-        const addTd = document.createElement('td');
-        addTd.colSpan = flatNumbers.length + 2;
-        addTd.innerHTML = '<div class="add-item-row"><input type="text" id="addFlatItemInput" placeholder="New work item name"><button class="btn-secondary" id="addFlatItemBtn">Add</button></div>';
-        addRow.appendChild(addTd);
-        els.gridBody.appendChild(addRow);
-        document.getElementById('addFlatItemBtn').addEventListener('click', () => {
-            const val = document.getElementById('addFlatItemInput').value.trim();
-            if (val) addFlatItem(val);
-        });
-    }
-
-    // Archived section in edit mode
-    if (editMode && archived.length > 0) {
-        const archRow = document.createElement('tr');
-        const archTd = document.createElement('td');
-        archTd.colSpan = flatNumbers.length + 2;
-        archTd.innerHTML = '<div class="archived-section"><h4>Archived Items</h4></div>';
-        const archList = archTd.querySelector('.archived-section');
-        archived.forEach(archId => {
-            const found = items.find(it => it.id === archId);
-            if (found) {
-                const div = document.createElement('div');
-                div.className = 'archived-item';
-                div.innerHTML = `<span>${found.label}</span><button class="btn-secondary" style="padding:4px 10px;font-size:0.75rem;">Restore</button>`;
-                div.querySelector('button').addEventListener('click', () => restoreFlatItem(archId));
-                archList.appendChild(div);
-            }
-        });
-        archRow.appendChild(archTd);
-        els.gridBody.appendChild(archRow);
-    }
-
-    // Update sticky header offset after grid render
-    if (window.updateTrackerStickyOffset) window.updateTrackerStickyOffset();
+    // Flat View has been removed — redirect to Work View
+    await renderWorkView();
 }
+
+function isMobileView() {
+    return window.innerWidth <= 768;
+}
+
+var mobileSelectedFlat = null;
 
 async function renderWorkView() {
     const container = document.getElementById('workViewContainer');
     container.style.display = '';
     container.innerHTML = '';
+    container.className = 'work-view-container';
+
+    if (isMobileView() && !editMode) {
+        await renderWorkViewMobile(container);
+        return;
+    }
+
 
     const flatsPerFloor = currentBlockObj ? (currentBlockObj.flats_per_floor || FLATS_PER_FLOOR) : FLATS_PER_FLOOR;
     const flatNumbers = [];
@@ -485,7 +391,13 @@ async function renderWorkView() {
         flatNumbers.push((currentFloor * 100) + i);
     }
 
-    const workCategories = ensureWorkCategories((currentVenture && currentVenture.work_categories) ? currentVenture.work_categories : WORK_CATEGORIES);
+    let rawCategories = (currentVenture && currentVenture.work_categories) ? currentVenture.work_categories : WORK_CATEGORIES;
+    // Defensive: ensure every category value is an array so createSectionTable can iterate safely.
+    const sanitizedCategories = {};
+    Object.entries(rawCategories || {}).forEach(([cat, items]) => {
+        sanitizedCategories[cat] = Array.isArray(items) ? items : [];
+    });
+    const workCategories = ensureWorkCategories(sanitizedCategories);
     const categoryNames = Object.keys(workCategories);
 
     // Category chip bar (non-edit mode only)
@@ -558,11 +470,17 @@ async function renderWorkView() {
     await ensureCellsInCache(requiredKeys);
 
     // Render all category sections
+    let sectionCount = 0;
     Object.entries(workCategories).forEach(([category, items]) => {
         const catFlats = CATEGORY_FLATS[category] || flatNumbers;
-        const sectionEl = createSectionTable(category, items, catFlats);
-        sectionEl.dataset.category = category;
-        container.appendChild(sectionEl);
+        try {
+            const sectionEl = createSectionTable(category, items, catFlats);
+            sectionEl.dataset.category = category;
+            container.appendChild(sectionEl);
+            sectionCount++;
+        } catch (err) {
+            console.error('[renderWorkView] failed to render section', category, err);
+        }
     });
 
     // Add category row in edit mode
@@ -598,6 +516,344 @@ async function renderWorkView() {
     if (window.updateTrackerStickyOffset) window.updateTrackerStickyOffset();
 }
 
+// ========================
+// Mobile Work View
+// ========================
+async function renderWorkViewMobile(container) {
+    const flatsPerFloor = currentBlockObj ? (currentBlockObj.flats_per_floor || FLATS_PER_FLOOR) : FLATS_PER_FLOOR;
+    const flatNumbers = [];
+    for (let i = 1; i <= flatsPerFloor; i++) {
+        flatNumbers.push((currentFloor * 100) + i);
+    }
+
+    let rawCategories = (currentVenture && currentVenture.work_categories) ? currentVenture.work_categories : WORK_CATEGORIES;
+    const sanitizedCategories = {};
+    Object.entries(rawCategories || {}).forEach(([cat, items]) => {
+        sanitizedCategories[cat] = Array.isArray(items) ? items : [];
+    });
+    const workCategories = ensureWorkCategories(sanitizedCategories);
+
+    // Collect all unique flats across categories
+    const allFlats = new Set();
+    Object.keys(workCategories).forEach(cat => {
+        const catFlats = CATEGORY_FLATS[cat] || flatNumbers;
+        catFlats.forEach(f => allFlats.add(f));
+    });
+    const sortedFlats = Array.from(allFlats).sort((a, b) => a - b);
+
+    // Default selected flat
+    if (!mobileSelectedFlat || !sortedFlats.includes(mobileSelectedFlat)) {
+        mobileSelectedFlat = sortedFlats[0];
+    }
+
+    // Preload cell data
+    const requiredKeys = [];
+    Object.entries(workCategories).forEach(([cat, items]) => {
+        const catFlats = CATEGORY_FLATS[cat] || flatNumbers;
+        items.forEach(itemObj => {
+            catFlats.forEach(flat => {
+                const cellId = cellKeyById(currentBlock, currentFloor, flat, itemObj.id);
+                requiredKeys.push(cacheKey(cellId));
+            });
+        });
+    });
+    await ensureCellsInCache(requiredKeys);
+
+    container.className = 'work-view-container mobile-work-view';
+    container.dataset.flats = sortedFlats.join(',');
+
+    // Single sticky nav bar: ◀ flat-number ◀ + Bulk button
+    const navBar = document.createElement('div');
+    navBar.className = 'mobile-flat-nav';
+
+    const prevBtn = document.createElement('button');
+    prevBtn.className = 'mobile-flat-nav-btn';
+    prevBtn.innerHTML = '&#9664;';
+    prevBtn.disabled = sortedFlats.indexOf(mobileSelectedFlat) === 0;
+
+    const flatDisplay = document.createElement('div');
+    flatDisplay.className = 'mobile-flat-display';
+    const flatIdx = sortedFlats.indexOf(mobileSelectedFlat);
+    flatDisplay.innerHTML = `<span class="mobile-flat-number">${mobileSelectedFlat}</span><span class="mobile-flat-counter">${flatIdx + 1} / ${sortedFlats.length}</span>`;
+
+    const nextBtn = document.createElement('button');
+    nextBtn.className = 'mobile-flat-nav-btn';
+    nextBtn.innerHTML = '&#9654;';
+    nextBtn.disabled = flatIdx === sortedFlats.length - 1;
+
+    // Bulk button integrated into nav bar
+    const navBulk = document.createElement('button');
+    navBulk.className = 'mst-bulk-btn';
+    navBulk.textContent = 'Bulk';
+    navBulk.id = 'mstBulkBtn';
+    navBulk.addEventListener('click', () => document.getElementById('bulkSelectBtn').click());
+
+    navBar.appendChild(prevBtn);
+    navBar.appendChild(flatDisplay);
+    navBar.appendChild(nextBtn);
+    navBar.appendChild(navBulk);
+    container.appendChild(navBar);
+
+    // Flat chips (horizontal scroll, quick jump)
+    const chipBar = document.createElement('div');
+    chipBar.className = 'mobile-flat-chips';
+    chipBar.id = 'mobileFlatChips';
+    sortedFlats.forEach(flat => {
+        const chip = document.createElement('button');
+        chip.className = 'mobile-flat-chip' + (flat === mobileSelectedFlat ? ' active' : '');
+        chip.textContent = flat;
+        chip.dataset.flat = flat;
+        chip.addEventListener('click', () => {
+            if (flat === mobileSelectedFlat) return;
+            mobileSelectedFlat = flat;
+            updateMobileFlatNav(container, sortedFlats);
+            renderMobileFlatContent(container, workCategories, flatNumbers, flat);
+        });
+        chipBar.appendChild(chip);
+    });
+    container.appendChild(chipBar);
+
+    // Content area
+    const contentArea = document.createElement('div');
+    contentArea.className = 'mobile-flat-content';
+    contentArea.id = 'mobileFlatContent';
+    container.appendChild(contentArea);
+
+    // Navigation handlers
+    prevBtn.addEventListener('click', () => {
+        const idx = sortedFlats.indexOf(mobileSelectedFlat);
+        if (idx > 0) {
+            mobileSelectedFlat = sortedFlats[idx - 1];
+            updateMobileFlatNav(container, sortedFlats);
+            renderMobileFlatContent(container, workCategories, flatNumbers, mobileSelectedFlat);
+        }
+    });
+    nextBtn.addEventListener('click', () => {
+        const idx = sortedFlats.indexOf(mobileSelectedFlat);
+        if (idx < sortedFlats.length - 1) {
+            mobileSelectedFlat = sortedFlats[idx + 1];
+            updateMobileFlatNav(container, sortedFlats);
+            renderMobileFlatContent(container, workCategories, flatNumbers, mobileSelectedFlat);
+        }
+    });
+
+    // Swipe gesture support
+    let touchStartX = 0;
+    let touchEndX = 0;
+    contentArea.addEventListener('touchstart', (e) => {
+        touchStartX = e.changedTouches[0].screenX;
+    }, { passive: true });
+    contentArea.addEventListener('touchend', (e) => {
+        touchEndX = e.changedTouches[0].screenX;
+        const diff = touchStartX - touchEndX;
+        if (Math.abs(diff) < 60) return; // ignore small swipes
+        if (diff > 0) {
+            nextBtn.click(); // swipe left = next
+        } else {
+            prevBtn.click(); // swipe right = prev
+        }
+    }, { passive: true });
+
+    renderMobileFlatContent(container, workCategories, flatNumbers, mobileSelectedFlat);
+
+    if (window.updateTrackerStickyOffset) window.updateTrackerStickyOffset();
+}
+
+function updateMobileFlatNav(container, sortedFlats) {
+    const idx = sortedFlats.indexOf(mobileSelectedFlat);
+    const navBtns = container.querySelectorAll('.mobile-flat-nav-btn');
+    const display = container.querySelector('.mobile-flat-display');
+    if (display) {
+        display.innerHTML = `<span class="mobile-flat-number">${mobileSelectedFlat}</span><span class="mobile-flat-counter">${idx + 1} / ${sortedFlats.length}</span>`;
+    }
+    if (navBtns.length === 2) {
+        navBtns[0].disabled = idx === 0;
+        navBtns[1].disabled = idx === sortedFlats.length - 1;
+    }
+    // Update chip active state and scroll into view
+    container.querySelectorAll('.mobile-flat-chip').forEach(c => {
+        c.classList.toggle('active', c.dataset.flat == mobileSelectedFlat);
+        if (c.dataset.flat == mobileSelectedFlat) {
+            c.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        }
+    });
+}
+
+function renderMobileFlatContent(container, workCategories, flatNumbers, flat) {
+    const contentArea = container.querySelector('#mobileFlatContent');
+    if (!contentArea) return;
+    contentArea.innerHTML = '';
+
+    const categoryNames = Object.keys(workCategories);
+    const sortedCategoryNames = sortWorkCategoryNames(categoryNames);
+    let hasContent = false;
+
+    sortedCategoryNames.forEach(category => {
+        const items = workCategories[category];
+        const catFlats = CATEGORY_FLATS[category] || flatNumbers;
+        if (!catFlats.includes(flat)) return;
+        if (items.length === 0) return;
+        hasContent = true;
+
+        const section = document.createElement('div');
+        section.className = 'mobile-category-section';
+
+        // Category header with progress summary
+        let doneCount = 0;
+        items.forEach(itemObj => {
+            const cellId = cellKeyById(currentBlock, currentFloor, flat, itemObj.id);
+            const cellData = cellsCache[cacheKey(cellId)];
+            if (cellData?.color === 'green') doneCount++;
+        });
+        const progressPct = Math.round((doneCount / items.length) * 100);
+
+        const header = document.createElement('div');
+        header.className = 'mobile-category-header';
+        header.innerHTML = `<span class="mobile-cat-name">${getWorkCategoryDisplayName(category)}</span><span class="mobile-cat-progress">${doneCount}/${items.length} (${progressPct}%)</span>`;
+        section.appendChild(header);
+
+        // Progress bar
+        const progressBar = document.createElement('div');
+        progressBar.className = 'mobile-progress-bar';
+        const progressFill = document.createElement('div');
+        progressFill.className = 'mobile-progress-fill';
+        progressFill.style.width = progressPct + '%';
+        progressBar.appendChild(progressFill);
+        section.appendChild(progressBar);
+
+        items.forEach((itemObj, wi) => {
+            const cellId = cellKeyById(currentBlock, currentFloor, flat, itemObj.id);
+            const cellData = cellsCache[cacheKey(cellId)];
+            const color = cellData?.color || null;
+
+            const row = document.createElement('div');
+            row.className = 'mobile-work-row';
+
+            const sno = document.createElement('span');
+            sno.className = 'mobile-sno';
+            sno.textContent = wi + 1;
+            row.appendChild(sno);
+
+            const label = document.createElement('div');
+            label.className = 'mobile-work-label';
+
+            const labelText = document.createElement('span');
+            labelText.textContent = itemObj.label;
+            label.appendChild(labelText);
+
+            const editBtn = document.createElement('button');
+            editBtn.className = 'edit-btn mobile-work-edit-btn';
+            editBtn.innerHTML = '&#9998;';
+            editBtn.title = 'Edit description';
+            editBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                startInlineEdit(label, itemObj.label, (newLabel) => renameWorkItem(category, itemObj.id, newLabel));
+            });
+            label.appendChild(editBtn);
+            row.appendChild(label);
+
+            const statusArea = document.createElement('div');
+            statusArea.className = 'mobile-status-area';
+
+            const btn = document.createElement('button');
+            btn.className = 'cell-btn mobile-cell-btn ' + (color || 'empty');
+            btn.title = `${flat} - ${itemObj.label}`;
+            btn.dataset.cellId = cacheKey(cellId);
+
+            const statusLabel = document.createElement('span');
+            statusLabel.className = 'mobile-status-label';
+            statusLabel.textContent = color ? COLOR_LABELS[color] : 'Not set';
+
+            const imgCount = (cellData?.remarkImages || []).length;
+            const imgIndicator = createImageIndicator(imgCount);
+            if (imgIndicator) btn.appendChild(imgIndicator);
+
+            statusArea.appendChild(btn);
+            statusArea.appendChild(statusLabel);
+            row.appendChild(statusArea);
+
+            const remarksBtn = document.createElement('button');
+            remarksBtn.className = 'mobile-remarks-btn';
+            const hasRemarks = cellData?.remarks || imgCount > 0;
+            remarksBtn.innerHTML = '&#128221;';
+            remarksBtn.title = 'Remarks & Photos';
+            remarksBtn.style.opacity = hasRemarks ? '1' : '0.4';
+            remarksBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                openTimelineModal(cellId, itemObj.label, flat);
+            });
+            row.appendChild(remarksBtn);
+
+            const historyBtn = document.createElement('button');
+            historyBtn.className = 'mobile-history-btn';
+            historyBtn.textContent = 'History';
+            historyBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                openTimelineModal(cellId, itemObj.label, flat);
+            });
+            row.appendChild(historyBtn);
+
+            section.appendChild(row);
+
+            // Cell interactions
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                if (bulkMode) {
+                    const ck = cacheKey(cellId);
+                    if (bulkSelectedColor) {
+                        updateCellColor(cellId, bulkSelectedColor, itemObj.label, flat);
+                        // Update status label after paint
+                        statusLabel.textContent = bulkSelectedColor ? COLOR_LABELS[bulkSelectedColor] : 'Not set';
+                    } else {
+                        if (bulkSelected.has(ck)) {
+                            bulkSelected.delete(ck);
+                            btn.classList.remove('bulk-selected');
+                        } else {
+                            bulkSelected.add(ck);
+                            btn.classList.add('bulk-selected');
+                        }
+                        document.getElementById('bulkCount').textContent =
+                            `${bulkSelected.size} cell${bulkSelected.size !== 1 ? 's' : ''} selected`;
+                    }
+                } else {
+                    openStatusPopup(cellId, itemObj.label, flat, color);
+                }
+            });
+
+            btn.addEventListener('touchstart', (e) => {
+                if (bulkMode && bulkSelectedColor) {
+                    if (e.cancelable) e.preventDefault();
+                    bulkIsDragging = true;
+                    updateCellColor(cellId, bulkSelectedColor, itemObj.label, flat);
+                    statusLabel.textContent = bulkSelectedColor ? COLOR_LABELS[bulkSelectedColor] : 'Not set';
+                }
+            }, { passive: false });
+
+            btn.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                openTimelineModal(cellId, itemObj.label, flat);
+            });
+        });
+
+        // Quick-add button
+        const addBtn = document.createElement('button');
+        addBtn.className = 'mobile-add-item-btn';
+        addBtn.textContent = '+ Add Work Item';
+        addBtn.addEventListener('click', () => openWorkAddDialog(category));
+        section.appendChild(addBtn);
+
+        contentArea.appendChild(section);
+    });
+
+    // Empty state
+    if (!hasContent) {
+        const empty = document.createElement('div');
+        empty.className = 'mobile-empty-state';
+        empty.textContent = 'No work items for flat ' + flat;
+        contentArea.appendChild(empty);
+    }
+}
+
 function createSectionTable(category, items, flats) {
     const section = document.createElement('div');
     section.className = 'work-view-section';
@@ -610,7 +866,7 @@ function createSectionTable(category, items, flats) {
         ctrl.style.marginLeft = '12px';
         ctrl.innerHTML = '<button class="edit-btn" title="Rename category">&#9998;</button><button class="edit-btn" title="Delete category">&#10006;</button>';
         ctrl.querySelector('[title="Rename category"]').addEventListener('click', () => startInlineEdit(header, category, (newName) => renameWorkCategory(category, newName)));
-        ctrl.querySelector('[title="Delete category"]').addEventListener('click', () => showConfirm('Delete Category', `Delete '${category}' and all its items?`, () => deleteWorkCategory(category)));
+        ctrl.querySelector('[title="Delete category"]').addEventListener('click', () => showConfirm('Delete Category', `Delete '${category}' and all its items?`, () => deleteWorkCategory(category), null, 'Delete', true));
         header.appendChild(ctrl);
     } else {
         header.textContent = getWorkCategoryDisplayName(category);
@@ -675,7 +931,7 @@ function createSectionTable(category, items, flats) {
             tdWork.appendChild(controls);
 
             controls.querySelector('[title="Rename"]').addEventListener('click', () => startInlineEdit(tdWork, itemObj.label, (newLabel) => renameWorkItem(category, itemObj.id, newLabel)));
-            controls.querySelector('[title="Delete"]').addEventListener('click', () => showConfirm('Delete Item', `Delete '${itemObj.label}' from ${category}?`, () => deleteWorkItem(category, itemObj.id)));
+            controls.querySelector('[title="Delete"]').addEventListener('click', () => showConfirm('Delete Item', `Delete '${itemObj.label}' from ${category}?`, () => deleteWorkItem(category, itemObj.id), null, 'Delete', true));
             const upBtn = controls.querySelector('[title="Move up"]');
             const downBtn = controls.querySelector('[title="Move down"]');
             if (upBtn) upBtn.addEventListener('click', () => reorderWorkItem(category, itemObj.id, -1));
@@ -745,6 +1001,27 @@ function createSectionTable(category, items, flats) {
                         openStatusPopup(cellId, itemObj.label, flat, color);
                     }
                 });
+                // Drag-to-paint support in bulk mode
+                btn.addEventListener('mousedown', (e) => {
+                    if (bulkMode && bulkSelectedColor) {
+                        e.preventDefault();
+                        bulkIsDragging = true;
+                        updateCellColor(cellId, bulkSelectedColor, itemObj.label, flat);
+                    }
+                });
+                btn.addEventListener('mouseover', () => {
+                    if (bulkMode && bulkIsDragging && bulkSelectedColor) {
+                        updateCellColor(cellId, bulkSelectedColor, itemObj.label, flat);
+                    }
+                });
+                // Touch support for mobile drag-paint
+                btn.addEventListener('touchstart', (e) => {
+                    if (bulkMode && bulkSelectedColor) {
+                        if (e.cancelable) e.preventDefault();
+                        bulkIsDragging = true;
+                        updateCellColor(cellId, bulkSelectedColor, itemObj.label, flat);
+                    }
+                }, { passive: false });
             }
 
             btn.addEventListener('contextmenu', (e) => {
@@ -797,6 +1074,16 @@ function createSectionTable(category, items, flats) {
     table.appendChild(tbody);
     tableWrapper.appendChild(table);
     section.appendChild(tableWrapper);
+
+    // Quick-add FAB in section header (non-edit mode)
+    if (!editMode && header) {
+        const fab = document.createElement('button');
+        fab.className = 'work-add-fab';
+        fab.textContent = '+';
+        fab.title = 'Add Work Description';
+        fab.addEventListener('click', () => openWorkAddDialog(category));
+        header.appendChild(fab);
+    }
 
     return section;
 }
@@ -1038,8 +1325,7 @@ document.querySelectorAll('.color-btn').forEach(btn => {
         if (!selectedCellId) return;
         const color = btn.dataset.color || null;
         if (selectedCellId.startsWith('superstructure_')) {
-            const itemId = selectedCellId.replace('superstructure_', '');
-            await updateSuperStructureStatus(itemId, color, selectedWorkItem);
+            await updateSuperStructureStatus(selectedCellId, color, selectedWorkItem);
         } else {
             await updateCellColor(selectedCellId, color, selectedWorkItem, selectedFlat);
         }
@@ -1050,8 +1336,7 @@ document.querySelectorAll('.color-btn').forEach(btn => {
 els.clearStatusBtn.addEventListener('click', async () => {
     if (!selectedCellId) return;
     if (selectedCellId.startsWith('superstructure_')) {
-        const itemId = selectedCellId.replace('superstructure_', '');
-        await updateSuperStructureStatus(itemId, null, selectedWorkItem);
+        await updateSuperStructureStatus(selectedCellId, null, selectedWorkItem);
     } else {
         await updateCellColor(selectedCellId, null, selectedWorkItem, selectedFlat);
     }
@@ -1069,14 +1354,23 @@ els.statusPopup.addEventListener('click', (e) => {
 function exitBulkMode() {
     bulkMode = false;
     bulkSelectedColor = null;
+    bulkIsDragging = false;
     bulkSelected.clear();
     document.getElementById('bulkSelectBtn').classList.remove('active');
     document.getElementById('bulkActionBar').style.display = 'none';
+    // Sync mobile sticky toolbar bulk button
+    const mstBulk = document.getElementById('mstBulkBtn');
+    if (mstBulk) mstBulk.classList.remove('active');
     // Remove all bulk-selected highlights
     document.querySelectorAll('.cell-btn.bulk-selected').forEach(b => b.classList.remove('bulk-selected'));
     // Remove color button highlights
     document.querySelectorAll('.bulk-color-btn.selected').forEach(b => b.classList.remove('selected'));
 }
+
+// Global mouseup to stop drag-paint
+document.addEventListener('mouseup', () => { bulkIsDragging = false; });
+document.addEventListener('touchend', () => { bulkIsDragging = false; });
+document.addEventListener('touchcancel', () => { bulkIsDragging = false; });
 
 document.getElementById('bulkSelectBtn').addEventListener('click', () => {
     bulkMode = !bulkMode;
@@ -1089,6 +1383,9 @@ document.getElementById('bulkSelectBtn').addEventListener('click', () => {
         bar.style.display = 'flex';
         document.getElementById('bulkCount').textContent = '0 cells selected';
         document.querySelectorAll('.bulk-color-btn.selected').forEach(b => b.classList.remove('selected'));
+        // Sync mobile sticky toolbar bulk button
+        const mstBulk = document.getElementById('mstBulkBtn');
+        if (mstBulk) mstBulk.classList.add('active');
     } else {
         exitBulkMode();
     }
@@ -1114,7 +1411,7 @@ document.querySelectorAll('.bulk-color-btn').forEach(btn => {
 
             const batch = [];
             bulkSelected.forEach(ck => {
-                const existing = cellsCache[ck] || null;
+                const existing = (cellsCache[ck] && !cellsCache[ck]?.__notFound) ? cellsCache[ck] : null;
                 let data;
                 if (existing) {
                     const timeline = [...(existing.timeline || []), timelineEntry];
@@ -1127,6 +1424,10 @@ document.querySelectorAll('.bulk-color-btn').forEach(btn => {
                     data = { color: color || null, remarks: autoRemark, timeline: [timelineEntry],
                         updated_at: new Date().toISOString(), updated_by: currentUser };
                 }
+                // Ensure venture_id/block/floor are present for filtered queries
+                if (currentVenture && currentVenture.id) data.venture_id = currentVenture.id;
+                if (currentBlock) data.block = currentBlock;
+                if (currentFloor !== null && currentFloor !== undefined) data.floor = String(currentFloor);
                 cellsCache[ck] = data;
                 // Update DOM instantly
                 const cellBtn = document.querySelector(`[data-cell-id="${ck}"]`);
@@ -1140,6 +1441,7 @@ document.querySelectorAll('.bulk-color-btn').forEach(btn => {
 
             // Send in chunks of 50
             try {
+                inFlightSaves++;
                 let allDowngraded = [];
                 for (let i = 0; i < batch.length; i += 50) {
                     const resp = await apiPost('/api/cells/batch', { cells: batch.slice(i, i + 50) });
@@ -1154,6 +1456,8 @@ document.querySelectorAll('.bulk-color-btn').forEach(btn => {
             } catch (err) {
                 console.error('Bulk save failed:', err);
                 showToast('Bulk save failed — please retry', true);
+            } finally {
+                inFlightSaves--;
             }
         } else {
             // Paint mode: set the active color so clicking cells applies it instantly
@@ -1422,7 +1726,7 @@ function renderSuperStructure() {
             tdWork.appendChild(controls);
 
             controls.querySelector('[title="Rename"]').addEventListener('click', () => startInlineEdit(tdWork, itemObj.label, (newLabel) => renameSuperItem(itemObj.id, newLabel)));
-            controls.querySelector('[title="Delete"]').addEventListener('click', () => showConfirm('Delete Item', `Delete '${itemObj.label}'? Existing tracking data will be hidden but not lost.`, () => archiveSuperItem(itemObj.id)));
+            controls.querySelector('[title="Delete"]').addEventListener('click', () => showConfirm('Delete Item', `Delete '${itemObj.label}'? Existing tracking data will be hidden but not lost.`, () => archiveSuperItem(itemObj.id), null, 'Delete', true));
             const upBtn = controls.querySelector('[title="Move up"]');
             const downBtn = controls.querySelector('[title="Move down"]');
             if (upBtn) upBtn.addEventListener('click', () => reorderSuperItem(itemObj.id, -1));
@@ -1520,11 +1824,10 @@ function renderSuperStructure() {
     container.appendChild(ssWrapper);
 }
 
-async function updateSuperStructureStatus(itemId, status, workItem) {
-    const cellId = ssCellKeyById(itemId);
+async function updateSuperStructureStatus(cellId, status, workItem) {
     const today = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
     const ck = cacheKey(cellId);
-    const existing = cellsCache[ck] || null;
+    const existing = (cellsCache[ck] && !cellsCache[ck]?.__notFound) ? cellsCache[ck] : null;
 
     if (!status) {
         const timelineEntry = {
@@ -1550,7 +1853,15 @@ async function updateSuperStructureStatus(itemId, status, workItem) {
                 updated_by: currentUser
             };
         }
-        await apiPost('/api/cell/' + encodeURIComponent(ck), data);
+        // Ensure venture_id/block are present for filtered queries (no floor for SS)
+        if (currentVenture && currentVenture.id) data.venture_id = currentVenture.id;
+        if (currentBlock) data.block = currentBlock;
+        inFlightSaves++;
+        try {
+            await apiPost('/api/cell/' + encodeURIComponent(ck), data);
+        } finally {
+            inFlightSaves--;
+        }
         cellsCache[ck] = data;
         renderSuperStructure();
         showToast('Status cleared');
@@ -1601,7 +1912,15 @@ async function updateSuperStructureStatus(itemId, status, workItem) {
             updated_by: currentUser
         };
     }
-    await apiPost('/api/cell/' + encodeURIComponent(ck), data);
+    // Ensure venture_id/block are present for filtered queries (no floor for SS)
+    if (currentVenture && currentVenture.id) data.venture_id = currentVenture.id;
+    if (currentBlock) data.block = currentBlock;
+    inFlightSaves++;
+    try {
+        await apiPost('/api/cell/' + encodeURIComponent(ck), data);
+    } finally {
+        inFlightSaves--;
+    }
     cellsCache[ck] = data;
     renderSuperStructure();
     showToast('Status updated');
@@ -1623,13 +1942,12 @@ document.getElementById('editModeBtn').addEventListener('click', () => {
         banner.style.display = 'none';
         document.body.classList.remove('edit-mode-active');
     }
-    if (currentView === 'flat') renderGrid();
-    else if (currentView === 'work') renderWorkView();
+    if (currentView === 'work') renderWorkView();
     else renderSuperStructure();
 });
 
 let confirmCallback = null;
-function showConfirm(title, message, onConfirm, requireType) {
+function showConfirm(title, message, onConfirm, requireType, confirmLabel, confirmDanger) {
     confirmCallback = onConfirm;
     document.getElementById('confirmTitle').textContent = title;
     document.getElementById('confirmMessage').textContent = message;
@@ -1640,6 +1958,13 @@ function showConfirm(title, message, onConfirm, requireType) {
         input.placeholder = `Type "${requireType}" to confirm`;
     } else {
         input.style.display = 'none';
+    }
+    const actionBtn = document.getElementById('confirmAction');
+    actionBtn.textContent = confirmLabel || 'Confirm';
+    if (confirmDanger) {
+        actionBtn.style.background = '#c0392b';
+    } else {
+        actionBtn.style.background = '';
     }
     document.getElementById('confirmOverlay').classList.add('show');
 }
@@ -1714,8 +2039,12 @@ async function saveVentureConfig() {
     if (idx >= 0) {
         venturesList[idx] = currentVenture;
     }
-    await saveVenture(currentVenture);
-    showToast('Changes saved');
+    try {
+        await saveVenture(currentVenture);
+        showToast('Changes saved');
+    } catch (err) {
+        showToast('Failed to save: ' + (err.message || err), true);
+    }
 }
 
 async function logEdit(action, section, itemId, oldVal, newVal) {
@@ -1737,7 +2066,7 @@ async function logEdit(action, section, itemId, oldVal, newVal) {
     await apiPost('/api/settings/' + encodeURIComponent(key), existing);
 }
 
-// Flat View Editing
+// Work Item Editing (legacy flat_view_items)
 async function renameFlatItem(itemId, newLabel) {
     const items = ensureItemIds(currentVenture.flat_view_items || workItems);
     const item = items.find(i => i.id === itemId);
@@ -1747,7 +2076,7 @@ async function renameFlatItem(itemId, newLabel) {
     currentVenture.flat_view_items = items;
     await logEdit('rename', 'flat_view', itemId, old, newLabel);
     await saveVentureConfig();
-    renderGrid();
+    renderWorkView();
 }
 
 async function addFlatItem(label) {
@@ -1757,7 +2086,7 @@ async function addFlatItem(label) {
     currentVenture.flat_view_items = items;
     await logEdit('add', 'flat_view', newId, null, label);
     await saveVentureConfig();
-    renderGrid();
+    renderWorkView();
 }
 
 async function archiveFlatItem(itemId) {
@@ -1766,7 +2095,7 @@ async function archiveFlatItem(itemId) {
     currentVenture.archived = archivedItems;
     await logEdit('delete', 'flat_view', itemId, null, null);
     await saveVentureConfig();
-    renderGrid();
+    renderWorkView();
 }
 
 async function restoreFlatItem(itemId) {
@@ -1774,7 +2103,7 @@ async function restoreFlatItem(itemId) {
     currentVenture.archived = archivedItems;
     await logEdit('restore', 'flat_view', itemId, null, null);
     await saveVentureConfig();
-    renderGrid();
+    renderWorkView();
 }
 
 async function reorderFlatItem(itemId, direction) {
@@ -1787,7 +2116,7 @@ async function reorderFlatItem(itemId, direction) {
     currentVenture.flat_view_items = items;
     await logEdit('reorder', 'flat_view', itemId, idx, newIdx);
     await saveVentureConfig();
-    renderGrid();
+    renderWorkView();
 }
 
 // Work View Editing
@@ -1813,7 +2142,7 @@ async function renameWorkItem(category, itemId, newLabel) {
     item.label = newLabel;
     currentVenture.work_categories = cats;
 
-    // Keep flat_view_items in sync so flat view shows the same label
+    // Keep flat_view_items in sync so work view shows the same label
     if (currentVenture.flat_view_items && currentVenture.flat_view_items.length > 0) {
         currentVenture.flat_view_items = currentVenture.flat_view_items.map(fi => {
             if (typeof fi === 'string') return fi === old ? newLabel : fi;
@@ -1827,13 +2156,34 @@ async function renameWorkItem(category, itemId, newLabel) {
     renderWorkView();
 }
 
-async function addWorkItem(category, label) {
+async function addWorkItem(category, label, applyAll) {
     const cats = ensureWorkCategories(currentVenture.work_categories || WORK_CATEGORIES);
+    if (!cats[category]) {
+        showToast('Category not found', true);
+        return;
+    }
+    const existing = cats[category].find(i => i.label.toLowerCase() === label.toLowerCase());
+    if (existing) {
+        showToast(`'${label}' already exists in ${category}`, true);
+        return;
+    }
     const newId = `item_${slugId(category)}_${slugId(label)}_${Date.now()}`;
     cats[category].push({ id: newId, label });
     currentVenture.work_categories = cats;
     await logEdit('add', 'work_item', newId, null, label);
     await saveVentureConfig();
+
+    if (applyAll) {
+        try {
+            const settings = { work_categories: cats };
+            await apiPost('/api/ventures/apply-settings', { scope: 'all', settings });
+            const fresh = await apiGet('/api/ventures');
+            if (fresh) venturesList = fresh;
+            showToast(`Added to ${category} in all ventures`);
+        } catch (err) {
+            showToast('Saved here, but failed to apply to all ventures: ' + (err.message || ''), true);
+        }
+    }
     renderWorkView();
 }
 
@@ -1962,10 +2312,15 @@ async function renameVenture(ventureId, newName) {
 async function deleteVenture(ventureId) {
     const venture = venturesList.find(v => v.id === ventureId);
     if (!venture) return;
-    await apiDelete('/api/venture/' + encodeURIComponent(ventureId));
-    venturesList = venturesList.filter(v => v.id !== ventureId);
-    showToast('Venture deleted');
-    renderVentureDashboard();
+    try {
+        await apiDelete('/api/venture/' + encodeURIComponent(ventureId));
+        venturesList = venturesList.filter(v => v.id !== ventureId);
+        showToast('Venture deleted');
+        renderVentureDashboard();
+    } catch (err) {
+        console.error('Failed to delete venture:', err);
+        showToast('Delete failed — please retry', true);
+    }
 }
 
 // ========================
@@ -2081,7 +2436,7 @@ async function renderPendingView(targetContainer) {
             : [parseInt(pendingFilterFlat)].filter(f => flatNumbers.includes(f));
 
         flatsToCheck.forEach(flat => {
-            // Flat view items
+            // Work items (flat_view_items)
             flatWorkItems.forEach(item => {
                 const cellId = cellKeyById(currentBlock, floor, flat, item.id);
                 const cellData = cellsCache[cacheKey(cellId)];
@@ -2093,7 +2448,7 @@ async function renderPendingView(targetContainer) {
                         workItem: item.label,
                         status: color,
                         statusLabel: color ? COLOR_LABELS[color] : 'Not started',
-                        category: 'Flat View',
+                        category: 'Work View',
                         cellId: cellId
                     });
                 }
@@ -2262,3 +2617,22 @@ function getColorHex(color) {
     const map = { red: '#e74c3c', yellow: '#f1c40f', blue: '#3498db', green: '#2ecc71' };
     return map[color] || '#ccc';
 }
+
+// Re-render on viewport resize crossing mobile/desktop threshold
+(function() {
+    var wasMobile = isMobileView();
+    var resizeTimer = null;
+    window.addEventListener('resize', function() {
+        if (resizeTimer) clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(function() {
+            var isMob = isMobileView();
+            if (isMob !== wasMobile) {
+                wasMobile = isMob;
+                if (currentView === 'work' && document.getElementById('trackerView') &&
+                    document.getElementById('trackerView').style.display !== 'none') {
+                    renderWorkView();
+                }
+            }
+        }, 200);
+    }, { passive: true });
+})();

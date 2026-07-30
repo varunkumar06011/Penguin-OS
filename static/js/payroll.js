@@ -11,7 +11,6 @@ document.getElementById('payrollBtn')?.addEventListener('click', () => {
     document.querySelectorAll('.view-tab').forEach(b => b.classList.remove('active'));
     previousView = currentView;
     currentView = 'payroll';
-    document.getElementById('flatViewContainer').style.display = 'none';
     document.getElementById('workViewContainer').style.display = 'none';
     document.getElementById('superStructureContainer').style.display = 'none';
     document.getElementById('pendingViewContainer').style.display = 'none';
@@ -323,7 +322,7 @@ async function renderPayrollView() {
                 } catch (err) {
                     showToast('Failed to release payroll: ' + err.message, true);
                 }
-            });
+            }, null, 'Release');
         });
     }
 
@@ -353,7 +352,7 @@ async function renderPayrollView() {
                         showToast('Failed to save deletion', true);
                         console.error(err);
                     }
-                });
+                }, null, 'Delete', true);
             });
         });
 

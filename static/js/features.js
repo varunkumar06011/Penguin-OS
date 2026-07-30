@@ -99,7 +99,7 @@ function renderWorkCategoriesSettings() {
         remove.innerHTML = '&times;';
         remove.title = 'Remove category';
         remove.addEventListener('click', () => {
-            showConfirm('Delete Category', `Delete '${category}' and all its items?`, () => deleteWorkCategory(category));
+            showConfirm('Delete Category', `Delete '${category}' and all its items?`, () => deleteWorkCategory(category), null, 'Delete', true);
         });
 
         li.appendChild(handle);
@@ -111,10 +111,13 @@ function renderWorkCategoriesSettings() {
 
 function openSettingsModal() {
     els.workItemsList.innerHTML = '';
-    workItems.forEach((item, index) => {
+    const items = ensureItemIds(workItems);
+    workItems = items;
+    items.forEach((item, index) => {
         const li = document.createElement('li');
         li.draggable = true;
         li.dataset.index = index;
+        li.dataset.id = item.id;
 
         const handle = document.createElement('span');
         handle.className = 'drag-handle';
@@ -123,9 +126,13 @@ function openSettingsModal() {
         const input = document.createElement('span');
         input.className = 'work-item-name';
         input.contentEditable = true;
-        input.textContent = item;
+        input.textContent = item.label;
         input.addEventListener('blur', () => {
-            workItems[index] = input.textContent.trim() || item;
+            const newLabel = input.textContent.trim() || item.label;
+            const idx = workItems.findIndex(w => (typeof w === 'object' ? w.id : null) === item.id);
+            if (idx >= 0) {
+                workItems[idx] = { id: item.id, label: newLabel };
+            }
         });
         input.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
@@ -139,8 +146,8 @@ function openSettingsModal() {
         remove.innerHTML = '&times;';
         remove.title = 'Remove';
         remove.addEventListener('click', () => {
-            workItems.splice(index, 1);
-            openSettingsModal(); // refresh
+            workItems = workItems.filter(w => (typeof w === 'object' ? w.id : null) !== item.id);
+            openSettingsModal();
         });
 
         li.appendChild(handle);
@@ -152,13 +159,18 @@ function openSettingsModal() {
         li.addEventListener('dragstart', () => li.classList.add('dragging'));
         li.addEventListener('dragend', () => {
             li.classList.remove('dragging');
-            // Rebuild workItems from DOM order
             const newItems = [];
-            els.workItemsList.querySelectorAll('li').forEach((row, i) => {
+            els.workItemsList.querySelectorAll('li').forEach(row => {
                 const nameSpan = row.querySelector('.work-item-name');
-                newItems.push(nameSpan.textContent.trim());
+                const label = nameSpan.textContent.trim();
+                const rowId = row.dataset.id;
+                if (rowId) {
+                    newItems.push({ id: rowId, label });
+                } else {
+                    newItems.push({ id: `item_${slugId(label)}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label });
+                }
             });
-            workItems = newItems;
+            workItems = newItems.filter(w => w.label.length > 0);
         });
         li.addEventListener('dragover', (e) => {
             e.preventDefault();
@@ -184,10 +196,12 @@ function renderSuperItemsSettings() {
     list.innerHTML = '';
 
     let items = ensureItemIds(currentVenture && currentVenture.super_structure_items ? currentVenture.super_structure_items : SUPER_STRUCTURE_ITEMS);
+    if (currentVenture) currentVenture.super_structure_items = items;
     items.forEach((item, index) => {
         const li = document.createElement('li');
         li.draggable = true;
         li.dataset.index = index;
+        li.dataset.id = item.id;
 
         const handle = document.createElement('span');
         handle.className = 'drag-handle';
@@ -201,6 +215,7 @@ function renderSuperItemsSettings() {
             const newLabel = nameSpan.textContent.trim();
             if (newLabel && newLabel !== item.label) {
                 item.label = newLabel;
+                if (currentVenture) currentVenture.super_structure_items = items;
             }
         });
         nameSpan.addEventListener('keydown', (e) => {
@@ -212,7 +227,8 @@ function renderSuperItemsSettings() {
         remove.innerHTML = '&times;';
         remove.title = 'Remove';
         remove.addEventListener('click', () => {
-            items.splice(index, 1);
+            items = items.filter(it => it.id !== item.id);
+            if (currentVenture) currentVenture.super_structure_items = items;
             renderSuperItemsSettings();
         });
 
@@ -227,9 +243,17 @@ function renderSuperItemsSettings() {
             const newItems = [];
             list.querySelectorAll('li').forEach(row => {
                 const span = row.querySelector('.work-item-name');
-                newItems.push({ id: 'ss_' + slugId(span.textContent.trim()) + '_' + Date.now(), label: span.textContent.trim() });
+                const label = span.textContent.trim();
+                if (!label) return;
+                const rowId = row.dataset.id;
+                if (rowId) {
+                    newItems.push({ id: rowId, label });
+                } else {
+                    newItems.push({ id: `ss_${slugId(label)}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label });
+                }
             });
             items = newItems;
+            if (currentVenture) currentVenture.super_structure_items = items;
             renderSuperItemsSettings();
         });
         li.addEventListener('dragover', (e) => {
@@ -385,7 +409,7 @@ async function toggleUserActive(userId, email) {
             } catch (err) {
                 showToast(err.message || 'Failed to deactivate', true);
             }
-        });
+        }, null, 'Deactivate');
     } else {
         try {
             await apiPost('/api/users/' + userId, { active: true });
@@ -484,7 +508,7 @@ if (els.manageUsersSave) {
 }
 
 els.addWorkItemBtn.addEventListener('click', () => {
-    workItems.push('New Work Item');
+    workItems.push({ id: `item_new_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label: 'New Work Item' });
     openSettingsModal();
 });
 
@@ -532,28 +556,57 @@ let _pendingSettings = null;
 function collectSettingsFromModal() {
     const settings = {};
 
-    // Work Items (flat_view_items)
+    // Work Items — preserve existing IDs from DOM
     const newItems = [];
     els.workItemsList.querySelectorAll('li').forEach(row => {
         const nameSpan = row.querySelector('.work-item-name');
-        newItems.push(nameSpan.textContent.trim());
+        const label = nameSpan.textContent.trim();
+        if (!label) return;
+        const rowId = row.dataset.id;
+        if (rowId) {
+            newItems.push({ id: rowId, label });
+        } else {
+            newItems.push({ id: `item_${slugId(label)}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label });
+        }
     });
-    settings.flat_view_items = newItems.filter(w => w.length > 0);
+    settings.flat_view_items = newItems;
 
-    // Super Structure Items
+    // Super Structure Items — preserve existing IDs from DOM
     const superList = document.getElementById('superItemsList');
     if (superList) {
         const superItems = [];
         superList.querySelectorAll('li').forEach(row => {
             const span = row.querySelector('.work-item-name');
             const label = span.textContent.trim();
-            if (label) superItems.push({ id: 'ss_' + slugId(label) + '_' + Date.now(), label });
+            if (!label) return;
+            const rowId = row.dataset.id;
+            if (rowId) {
+                superItems.push({ id: rowId, label });
+            } else {
+                superItems.push({ id: `ss_${slugId(label)}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label });
+            }
         });
         settings.super_structure_items = superItems;
     }
 
-    // Work Categories
-    if (currentVenture && currentVenture.work_categories) {
+    // Work Categories — collect from DOM to capture reorders
+    const catList = document.getElementById('workCategoriesList');
+    if (catList) {
+        const orderedCats = {};
+        const cats = ensureWorkCategories(currentVenture && currentVenture.work_categories ? currentVenture.work_categories : WORK_CATEGORIES);
+        catList.querySelectorAll('li').forEach(row => {
+            const nameSpan = row.querySelector('.work-item-name');
+            const catName = nameSpan.textContent.trim();
+            if (catName && cats[catName]) {
+                orderedCats[catName] = cats[catName];
+            }
+        });
+        // Include any categories that might have been added but not yet rendered
+        Object.keys(cats).forEach(k => {
+            if (!orderedCats[k]) orderedCats[k] = cats[k];
+        });
+        settings.work_categories = orderedCats;
+    } else if (currentVenture && currentVenture.work_categories) {
         settings.work_categories = currentVenture.work_categories;
     }
 
@@ -598,17 +651,24 @@ function closeApplyChangesModal() {
 }
 
 els.saveSettingsBtn.addEventListener('click', () => {
-    // Sync work items from DOM into workItems and currentVenture
+    // Sync work items from DOM into workItems and currentVenture — preserve IDs
     const newItems = [];
     els.workItemsList.querySelectorAll('li').forEach(row => {
         const nameSpan = row.querySelector('.work-item-name');
-        newItems.push(nameSpan.textContent.trim());
+        const label = nameSpan.textContent.trim();
+        if (!label) return;
+        const rowId = row.dataset.id;
+        if (rowId) {
+            newItems.push({ id: rowId, label });
+        } else {
+            newItems.push({ id: `item_${slugId(label)}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label });
+        }
     });
-    workItems = newItems.filter(w => w.length > 0);
+    workItems = newItems;
     if (currentVenture) {
         currentVenture.flat_view_items = workItems;
     }
-    // Sync super structure items from DOM into currentVenture
+    // Sync super structure items from DOM into currentVenture — preserve IDs
     if (currentVenture) {
         const superList = document.getElementById('superItemsList');
         if (superList) {
@@ -616,7 +676,13 @@ els.saveSettingsBtn.addEventListener('click', () => {
             superList.querySelectorAll('li').forEach(row => {
                 const span = row.querySelector('.work-item-name');
                 const label = span.textContent.trim();
-                if (label) superItems.push({ id: 'ss_' + slugId(label) + '_' + Date.now(), label });
+                if (!label) return;
+                const rowId = row.dataset.id;
+                if (rowId) {
+                    superItems.push({ id: rowId, label });
+                } else {
+                    superItems.push({ id: `ss_${slugId(label)}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label });
+                }
             });
             currentVenture.super_structure_items = superItems;
         }
@@ -657,7 +723,7 @@ if (els.applyChangesConfirm) {
                 'This will overwrite configuration for ALL ventures. This cannot be undone. Continue?',
                 async () => {
                     await doApplySettings('all', null);
-                });
+                }, null, 'Apply to All');
         } else {
             const ventureId = els.applyVentureSelect ? els.applyVentureSelect.value : '';
             if (!ventureId) {
@@ -699,17 +765,22 @@ async function doApplySettings(scope, ventureId) {
                 const updated = venturesList.find(v => v.id === currentVenture.id);
                 if (updated) {
                     currentVenture = updated;
+                    // Re-sync workItems from updated venture data
+                    if (currentVenture.flat_view_items) {
+                        workItems = [...currentVenture.flat_view_items];
+                    }
                 }
             }
             setTimeout(() => {
                 closeApplyChangesModal();
                 closeSettingsModal();
-                if (currentView === 'flat') {
-                    renderGrid();
-                } else if (currentView === 'work') {
+                if (currentView === 'work') {
                     renderWorkView();
-                } else {
+                } else if (currentView === 'super') {
                     renderSuperStructure();
+                } else {
+                    currentView = 'work';
+                    renderWorkView();
                 }
                 renderBlockTabs();
             }, 800);
@@ -765,12 +836,13 @@ function renderBlockTabs() {
             currentBlockObj = block;
             currentFloor = 1;
             renderFloorTabs();
-            if (currentView === 'flat') {
-                renderGrid();
-            } else if (currentView === 'work') {
+            if (currentView === 'work') {
                 renderWorkView();
-            } else {
+            } else if (currentView === 'super') {
                 renderSuperStructure();
+            } else {
+                currentView = 'work';
+                renderWorkView();
             }
             navigateTo(buildTrackerRoute());
         });
@@ -798,12 +870,13 @@ function renderFloorTabs() {
             document.querySelectorAll('.floor-tab').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             currentFloor = f;
-            if (currentView === 'flat') {
-                renderGrid();
-            } else if (currentView === 'work') {
+            if (currentView === 'work') {
                 renderWorkView();
-            } else {
+            } else if (currentView === 'super') {
                 renderSuperStructure();
+            } else {
+                currentView = 'work';
+                renderWorkView();
             }
             navigateTo(buildTrackerRoute());
         });
@@ -817,7 +890,6 @@ document.querySelectorAll('.view-tab').forEach(btn => {
         document.querySelectorAll('.view-tab').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         currentView = btn.dataset.view;
-        document.getElementById('flatViewContainer').style.display = 'none';
         document.getElementById('workViewContainer').style.display = 'none';
         document.getElementById('superStructureContainer').style.display = 'none';
         document.getElementById('pendingViewContainer').style.display = 'none';
@@ -831,9 +903,9 @@ document.querySelectorAll('.view-tab').forEach(btn => {
             if (blockTabsContainer) blockTabsContainer.style.display = '';
         }
         if (currentView === 'flat') {
-            document.getElementById('flatViewContainer').style.display = '';
-            renderGrid();
-        } else if (currentView === 'work') {
+            currentView = 'work';
+        }
+        if (currentView === 'work') {
             document.getElementById('workViewContainer').style.display = '';
             renderWorkView();
         } else {
@@ -992,7 +1064,7 @@ function renderVentureDashboard() {
         });
         cardEdit.querySelector('[title="Delete"]').addEventListener('click', (e) => {
             e.stopPropagation();
-            showConfirm('Delete Venture', `This will delete ALL data for ${venture.name}. Type venture name to confirm.`, () => deleteVenture(venture.id), venture.name);
+            showConfirm('Delete Venture', `This will delete ALL data for ${venture.name}. Type venture name to confirm.`, () => deleteVenture(venture.id), venture.name, 'Delete', true);
         });
 
         card.addEventListener('click', async () => {
@@ -1212,7 +1284,7 @@ async function renderHomeReports(container) {
             workRows.push({
                 flat: flat,
                 workItem: item.label,
-                category: 'Flat View',
+                category: 'Work View',
                 color: color || 'none',
                 statusLabel: color ? COLOR_LABELS[color] : 'Not started'
             });
@@ -1659,6 +1731,10 @@ async function renderHomePayroll(container) {
 }
 
 async function openVenture(venture, opts = {}) {
+    // Clear cell cache when switching ventures to ensure fresh data from DB
+    if (currentVenture && currentVenture.id !== venture.id) {
+        cellsCache = {};
+    }
     currentVenture = venture;
 
     const requestedBlock = opts.block || (opts.blockId);
@@ -1668,12 +1744,12 @@ async function openVenture(venture, opts = {}) {
     currentBlock = currentBlockObj.id;
 
     currentFloor = opts.floor ? parseInt(opts.floor) : 1;
-    currentView = ['flat', 'work', 'super'].includes(opts.view) ? opts.view : 'flat';
+    currentView = ['work', 'super'].includes(opts.view) ? opts.view : 'work';
 
     editMode = false;
     archivedItems = venture.archived || {};
 
-    workItems = venture.flat_view_items ? [...venture.flat_view_items] : [...DEFAULT_WORK_ITEMS];
+    workItems = ensureItemIds(venture.flat_view_items ? [...venture.flat_view_items] : [...DEFAULT_WORK_ITEMS]);
 
     hideAllMainPanels();
     document.getElementById('trackerView').style.display = '';
@@ -1692,7 +1768,6 @@ async function openVenture(venture, opts = {}) {
     const activeTab = document.querySelector(`.view-tab[data-view="${currentView}"]`);
     if (activeTab) activeTab.classList.add('active');
 
-    document.getElementById('flatViewContainer').style.display = 'none';
     document.getElementById('workViewContainer').style.display = 'none';
     document.getElementById('superStructureContainer').style.display = 'none';
     document.getElementById('pendingViewContainer').style.display = 'none';
@@ -1712,12 +1787,18 @@ async function openVenture(venture, opts = {}) {
 
     renderBlockTabs();
     renderFloorTabs();
-    if (currentView === 'flat') {
-        await renderGrid();
-    } else if (currentView === 'work') {
-        await renderWorkView();
-    } else if (currentView === 'super') {
-        await renderSuperStructure();
+    try {
+        if (currentView === 'work') {
+            await renderWorkView();
+        } else if (currentView === 'super') {
+            await renderSuperStructure();
+        } else {
+            currentView = 'work';
+            await renderWorkView();
+        }
+    } catch (err) {
+        console.error('Failed to render tracker view:', err);
+        showToast('Failed to load work view — please refresh', true);
     }
 
     // Update sticky header offset after view renders
@@ -1738,6 +1819,7 @@ function exitToDashboard() {
     currentBlockObj = null;
     currentBlock = 'A';
     currentFloor = 1;
+    cellsCache = {};
     editMode = false;
     document.getElementById('editModeBtn').style.display = 'none';
     document.getElementById('editModeBanner').style.display = 'none';
@@ -1955,20 +2037,46 @@ document.getElementById('wizardNext').addEventListener('click', async () => {
 });
 
 async function createVentureFromWizard() {
+    const ventureId = generateId();
+    const ts = Date.now();
+    const superItems = wizardData.superItems.map((item, i) => {
+        if (typeof item === 'object' && item.id) return item;
+        const label = typeof item === 'string' ? item : (item && item.label) || 'Untitled';
+        return { id: `ss_${slugId(label)}_${ts}_${i}`, label };
+    });
+    const workCats = {};
+    Object.entries(wizardData.workCategories).forEach(([cat, items]) => {
+        workCats[cat] = items.map((item, i) => {
+            if (typeof item === 'object' && item.id) return item;
+            const label = typeof item === 'string' ? item : (item && item.label) || 'Untitled';
+            return { id: `item_${slugId(cat)}_${slugId(label)}_${ts}_${i}`, label };
+        });
+    });
+    const flatItems = (DEFAULT_WORK_ITEMS || []).map((item, i) => {
+        if (typeof item === 'object' && item.id) return item;
+        const label = typeof item === 'string' ? item : (item && item.label) || 'Untitled';
+        return { id: `item_${slugId(label)}_${ts}_${i}`, label };
+    });
     const newVenture = {
-        id: generateId(),
+        id: ventureId,
         name: wizardData.name,
         created_by: currentUser,
         created_at: new Date().toISOString(),
         blocks: wizardData.blocks,
-        flat_view_items: [...DEFAULT_WORK_ITEMS],
-        work_categories: wizardData.workCategories,
-        super_structure_items: wizardData.superItems,
+        flat_view_items: flatItems,
+        work_categories: workCats,
+        super_structure_items: superItems,
         archived: {}
     };
     venturesList.push(newVenture);
-    await saveVenture(newVenture);
-    showToast('Venture created successfully');
+    try {
+        await saveVenture(newVenture);
+        showToast('Venture created successfully');
+    } catch (err) {
+        venturesList = venturesList.filter(v => v.id !== ventureId);
+        showToast('Failed to create venture: ' + (err.message || err), true);
+        return;
+    }
     closeWizard();
     await loadVentures();
     renderVentureDashboard();
@@ -1981,7 +2089,7 @@ async function createVentureFromWizard() {
 function hideAllMainPanels() {
     ['venturesDashboard', 'overviewPage', 'invoicesPanel', 'poPanel', 'reportsPanel', 'payrollPanel', 'inventoryPanel',
      'instantReportsPanel', 'inventoryAuditPanel',
-     'expenditurePanel', 'designGeneratorPanel', 'stockPurchasesPanel', 'trackerView'].forEach(id => {
+     'expenditurePanel', 'designGeneratorPanel', 'stockPurchasesPanel', 'contractorPaymentsPanel', 'trackerView'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.display = 'none';
     });

@@ -1,5 +1,5 @@
 -- ============================================================
--- Migration 003: Payroll
+-- Migration 003b: Payroll
 -- Run this in Supabase SQL Editor (idempotent — safe to re-run)
 -- ============================================================
 

@@ -1191,7 +1191,7 @@ function openMaterialModal(materialId) {
                 } catch (err) {
                     showToast('Failed to delete material', true);
                 }
-            });
+            }, null, 'Delete', true);
         });
     });
 

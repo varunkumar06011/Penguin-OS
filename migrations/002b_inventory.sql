@@ -1,5 +1,5 @@
 -- ============================================================
--- Migration 002: Inventory tracking (materials + stock ledger)
+-- Migration 002b: Inventory tracking (materials + stock ledger)
 -- Run this in Supabase SQL Editor (idempotent — safe to re-run)
 -- ============================================================
 

@@ -4,9 +4,12 @@ import json
 import re
 import base64
 import io
+import logging
+from collections import defaultdict, deque
 from datetime import timedelta, datetime, date, timezone
 from functools import wraps
 import time
+import secrets
 from dotenv import load_dotenv
 from supabase import create_client, Client
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -40,6 +43,52 @@ load_dotenv()
 
 IST = timezone(timedelta(hours=5, minutes=30))
 
+# ============================================================
+# Logging Setup
+# ============================================================
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger('vgrand')
+
+# ============================================================
+# Security: Secret Key
+# ============================================================
+_secret = os.environ.get('SECRET_KEY')
+if not _secret:
+    if os.environ.get('FLASK_ENV') == 'development' or os.environ.get('DEV_MODE') == '1':
+        _secret = 'dev-only-secret-key-DO-NOT-USE-IN-PROD'
+        logger.warning('SECRET_KEY not set — using insecure dev-only key. DO NOT use in production.')
+    else:
+        raise RuntimeError('SECRET_KEY environment variable is not set. Refusing to start.')
+
+# ============================================================
+# Rate Limiting (in-memory, per-IP)
+# ============================================================
+_rate_limit_store = defaultdict(deque)
+RATE_LIMIT_WINDOW = 60  # seconds
+RATE_LIMIT_MAX_LOGIN = 10  # max login attempts per IP per window
+
+def rate_limited(key, max_requests=RATE_LIMIT_MAX_LOGIN, window=RATE_LIMIT_WINDOW):
+    """Check if a request should be rate-limited. Returns True if limited."""
+    now = time.time()
+    store = _rate_limit_store[key]
+    # Evict entries outside the window
+    while store and store[0] < now - window:
+        store.popleft()
+    if len(store) >= max_requests:
+        return True
+    store.append(now)
+    return False
+
+def get_client_ip():
+    """Get real client IP, accounting for reverse proxies."""
+    if request.headers.get('X-Forwarded-For'):
+        return request.headers.get('X-Forwarded-For').split(',')[0].strip()
+    return request.remote_addr or 'unknown'
+
 def render_pdf(html_string):
     """Render HTML to PDF using WeasyPrint, with xhtml2pdf fallback."""
     if HTML:
@@ -56,8 +105,13 @@ def now_ist():
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 app = Flask(__name__, static_folder=os.path.join(BASE_DIR, 'static'), template_folder=os.path.join(BASE_DIR, 'templates'))
-app.secret_key = os.environ.get('SECRET_KEY', 'vgrand-secret-key-2025')
+app.secret_key = _secret
 app.permanent_session_lifetime = timedelta(days=30)
+app.config.update(
+    SESSION_COOKIE_SAMESITE='Lax',
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SECURE=os.environ.get('FLASK_ENV') != 'development' and os.environ.get('DEV_MODE') != '1',
+)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
 
 @app.template_filter('inr')
@@ -75,12 +129,39 @@ _supabase_key = SUPABASE_SERVICE_KEY or SUPABASE_ANON_KEY
 supabase: Client = create_client(SUPABASE_URL, _supabase_key) if SUPABASE_URL and _supabase_key else None
 
 if supabase:
-    print(f'[OK] Supabase connected: {SUPABASE_URL}')
+    logger.info(f'Supabase connected: {SUPABASE_URL}')
 else:
-    print('[WARN] Supabase not connected. Check SUPABASE_URL and SUPABASE_SERVICE_KEY in .env')
+    logger.warning('Supabase not connected. Check SUPABASE_URL and SUPABASE_SERVICE_KEY in .env')
 
 # --- Pollinations AI (Feature 1: interior design) ---
 POLLINATIONS_API_TOKEN = os.environ.get('POLLINATIONS_API_TOKEN', '')
+
+
+# ============================================================
+# CSRF: Origin Validation for state-changing requests
+# ============================================================
+@app.before_request
+def _csrf_origin_check():
+    if request.method in ('POST', 'PUT', 'DELETE', 'PATCH'):
+        origin = request.headers.get('Origin') or request.headers.get('Referer') or ''
+        if not origin:
+            return None
+        host = request.host_url.rstrip('/')
+        # Direct match
+        if origin.startswith(host):
+            return None
+        # Normalize localhost / 127.0.0.1 / 0.0.0.0 equivalence
+        from urllib.parse import urlparse
+        origin_parts = urlparse(origin)
+        host_parts = urlparse(host)
+        localhost_aliases = {'localhost', '127.0.0.1', '0.0.0.0'}
+        if (origin_parts.hostname in localhost_aliases and
+                host_parts.hostname in localhost_aliases and
+                origin_parts.port == host_parts.port):
+            return None
+        logger.warning(f'CSRF: Origin mismatch — origin={origin}, host={host}, path={request.path}')
+        return jsonify({'error': 'Cross-origin request blocked'}), 403
+    return None
 
 
 def load_json_fallback(filename):
@@ -89,7 +170,7 @@ def load_json_fallback(filename):
         with open(path, 'r', encoding='utf-8-sig') as f:
             return json.load(f)
     except Exception as e:
-        print(f'Error loading JSON fallback {filename}: {e}')
+        logger.error(f'Error loading JSON fallback {filename}: {e}')
         return None
 
 DEFAULT_WORK_ITEMS = [
@@ -169,15 +250,19 @@ def requires_role_or_override(*primary_roles):
 def _allowed_ventures(user):
     if not supabase:
         return set()
-    if user.get('role') in ('admin', 'manager'):
+    # Admin, manager, and supervisor roles see all ventures in their org by default.
+    # Role-based access controls restrict *actions*, not legitimate data visibility.
+    if user.get('role') in ('admin', 'manager', 'supervisor'):
         org_id = user.get('org_id')
-        res = supabase.table('ventures').select('id').eq('org_id', org_id).execute()
+        # Include ventures in this org PLUS legacy ventures with NULL org_id
+        res = supabase.table('ventures').select('id').or_(f'org_id.eq.{org_id},org_id.is.null').execute()
         return {r['id'] for r in (res.data or [])}
+    # Other roles (e.g. custom restricted roles) use explicit user_ventures grants.
     rows = supabase.table('user_ventures').select('venture_id').eq('user_id', user['id']).execute()
     allowed = {r['venture_id'] for r in (rows.data or [])}
     if not allowed:
         org_id = user.get('org_id')
-        res = supabase.table('ventures').select('id').eq('org_id', org_id).execute()
+        res = supabase.table('ventures').select('id').or_(f'org_id.eq.{org_id},org_id.is.null').execute()
         allowed = {r['id'] for r in (res.data or [])}
     return allowed
 
@@ -602,6 +687,9 @@ def run_marketplace_seed():
 
 @app.route('/login', methods=['POST'])
 def login():
+    if rate_limited(f'login:{get_client_ip()}'):
+        logger.warning(f'Rate limit hit for login from {get_client_ip()}')
+        return jsonify({'success': False, 'error': 'Too many attempts. Please wait a minute.'}), 429
     data = request.get_json() or {}
     username = data.get('username', '').strip()
     password = data.get('password', '')
@@ -620,13 +708,13 @@ def login():
                 if pw_hash and check_password_hash(pw_hash, password):
                     user_obj = {'id': row['id'], 'email': row['email'], 'role': row['role'], 'org_id': row.get('org_id')}
                 else:
-                    print(f'Login failed for "{username}": password mismatch')
+                    logger.warning(f'Login failed for "{username}": password mismatch')
             else:
-                print(f'Login failed for "{username}": no active user found')
+                logger.warning(f'Login failed for "{username}": no active user found')
         except Exception as e:
-            print(f'Error loading user from Supabase: {e}')
+            logger.error(f'Error loading user from Supabase: {e}')
     else:
-        print('Login failed: Supabase not connected')
+        logger.warning('Login failed: Supabase not connected')
 
     if user_obj:
         session['user'] = user_obj
@@ -650,7 +738,7 @@ def logout():
 def send_otp(mobile, code):
     """Send OTP to a mobile number. Replace this with Twilio/MSG91/etc.
     For development, the code is simply logged."""
-    print(f'[OTP] Sending code {code} to {mobile}')
+    logger.info(f'[OTP] Sending code {code} to {mobile}')
     return True
 
 
@@ -665,6 +753,9 @@ def generate_otp():
 
 @app.route('/api/visitor/resident-login', methods=['POST'])
 def visitor_resident_login():
+    if rate_limited(f'resident_login:{get_client_ip()}'):
+        logger.warning(f'Rate limit hit for resident login from {get_client_ip()}')
+        return jsonify({'error': 'Too many attempts. Please wait a minute.'}), 429
     if not supabase:
         return jsonify({'error': 'Supabase not connected'}), 500
     body = request.get_json() or {}
@@ -687,12 +778,15 @@ def visitor_resident_login():
         }
         return jsonify({'success': True, 'resident': session['visitor_user']})
     except Exception as e:
-        print(f'Error resident login: {e}')
+        logger.error(f'Error resident login: {e}')
         return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/visitor/security-login', methods=['POST'])
 def visitor_security_login():
+    if rate_limited(f'security_login:{get_client_ip()}'):
+        logger.warning(f'Rate limit hit for security login from {get_client_ip()}')
+        return jsonify({'error': 'Too many attempts. Please wait a minute.'}), 429
     if not supabase:
         return jsonify({'error': 'Supabase not connected'}), 500
     body = request.get_json() or {}
@@ -715,7 +809,7 @@ def visitor_security_login():
         }
         return jsonify({'success': True, 'security': session['security_user']})
     except Exception as e:
-        print(f'Error security login: {e}')
+        logger.error(f'Error security login: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -729,7 +823,7 @@ def api_users():
         res = supabase.table('users').select('id, email, role, active, full_name').eq('org_id', org_id).execute()
         return jsonify(res.data or [])
     except Exception as e:
-        print(f'Error fetching users: {e}')
+        logger.error(f'Error fetching users: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -756,7 +850,7 @@ def api_users_change_password():
         supabase.table('users').update({'password_hash': new_hash}).eq('id', user['id']).execute()
         return jsonify({'success': True})
     except Exception as e:
-        print(f'Error changing password: {e}')
+        logger.error(f'Error changing password: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -807,7 +901,7 @@ def api_visitor_resident_profile():
                 'active': r.get('active', True), 'created_at': r.get('created_at')
             })
         except Exception as e:
-            print(f'Error fetching resident profile: {e}')
+            logger.error(f'Error fetching resident profile: {e}')
             return jsonify({'error': str(e)}), 500
     else:
         body = request.get_json() or {}
@@ -821,7 +915,7 @@ def api_visitor_resident_profile():
                 session['visitor_user'] = resident
             return jsonify({'success': True})
         except Exception as e:
-            print(f'Error updating resident profile: {e}')
+            logger.error(f'Error updating resident profile: {e}')
             return jsonify({'error': str(e)}), 500
 
 
@@ -844,7 +938,7 @@ def api_visitor_resident_by_mobile(mobile):
             'flat': row['flat']
         })
     except Exception as e:
-        print(f'Error fetching resident by mobile: {e}')
+        logger.error(f'Error fetching resident by mobile: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -893,7 +987,7 @@ def api_visitor_request_create():
 
         return jsonify({'success': True, 'id': visitor_id, 'otp': code})
     except Exception as e:
-        print(f'Error creating visitor request: {e}')
+        logger.error(f'Error creating visitor request: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -927,7 +1021,7 @@ def api_visitor_verify_otp():
 
         return jsonify({'success': True, 'status': 'approved'})
     except Exception as e:
-        print(f'Error verifying OTP: {e}')
+        logger.error(f'Error verifying OTP: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -974,7 +1068,7 @@ def api_visitor_requests():
             })
         return jsonify(rows)
     except Exception as e:
-        print(f'Error fetching visitor requests: {e}')
+        logger.error(f'Error fetching visitor requests: {e}')
         return jsonify([])
 
 
@@ -997,7 +1091,7 @@ def api_visitor_request_patch(req_id):
         supabase.table('visitor_requests').update(allowed).eq('id', req_id).execute()
         return jsonify({'success': True})
     except Exception as e:
-        print(f'Error updating visitor request: {e}')
+        logger.error(f'Error updating visitor request: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -1041,7 +1135,7 @@ def api_visitor_dashboard_stats():
         }
         return jsonify(result)
     except Exception as e:
-        print(f'Error visitor dashboard stats: {e}')
+        logger.error(f'Error visitor dashboard stats: {e}')
         return jsonify({})
 
 
@@ -1054,10 +1148,25 @@ def me():
     user = session.get('user')
     if isinstance(user, str):
         # Legacy session from before RBAC
-        return jsonify({'user': user, 'role': 'admin'})
+        return jsonify({'user': user, 'role': 'admin', 'org_id': None})
     if isinstance(user, dict):
-        return jsonify({'user': user.get('email'), 'role': user.get('role', 'supervisor')})
-    return jsonify({'user': None, 'role': None})
+        return jsonify({'user': user.get('email'), 'role': user.get('role', 'supervisor'), 'org_id': user.get('org_id')})
+    return jsonify({'user': None, 'role': None, 'org_id': None})
+
+
+@app.route('/api/debug/ventures')
+@requires_role('admin')
+def api_debug_ventures():
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    try:
+        res = supabase.table('ventures').select('id, name, org_id').execute()
+        return jsonify({
+            'your_org_id': session['user'].get('org_id'),
+            'ventures': res.data or []
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/')
@@ -1117,9 +1226,18 @@ def api_cells():
             query = query.filter('data->>block', 'eq', block)
         if floor:
             query = query.filter('data->>floor', 'eq', str(floor))
-        res = query.execute()
+        # Paginate to overcome Supabase's default 1000-row limit
+        all_rows = []
+        page_size = 1000
+        offset = 0
+        while True:
+            res = query.range(offset, offset + page_size - 1).execute()
+            all_rows.extend(res.data)
+            if len(res.data) < page_size:
+                break
+            offset += page_size
         # Defensive sort: most recent updated_at wins if duplicates still exist pre-migration
-        sorted_rows = sorted(res.data, key=lambda r: (r.get('data') or {}).get('updated_at', ''), reverse=True)
+        sorted_rows = sorted(all_rows, key=lambda r: (r.get('data') or {}).get('updated_at', ''), reverse=True)
         data = {}
         for row in sorted_rows:
             merged = {**(row.get('data') or {})}
@@ -1127,7 +1245,7 @@ def api_cells():
             data[row['id']] = merged
         return jsonify(data)
     except Exception as e:
-        print(f'Error fetching cells: {e}')
+        logger.error(f'Error fetching cells: {e}')
         fallback = load_json_fallback('cells.json')
         return jsonify(fallback or {})
 
@@ -1147,9 +1265,9 @@ def api_cell(cell_id):
             merged = {**(row.get('data') or {})}
             merged['id'] = row['id']
             return jsonify(merged)
-        return jsonify({}), 404
+        return jsonify({})
     except Exception as e:
-        print(f'Error fetching cell {cell_id}: {e}')
+        logger.error(f'Error fetching cell {cell_id}: {e}')
         fallback = load_json_fallback('cells.json') or {}
         cell = fallback.get(cell_id, {})
         return jsonify(cell if cell else {})
@@ -1165,7 +1283,7 @@ def api_cell_post(cell_id):
     if color is not None and color not in ('red', 'yellow', 'blue', 'green', ''):
         return jsonify({'error': f'Invalid color value: {color}'}), 400
     venture_id = body.get('venture_id')
-    if venture_id:
+    if venture_id and session['user'].get('role') not in ('admin', 'manager'):
         allowed = _allowed_ventures(session['user'])
         if venture_id not in allowed:
             return jsonify({'error': 'Forbidden'}), 403
@@ -1182,8 +1300,8 @@ def api_cell_post(cell_id):
         }, on_conflict='id').execute()
         return jsonify({'success': True, 'previous_color': prev_color})
     except Exception as e:
-        print(f'Error saving cell {cell_id}: {e}')
-        return jsonify({'success': True, 'note': 'read-only local mode'})
+        logger.error(f'Error saving cell {cell_id}: {e}')
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/cells/batch', methods=['POST'])
@@ -1218,8 +1336,8 @@ def api_cells_batch():
         supabase.table('cell_data').upsert(rows, on_conflict='id').execute()
         return jsonify({'success': True, 'count': len(rows), 'downgraded': downgraded})
     except Exception as e:
-        print(f'Error in batch upsert: {e}')
-        return jsonify({'success': True, 'count': len(cells), 'note': 'read-only local mode'})
+        logger.error(f'Error in batch upsert: {e}')
+        return jsonify({'error': str(e)}), 500
 
 
 # ========================
@@ -1233,16 +1351,31 @@ def api_ventures():
         fallback = load_json_fallback('ventures.json')
         return jsonify(fallback or [])
     try:
-        res = supabase.table('ventures').select('*').execute()
-        all_ventures = res.data or []
         user = session['user']
+        org_id = user.get('org_id')
+        # Fetch ventures in this org PLUS legacy ventures with NULL org_id
+        # (created before org_id filtering was added).
+        res = supabase.table('ventures').select('*').or_(f'org_id.eq.{org_id},org_id.is.null').execute()
+        all_ventures = res.data or []
+
+        # Auto-fix: assign org_id to legacy ventures that have NULL org_id
+        # so they become properly scoped going forward.
+        null_org_ventures = [v for v in all_ventures if not v.get('org_id')]
+        if null_org_ventures:
+            for v in null_org_ventures:
+                try:
+                    supabase.table('ventures').update({'org_id': org_id}).eq('id', v['id']).execute()
+                except Exception:
+                    pass  # non-fatal — will retry on next fetch
+
         if user.get('role') in ('admin', 'manager'):
             return jsonify([row['data'] for row in all_ventures if row.get('data')])
         else:
             allowed = _allowed_ventures(user)
-            return jsonify([row['data'] for row in all_ventures if row.get('data') and row['id'] in allowed])
+            # Include legacy ventures (now auto-fixed) + ventures in allowed set
+            return jsonify([row['data'] for row in all_ventures if row.get('data') and (row['id'] in allowed or not row.get('org_id'))])
     except Exception as e:
-        print(f'Error fetching ventures: {e}')
+        logger.error(f'Error fetching ventures: {e}')
         fallback = load_json_fallback('ventures.json')
         return jsonify(fallback or [])
 
@@ -1273,15 +1406,18 @@ def api_ventures_post():
                 'hint': 'Use per-record POST /api/venture/<id> for edits, DELETE /api/venture/<id> for removal, or pass force=true for a full restore.'
             }), 409
 
+        org_id = session['user'].get('org_id')
         for v in body:
             supabase.table('ventures').upsert({
                 'id': v['id'],
+                'name': v.get('name'),
+                'org_id': org_id,
                 'data': v
             }, on_conflict='id').execute()
         return jsonify({'success': True})
     except Exception as e:
-        print(f'Error saving ventures: {e}')
-        return jsonify({'success': True, 'note': 'read-only local mode'})
+        logger.error(f'Error saving ventures: {e}')
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/venture/<venture_id>', methods=['POST'])
@@ -1302,8 +1438,8 @@ def api_venture_post(venture_id):
         }, on_conflict='id').execute()
         return jsonify({'success': True})
     except Exception as e:
-        print(f'Error saving venture {venture_id}: {e}')
-        return jsonify({'success': True, 'note': 'read-only local mode'})
+        logger.error(f'Error saving venture {venture_id}: {e}')
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/venture/<venture_id>', methods=['DELETE'])
@@ -1315,8 +1451,8 @@ def api_venture_delete(venture_id):
         supabase.table('ventures').delete().eq('id', venture_id).execute()
         return jsonify({'success': True})
     except Exception as e:
-        print(f'Error deleting venture {venture_id}: {e}')
-        return jsonify({'success': True, 'note': 'read-only local mode'})
+        logger.error(f'Error deleting venture {venture_id}: {e}')
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/ventures/apply-settings', methods=['POST'])
@@ -1353,7 +1489,8 @@ def api_ventures_apply_settings():
 
     try:
         if scope == 'all':
-            res = supabase.table('ventures').select('*').execute()
+            org_id = session['user'].get('org_id')
+            res = supabase.table('ventures').select('*').eq('org_id', org_id).execute()
             if not res.data:
                 return jsonify({'error': 'No ventures found'}), 404
             updated = 0
@@ -1390,7 +1527,7 @@ def api_ventures_apply_settings():
             supabase.table('ventures').update({'data': vdata}).eq('id', venture_id).execute()
             return jsonify({'success': True, 'updated': 1})
     except Exception as e:
-        print(f'Error applying settings: {e}')
+        logger.error(f'Error applying settings: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -1405,10 +1542,14 @@ def api_invoices():
         fallback = load_json_fallback('invoices.json')
         return jsonify(fallback or [])
     try:
-        res = supabase.table('invoices').select('*').execute()
+        venture_id = request.args.get('venture_id')
+        query = supabase.table('invoices').select('*')
+        if venture_id:
+            query = query.filter('data->>ventureId', 'eq', venture_id)
+        res = query.execute()
         return jsonify([row['data'] for row in res.data])
     except Exception as e:
-        print(f'Error fetching invoices: {e}')
+        logger.error(f'Error fetching invoices: {e}')
         fallback = load_json_fallback('invoices.json')
         return jsonify(fallback or [])
 
@@ -1426,8 +1567,8 @@ def api_invoice_post():
         }, on_conflict='id').execute()
         return jsonify({'success': True})
     except Exception as e:
-        print(f'Error saving invoice: {e}')
-        return jsonify({'success': True, 'note': 'read-only local mode'})
+        logger.error(f'Error saving invoice: {e}')
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/invoice/<inv_id>', methods=['DELETE'])
@@ -1439,8 +1580,8 @@ def api_invoice_delete(inv_id):
         supabase.table('invoices').delete().eq('id', inv_id).execute()
         return jsonify({'success': True})
     except Exception as e:
-        print(f'Error deleting invoice {inv_id}: {e}')
-        return jsonify({'success': True, 'note': 'read-only local mode'})
+        logger.error(f'Error deleting invoice {inv_id}: {e}')
+        return jsonify({'error': str(e)}), 500
 
 
 # ========================
@@ -1454,10 +1595,14 @@ def api_pos():
         fallback = load_json_fallback('pos.json')
         return jsonify(fallback or [])
     try:
-        res = supabase.table('purchase_orders').select('*').execute()
+        venture_id = request.args.get('venture_id')
+        query = supabase.table('purchase_orders').select('*')
+        if venture_id:
+            query = query.filter('data->>ventureId', 'eq', venture_id)
+        res = query.execute()
         return jsonify([row['data'] for row in res.data])
     except Exception as e:
-        print(f'Error fetching POs: {e}')
+        logger.error(f'Error fetching POs: {e}')
         fallback = load_json_fallback('pos.json')
         return jsonify(fallback or [])
 
@@ -1483,8 +1628,8 @@ def api_po_post():
         }, on_conflict='id').execute()
         return jsonify({'success': True})
     except Exception as e:
-        print(f'Error saving PO: {e}')
-        return jsonify({'success': True, 'note': 'read-only local mode'})
+        logger.error(f'Error saving PO: {e}')
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/po/<po_id>', methods=['DELETE'])
@@ -1496,8 +1641,8 @@ def api_po_delete(po_id):
         supabase.table('purchase_orders').delete().eq('id', po_id).execute()
         return jsonify({'success': True})
     except Exception as e:
-        print(f'Error deleting PO {po_id}: {e}')
-        return jsonify({'success': True, 'note': 'read-only local mode'})
+        logger.error(f'Error deleting PO {po_id}: {e}')
+        return jsonify({'error': str(e)}), 500
 
 
 # ========================
@@ -1514,7 +1659,7 @@ def api_vendors():
         res = supabase.table('vendors').select('*').execute()
         return jsonify([row['data'] for row in res.data])
     except Exception as e:
-        print(f'Error fetching vendors: {e}')
+        logger.error(f'Error fetching vendors: {e}')
         fallback = load_json_fallback('vendors.json')
         return jsonify(fallback or [])
 
@@ -1540,8 +1685,8 @@ def api_vendor_post():
         }, on_conflict='id').execute()
         return jsonify({'success': True})
     except Exception as e:
-        print(f'Error saving vendor: {e}')
-        return jsonify({'success': True, 'note': 'read-only local mode'})
+        logger.error(f'Error saving vendor: {e}')
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/vendor/<vendor_id>', methods=['DELETE'])
@@ -1553,8 +1698,8 @@ def api_vendor_delete(vendor_id):
         supabase.table('vendors').delete().eq('id', vendor_id).execute()
         return jsonify({'success': True})
     except Exception as e:
-        print(f'Error deleting vendor {vendor_id}: {e}')
-        return jsonify({'success': True, 'note': 'read-only local mode'})
+        logger.error(f'Error deleting vendor {vendor_id}: {e}')
+        return jsonify({'error': str(e)}), 500
 
 
 # ========================
@@ -1572,7 +1717,7 @@ def api_settings_get(key):
             return jsonify(res.data[0]['value'])
         return jsonify(None)
     except Exception as e:
-        print(f'Error fetching setting {key}: {e}')
+        logger.error(f'Error fetching setting {key}: {e}')
         return jsonify(None)
 
 
@@ -1589,8 +1734,8 @@ def api_settings_post(key):
         }, on_conflict='key').execute()
         return jsonify({'success': True})
     except Exception as e:
-        print(f'Error saving setting {key}: {e}')
-        return jsonify({'success': True, 'note': 'read-only local mode'})
+        logger.error(f'Error saving setting {key}: {e}')
+        return jsonify({'error': str(e)}), 500
 
 
 # ========================
@@ -1799,7 +1944,7 @@ def api_cells_reorder():
             }).eq('venture_id', venture_id).eq('name', work_item).execute()
         return jsonify({'success': True})
     except Exception as e:
-        print(f'Error reordering cells: {e}')
+        logger.error(f'Error reordering cells: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -1837,7 +1982,7 @@ def api_category_create():
         }).execute()
         return jsonify({'success': True, 'id': res.data[0]['id'] if res.data else None})
     except Exception as e:
-        print(f'Error creating category: {e}')
+        logger.error(f'Error creating category: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -1845,26 +1990,124 @@ def api_category_create():
 # Instant Reports API (Admin/Manager/Supervisor)
 # ========================
 
+def _slug_id(text):
+    """Python equivalent of JS slugId function.
+    JS: text.toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 30)"""
+    import re
+    s = text.lower()
+    s = re.sub(r'[^a-z0-9]', '_', s)
+    return s[:30]
+
+
+def _ensure_item_ids(items):
+    """Python equivalent of JS ensureItemIds function.
+    If items are strings, generate {id, label} objects matching frontend logic.
+    If items are already objects with 'id', return as-is."""
+    if not items:
+        return []
+    result = []
+    for i, item in enumerate(items):
+        if isinstance(item, dict) and item.get('id'):
+            result.append(item)
+        elif isinstance(item, str):
+            result.append({
+                'id': f'item_{_slug_id(item)}_{i}',
+                'label': item
+            })
+    return result
+
+
+def _ensure_work_categories(cats):
+    """Python equivalent of JS ensureWorkCategories function.
+    Generates item IDs matching frontend logic for string items."""
+    if not cats:
+        return {}
+    result = {}
+    for cat_label, items in cats.items():
+        if not items:
+            result[cat_label] = []
+            continue
+        if isinstance(items[0], dict) and items[0].get('id'):
+            result[cat_label] = items
+        else:
+            result[cat_label] = [
+                {'id': f'item_{_slug_id(cat_label)}_{_slug_id(label)}_{i}', 'label': label}
+                for i, label in enumerate(items)
+                if isinstance(label, str)
+            ]
+    return result
+
+
 def _parse_cell_id(cell_id, venture_id):
     """Parse a cell ID to extract block, floor, flat, work_item.
-    Cell ID format: ventureId_blockId_floorN_flatNum_itemId
+    Supports three formats:
+    1. Flat view: {venture}_{block}_floor{N}_{flatNum}_{itemId}
+       e.g., elite_A_floor1_101_item_brick_work_0
+    2. Work view: {venture}_{block}_floor{N}_{categorySlug}_{itemId}_{flatNum}
+       e.g., elite_A_floor1_civil_work_item_civil_work_brick_work_0_101
+    3. Super structure: {venture}_superstructure_{block}_{itemId}
+       e.g., elite_superstructure_A_item_pile_caps_5
     Returns dict with block, floor, flat, item_id or None if parsing fails."""
     import re
     prefix = venture_id + '_'
     if not cell_id.startswith(prefix):
-        # Try matching by data fields
         return None
     rest = cell_id[len(prefix):]
-    # Match: block_floorN_flatNum_itemId
-    m = re.match(r'^(.+)_floor(\d+)_(\d+)_(.+)$', rest)
-    if not m:
+
+    # Format 3: superstructure_{block}_{itemId}
+    if rest.startswith('superstructure_'):
+        ss_rest = rest[len('superstructure_'):]
+        m = re.match(r'^([^_]+)_(.+)$', ss_rest)
+        if m:
+            return {
+                'block': m.group(1),
+                'floor': None,
+                'flat': None,
+                'item_id': m.group(2)
+            }
         return None
-    return {
-        'block': m.group(1),
-        'floor': int(m.group(2)),
-        'flat': int(m.group(3)),
-        'item_id': m.group(4)
-    }
+
+    # Format 1: {block}_floor{N}_{flatNum}_{itemId}
+    # flatNum is typically 3 digits (e.g., 101, 102) or P-XXX (parking/common)
+    m = re.match(r'^(.+)_floor(\d+)_(\d{3}|P-\d{3})_(.+)$', rest)
+    if m:
+        flat_str = m.group(3)
+        flat_val = int(flat_str) if flat_str.isdigit() else flat_str
+        return {
+            'block': m.group(1),
+            'floor': int(m.group(2)),
+            'flat': flat_val,
+            'item_id': m.group(4)
+        }
+
+    # Format 2: {block}_floor{N}_{categorySlug}_{itemId}_{flatNum}
+    # itemId starts with 'item_' or a known prefix, flatNum is 3 digits or P-XXX at end
+    m = re.match(r'^(.+)_floor(\d+)_(.+?)_(item_.+)_(\d{3}|P-\d{3})$', rest)
+    if m:
+        flat_str = m.group(5)
+        flat_val = int(flat_str) if flat_str.isdigit() else flat_str
+        return {
+            'block': m.group(1),
+            'floor': int(m.group(2)),
+            'flat': flat_val,
+            'item_id': m.group(4),
+            'category_slug': m.group(3)
+        }
+
+    # Format 2 variant: non-item_ prefixed IDs (e.g., corridor_0, elevation_0)
+    m = re.match(r'^(.+)_floor(\d+)_(.+?)_([^_]+_\d+)_(\d{3}|P-\d{3})$', rest)
+    if m:
+        flat_str = m.group(5)
+        flat_val = int(flat_str) if flat_str.isdigit() else flat_str
+        return {
+            'block': m.group(1),
+            'floor': int(m.group(2)),
+            'flat': flat_val,
+            'item_id': m.group(4),
+            'category_slug': m.group(3)
+        }
+
+    return None
 
 
 @app.route('/api/reports/instant')
@@ -1888,27 +2131,45 @@ def api_instant_reports():
         venture_data = {}
         if vent_res.data:
             venture_data = vent_res.data[0].get('data') or {}
-        flat_view_items = venture_data.get('flat_view_items', [])
-        work_categories = venture_data.get('work_categories', {})
+        flat_view_items_raw = venture_data.get('flat_view_items', [])
+        work_categories_raw = venture_data.get('work_categories', {})
         blocks = venture_data.get('blocks', [])
 
-        # Build item_id -> category mapping
+        # Normalize items using same logic as frontend
+        flat_view_items = _ensure_item_ids(flat_view_items_raw)
+        work_categories = _ensure_work_categories(work_categories_raw)
+        super_structure_items = _ensure_item_ids(venture_data.get('super_structure_items', []))
+
+        # Build item_id -> category mapping and item_id -> label mapping
         item_to_category = {}
-        if work_categories:
-            for cat_label, items in work_categories.items():
-                for item in items:
-                    if isinstance(item, dict):
-                        item_to_category[item.get('id', '')] = cat_label
-                    elif isinstance(item, str):
-                        item_to_category[item] = cat_label
-        # Also map flat_view_items to "Flat View" category if not in work_categories
+        item_id_to_label = {}
+
+        # Map work_categories items
+        for cat_label, items in work_categories.items():
+            for item in items:
+                if isinstance(item, dict):
+                    iid = item.get('id', '')
+                    if iid:
+                        item_to_category[iid] = cat_label
+                        item_id_to_label[iid] = item.get('label', iid)
+
+        # Map flat_view_items to "Flat View" category if not already in work_categories
         for item in flat_view_items:
             if isinstance(item, dict):
                 iid = item.get('id', '')
                 if iid and iid not in item_to_category:
                     item_to_category[iid] = 'Flat View'
-            elif isinstance(item, str) and item not in item_to_category:
-                item_to_category[item] = 'Flat View'
+                if iid:
+                    item_id_to_label[iid] = item.get('label', iid)
+
+        # Map super_structure_items to "Super Structure" category
+        for item in super_structure_items:
+            if isinstance(item, dict):
+                iid = item.get('id', '')
+                if iid and iid not in item_to_category:
+                    item_to_category[iid] = 'Super Structure'
+                if iid:
+                    item_id_to_label[iid] = item.get('label', iid)
 
         # Fetch all cell_data and filter by venture
         cells_res = supabase.table('cell_data').select('*').execute()
@@ -1996,7 +2257,9 @@ def api_instant_reports():
             # Detail row
             detail_rows.append({
                 'block': block, 'floor': floor, 'flat': flat,
-                'work_item': item_id, 'category': cat,
+                'work_item': item_id_to_label.get(item_id, item_id),
+                'work_item_id': item_id,
+                'category': cat,
                 'color': color, 'updated_at': updated_at,
                 'remarks': d.get('remarks', ''),
                 'updated_by': d.get('updated_by', '')
@@ -2015,7 +2278,8 @@ def api_instant_reports():
         for item_id, stats in sorted(work_item_stats.items()):
             t = stats['total']
             work_item_breakdown.append({
-                'work_item': item_id,
+                'work_item': item_id_to_label.get(item_id, item_id),
+                'work_item_id': item_id,
                 'category': item_to_category.get(item_id, ''),
                 'total': t,
                 'completed': stats.get('green', 0),
@@ -2129,12 +2393,14 @@ def api_instant_reports():
                 'purchase_orders': round(total_po, 2)
             },
             'consumption': list(consumption.values()),
-            'blocks': floor_summary,  # Backward compat
-            'categories': [c for c in item_to_category.values() if c]
+            'blocks': [{'id': b.get('id', ''), 'name': b.get('name', b.get('id', ''))} for b in blocks],
+            'available_categories': sorted(set(item_to_category.values())),
+            'available_blocks': sorted(block_stats.keys()),
+            'item_labels': item_id_to_label
         }
         return jsonify(result)
     except Exception as e:
-        print(f'Error generating instant reports: {e}')
+        logger.error(f'Error generating instant reports: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -2196,7 +2462,7 @@ def _lender_compute_progress(venture_id):
         overall = round(total_weighted / total_cells, 1) if total_cells else 0
         return {'blocks': blocks, 'overall_pct': overall, 'total_cells': total_cells}
     except Exception as e:
-        print(f'Error computing lender report progress: {e}')
+        logger.error(f'Error computing lender report progress: {e}')
         return {'blocks': [], 'overall_pct': 0, 'total_cells': 0}
 
 
@@ -2218,14 +2484,14 @@ def _lender_compute_financials(venture_id):
             if status in ('paid', 'received', 'completed'):
                 collected += amt
     except Exception as e:
-        print(f'Error fetching invoices for lender report: {e}')
+        logger.error(f'Error fetching invoices for lender report: {e}')
     try:
         exp_res = supabase.table('expenditures').select('*').eq('venture_id', venture_id).execute()
         for exp in exp_res.data or []:
             d = exp.get('data') or {}
             utilized += float(d.get('amount', 0))
     except Exception as e:
-        print(f'Error fetching expenditures for lender report: {e}')
+        logger.error(f'Error fetching expenditures for lender report: {e}')
     return {
         'collected': round(collected, 2),
         'utilized': round(utilized, 2),
@@ -2266,7 +2532,7 @@ def _lender_latest_photos(venture_id):
                     }
         photos = [seen[k] for k in sorted(seen.keys()) if seen[k].get('src')]
     except Exception as e:
-        print(f'Error fetching lender report photos: {e}')
+        logger.error(f'Error fetching lender report photos: {e}')
     return photos
 
 
@@ -2314,7 +2580,7 @@ def api_lender_report(project_id):
                     except Exception:
                         pass
         except Exception as e:
-            print(f'Error fetching venture for lender report: {e}')
+            logger.error(f'Error fetching venture for lender report: {e}')
 
     progress = _lender_compute_progress(project_id)
     financials = _lender_compute_financials(project_id) if include_financials else None
@@ -2379,7 +2645,7 @@ def api_payroll_create():
         res = supabase.table('payroll').insert(row).execute()
         return jsonify({'success': True, 'id': res.data[0]['id'] if res.data else None})
     except Exception as e:
-        print(f'Error creating payroll: {e}')
+        logger.error(f'Error creating payroll: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -2399,7 +2665,7 @@ def api_payroll_release(payroll_id):
         # Surface the Postgres trigger's exception message directly
         if 'Cannot unlock payroll' in err_msg:
             return jsonify({'error': err_msg}), 400
-        print(f'Error releasing payroll {payroll_id}: {e}')
+        logger.error(f'Error releasing payroll {payroll_id}: {e}')
         return jsonify({'error': err_msg}), 500
 
 
@@ -2460,7 +2726,7 @@ def api_inventory_audit():
             })
         return jsonify(audit_rows)
     except Exception as e:
-        print(f'Error in inventory audit: {e}')
+        logger.error(f'Error in inventory audit: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -2488,7 +2754,7 @@ def api_expenditures():
             rows.append(data)
         return jsonify(rows)
     except Exception as e:
-        print(f'Error fetching expenditures: {e}')
+        logger.error(f'Error fetching expenditures: {e}')
         return jsonify([])
 
 
@@ -2520,7 +2786,7 @@ def api_expenditure_post():
         }).execute()
         return jsonify({'success': True, 'id': res.data[0]['id'] if res.data else None})
     except Exception as e:
-        print(f'Error creating expenditure: {e}')
+        logger.error(f'Error creating expenditure: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -2533,7 +2799,301 @@ def api_expenditure_delete(exp_id):
         supabase.table('expenditures').delete().eq('id', exp_id).execute()
         return jsonify({'success': True})
     except Exception as e:
-        print(f'Error deleting expenditure: {e}')
+        logger.error(f'Error deleting expenditure: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+# ========================
+# Contractor Payments API
+# ========================
+
+def _contractor_org_filter():
+    """Return org_id for the current session user."""
+    user = session.get('user') or {}
+    return user.get('org_id')
+
+
+def _get_org_contract_or_403(contract_id):
+    """Fetch a contract row, scoped to the current user's org.
+    Returns the contract dict or None if not found / wrong org."""
+    org_id = _contractor_org_filter()
+    if not org_id:
+        return None
+    try:
+        res = supabase.table('contractor_contracts').select('*').eq('id', contract_id).eq('org_id', org_id).execute()
+        if not res.data:
+            return None
+        return res.data[0]
+    except Exception:
+        return None
+
+
+def _get_org_payment_or_403(payment_id):
+    """Fetch a payment row, scoped to the current user's org via the contract.
+    Returns the payment dict or None if not found / wrong org."""
+    org_id = _contractor_org_filter()
+    if not org_id:
+        return None
+    try:
+        res = supabase.table('contractor_payments').select('*, contract:contractor_contracts(org_id)').eq('id', payment_id).execute()
+        if not res.data:
+            return None
+        p = res.data[0]
+        contract = p.get('contract') or {}
+        if isinstance(contract, list):
+            contract = contract[0] if contract else {}
+        if contract.get('org_id') != org_id:
+            return None
+        return p
+    except Exception:
+        return None
+
+
+def _map_pg_check_error(e):
+    """Map a Postgres CHECK-violation to a plain user-facing message."""
+    msg = str(e)
+    if 'completed_units' in msg and 'total_units' in msg:
+        return 'Completed units cannot exceed total units.'
+    if 'amount' in msg and '0' in msg:
+        return 'Payment amount must be greater than 0.'
+    if 'total_amount' in msg and '0' in msg:
+        return 'Total amount must be greater than 0.'
+    if 'total_units' in msg and '0' in msg:
+        return 'Total units must be greater than 0.'
+    if 'method' in msg:
+        return 'Invalid payment method.'
+    if 'status' in msg:
+        return 'Invalid contract status.'
+    return None
+
+
+@app.route('/api/contractor-contracts')
+@requires_role('admin')
+def api_contractor_contracts_list():
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    org_id = _contractor_org_filter()
+    if not org_id:
+        return jsonify([]), 200
+    try:
+        res = supabase.table('contractor_contracts').select('*').eq('org_id', org_id).order('created_at', desc=True).execute()
+        contracts = res.data or []
+        # Fetch all non-deleted payments for these contracts in one query
+        contract_ids = [c['id'] for c in contracts]
+        payments_by_contract = {}
+        if contract_ids:
+            pay_res = supabase.table('contractor_payments').select('contract_id,amount').eq('is_deleted', False).in_('contract_id', contract_ids).execute()
+            for p in (pay_res.data or []):
+                cid = p['contract_id']
+                payments_by_contract.setdefault(cid, []).append(float(p['amount']))
+        result = []
+        for c in contracts:
+            total_amount = float(c['total_amount'])
+            total_units = c['total_units']
+            completed_units = c['completed_units']
+            pays = payments_by_contract.get(c['id'], [])
+            total_paid = sum(pays)
+            outstanding = round(total_amount - total_paid, 2)
+            per_unit_rate = round(total_amount / total_units, 2) if total_units else 0
+            remaining_units = total_units - completed_units
+            work_pct = round((completed_units / total_units) * 100, 1) if total_units else 0
+            pay_pct = round((total_paid / total_amount) * 100, 1) if total_amount else 0
+            risk_delta = round(pay_pct - work_pct, 1)
+            c['total_paid'] = total_paid
+            c['outstanding_amount'] = outstanding
+            c['per_unit_rate'] = per_unit_rate
+            c['remaining_units'] = remaining_units
+            c['work_progress'] = work_pct
+            c['payment_progress'] = pay_pct
+            c['risk_delta'] = risk_delta
+            c['overpaid_amount'] = abs(outstanding) if outstanding < 0 else 0
+            result.append(c)
+        return jsonify(result)
+    except Exception as e:
+        logger.error(f'Error fetching contractor contracts: {e}')
+        if 'relation' in str(e) and 'does not exist' in str(e):
+            return jsonify({'error': 'Contractor payments tables not found. Please run migration 016_contractor_payments.sql in Supabase.'}), 500
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/contractor-contracts', methods=['POST'])
+@requires_role('admin')
+def api_contractor_contracts_create():
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    body = request.get_json() or {}
+    required = ['person_name', 'work_description', 'total_amount', 'total_units']
+    for field in required:
+        if not body.get(field):
+            return jsonify({'error': f'{field} is required'}), 400
+    org_id = _contractor_org_filter()
+    if not org_id:
+        return jsonify({'error': 'No org_id in session'}), 403
+    venture_id = body.get('venture_id')
+    if venture_id:
+        allowed = _allowed_ventures(session['user'])
+        if venture_id not in allowed:
+            return jsonify({'error': 'Forbidden: venture not in your org'}), 403
+    try:
+        completed_units = int(body.get('completed_units', 0))
+        total_units = int(body['total_units'])
+        if completed_units > total_units:
+            return jsonify({'error': 'Completed units cannot exceed total units.'}), 400
+        user = session.get('user')
+        created_by = user.get('email') if isinstance(user, dict) else str(user)
+        res = supabase.table('contractor_contracts').insert({
+            'org_id': org_id,
+            'venture_id': venture_id or None,
+            'person_name': body['person_name'].strip(),
+            'work_description': body['work_description'].strip(),
+            'total_amount': float(body['total_amount']),
+            'total_units': total_units,
+            'completed_units': completed_units,
+            'unit_label': body.get('unit_label', 'units').strip() or 'units',
+            'status': body.get('status', 'active'),
+            'notes': body.get('notes', ''),
+            'created_by': created_by,
+        }).execute()
+        return jsonify({'success': True, 'id': res.data[0]['id'] if res.data else None})
+    except Exception as e:
+        logger.error(f'Error creating contractor contract: {e}')
+        friendly = _map_pg_check_error(e)
+        if friendly:
+            return jsonify({'error': friendly}), 400
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/contractor-contracts/<contract_id>', methods=['PUT'])
+@requires_role('admin')
+def api_contractor_contracts_update(contract_id):
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    contract = _get_org_contract_or_403(contract_id)
+    if not contract:
+        return jsonify({'error': 'Forbidden'}), 403
+    body = request.get_json() or {}
+    allowed_fields = {}
+    for k in ('completed_units', 'status', 'notes', 'unit_label', 'person_name', 'work_description', 'venture_id'):
+        if k in body:
+            allowed_fields[k] = body[k]
+    if not allowed_fields:
+        return jsonify({'error': 'Nothing to update'}), 400
+    if 'venture_id' in allowed_fields and allowed_fields['venture_id']:
+        allowed_vents = _allowed_ventures(session['user'])
+        if allowed_fields['venture_id'] not in allowed_vents:
+            return jsonify({'error': 'Forbidden: venture not in your org'}), 403
+    if 'completed_units' in allowed_fields:
+        total_units = contract['total_units']
+        if int(allowed_fields['completed_units']) > total_units:
+            return jsonify({'error': 'Completed units cannot exceed total units.'}), 400
+    try:
+        user = session.get('user')
+        allowed_fields['updated_by'] = user.get('email') if isinstance(user, dict) else str(user)
+        supabase.table('contractor_contracts').update(allowed_fields).eq('id', contract_id).execute()
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f'Error updating contractor contract: {e}')
+        friendly = _map_pg_check_error(e)
+        if friendly:
+            return jsonify({'error': friendly}), 400
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/contractor-contracts/<contract_id>/cancel', methods=['POST'])
+@requires_role('admin')
+def api_contractor_contracts_cancel(contract_id):
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    contract = _get_org_contract_or_403(contract_id)
+    if not contract:
+        return jsonify({'error': 'Forbidden'}), 403
+    try:
+        user = session.get('user')
+        supabase.table('contractor_contracts').update({
+            'status': 'cancelled',
+            'updated_by': user.get('email') if isinstance(user, dict) else str(user),
+        }).eq('id', contract_id).execute()
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f'Error cancelling contractor contract: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/contractor-contracts/<contract_id>/payments')
+@requires_role('admin')
+def api_contractor_payments_list(contract_id):
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    contract = _get_org_contract_or_403(contract_id)
+    if not contract:
+        return jsonify({'error': 'Forbidden'}), 403
+    try:
+        res = supabase.table('contractor_payments').select('*').eq('contract_id', contract_id).eq('is_deleted', False).order('payment_date', desc=True).execute()
+        return jsonify(res.data or [])
+    except Exception as e:
+        logger.error(f'Error fetching contractor payments: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/contractor-contracts/<contract_id>/payments', methods=['POST'])
+@requires_role('admin')
+def api_contractor_payments_create(contract_id):
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    contract = _get_org_contract_or_403(contract_id)
+    if not contract:
+        return jsonify({'error': 'Forbidden'}), 403
+    if contract.get('status') == 'cancelled':
+        return jsonify({'error': 'Cannot record payments on a cancelled contract.'}), 400
+    body = request.get_json() or {}
+    if not body.get('amount') or float(body['amount']) <= 0:
+        return jsonify({'error': 'Payment amount must be greater than 0.'}), 400
+    if not body.get('payment_date'):
+        return jsonify({'error': 'payment_date is required'}), 400
+    try:
+        user = session.get('user')
+        recorded_by = user.get('email') if isinstance(user, dict) else str(user)
+        res = supabase.table('contractor_payments').insert({
+            'contract_id': contract_id,
+            'amount': float(body['amount']),
+            'payment_date': body['payment_date'],
+            'method': body.get('method', 'cash'),
+            'reference': body.get('reference', ''),
+            'notes': body.get('notes', ''),
+            'recorded_by': recorded_by,
+        }).execute()
+        return jsonify({'success': True, 'id': res.data[0]['id'] if res.data else None})
+    except Exception as e:
+        logger.error(f'Error creating contractor payment: {e}')
+        friendly = _map_pg_check_error(e)
+        if friendly:
+            return jsonify({'error': friendly}), 400
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/contractor-payments/<payment_id>/delete', methods=['POST'])
+@requires_role('admin')
+def api_contractor_payments_soft_delete(payment_id):
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    body = request.get_json() or {}
+    if not body.get('deletion_reason') or not body['deletion_reason'].strip():
+        return jsonify({'error': 'deletion_reason is required to delete a payment'}), 400
+    try:
+        payment = _get_org_payment_or_403(payment_id)
+        if not payment:
+            return jsonify({'error': 'Payment not found'}), 404
+        user = session.get('user')
+        deleted_by = user.get('email') if isinstance(user, dict) else str(user)
+        supabase.table('contractor_payments').update({
+            'is_deleted': True,
+            'deletion_reason': body['deletion_reason'].strip(),
+            'deleted_by': deleted_by,
+            'deleted_at': now_ist().isoformat(),
+        }).eq('id', payment_id).execute()
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f'Error soft-deleting contractor payment: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -2610,7 +3170,7 @@ def api_materials_leakage_check():
             })
         return jsonify(rows)
     except Exception as e:
-        print(f'Error in material leakage check: {e}')
+        logger.error(f'Error in material leakage check: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -2644,7 +3204,7 @@ def api_budgets():
             res = supabase.table('budgets').insert(row).execute()
             return jsonify({'success': True, 'id': res.data[0]['id'] if res.data else None})
         except Exception as e:
-            print(f'Error saving budget: {e}')
+            logger.error(f'Error saving budget: {e}')
             return jsonify({'error': str(e)}), 500
 
 
@@ -2729,7 +3289,7 @@ def api_interior_design_generate():
         }).execute()
         design_id = res.data[0]['id']
     except Exception as e:
-        print(f'Error creating interior design record: {e}')
+        logger.error(f'Error creating interior design record: {e}')
         return jsonify({'error': 'Failed to create design record'}), 500
 
     def generate_in_background(did, img_url, rt, st, bt, sqft):
@@ -2771,7 +3331,7 @@ def api_interior_design_generate():
                 'error_message': error_message
             }).eq('id', did).execute()
         except Exception as e:
-            print(f'Background generation error for {did}: {e}')
+            logger.info(f'Background generation error for {did}: {e}')
             try:
                 supabase.table('interior_designs').update({
                     'status': 'failed',
@@ -2812,7 +3372,7 @@ def api_interior_design_status(design_id):
             'created_at': row.get('created_at')
         })
     except Exception as e:
-        print(f'Error fetching design status: {e}')
+        logger.error(f'Error fetching design status: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -2825,7 +3385,7 @@ def api_interior_design_history():
         res = supabase.table('interior_designs').select('*').order('created_at', desc=True).limit(100).execute()
         return jsonify(res.data or [])
     except Exception as e:
-        print(f'Error fetching design history: {e}')
+        logger.error(f'Error fetching design history: {e}')
         return jsonify([])
 
 
@@ -2838,7 +3398,7 @@ def api_interior_design_delete(design_id):
         supabase.table('interior_designs').delete().eq('id', design_id).execute()
         return jsonify({'success': True})
     except Exception as e:
-        print(f'Error deleting interior design: {e}')
+        logger.error(f'Error deleting interior design: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -2859,7 +3419,7 @@ def api_marketplace_materials():
         res = q.order('category', desc=False).order('name', desc=False).execute()
         return jsonify(res.data or [])
     except Exception as e:
-        print(f'Error fetching marketplace materials: {e}')
+        logger.error(f'Error fetching marketplace materials: {e}')
         return jsonify([])
 
 
@@ -2895,7 +3455,7 @@ def api_marketplace_suppliers(material_id):
         ))
         return jsonify(rows[:5])
     except Exception as e:
-        print(f'Error fetching marketplace suppliers: {e}')
+        logger.error(f'Error fetching marketplace suppliers: {e}')
         return jsonify([])
 
 
@@ -2924,7 +3484,7 @@ def api_marketplace_material_post():
         res = supabase.table('marketplace_materials').insert(row).execute()
         return jsonify({'success': True, 'id': res.data[0]['id'] if res.data else None})
     except Exception as e:
-        print(f'Error saving marketplace material: {e}')
+        logger.error(f'Error saving marketplace material: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -2959,7 +3519,7 @@ def api_marketplace_supplier_post():
         res = supabase.table('marketplace_suppliers').insert(row).execute()
         return jsonify({'success': True, 'id': res.data[0]['id'] if res.data else None})
     except Exception as e:
-        print(f'Error saving marketplace supplier: {e}')
+        logger.error(f'Error saving marketplace supplier: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -2973,7 +3533,7 @@ def api_marketplace_material_delete(material_id):
         supabase.table('marketplace_materials').delete().eq('id', material_id).execute()
         return jsonify({'success': True})
     except Exception as e:
-        print(f'Error deleting marketplace material: {e}')
+        logger.error(f'Error deleting marketplace material: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -2986,7 +3546,7 @@ def api_marketplace_supplier_delete(supplier_id):
         supabase.table('marketplace_suppliers').delete().eq('id', supplier_id).execute()
         return jsonify({'success': True})
     except Exception as e:
-        print(f'Error deleting marketplace supplier: {e}')
+        logger.error(f'Error deleting marketplace supplier: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -2999,7 +3559,7 @@ def api_marketplace_seed():
         run_marketplace_seed()
         return jsonify({'success': True})
     except Exception as e:
-        print(f'Error seeding marketplace: {e}')
+        logger.error(f'Error seeding marketplace: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -3064,7 +3624,7 @@ def sync_completed_flats_to_flats_table(venture_id=None, block=None, floor=None)
 
         return {'synced': len(updated), 'flats': updated}
     except Exception as e:
-        print(f'Error syncing completed flats: {e}')
+        logger.error(f'Error syncing completed flats: {e}')
         return {'error': str(e)}
 
 
@@ -3093,7 +3653,7 @@ def api_rwa_flats():
         res = supabase.table('flats').select('*').order('block', desc=False).order('floor', desc=False).order('flat_number', desc=False).execute()
         return jsonify(res.data or [])
     except Exception as e:
-        print(f'Error fetching flats: {e}')
+        logger.error(f'Error fetching flats: {e}')
         return jsonify([]), 500
 
 
@@ -3106,7 +3666,7 @@ def api_rwa_emergency_contacts():
         res = supabase.table('emergency_contacts').select('*').eq('active', True).order('label', desc=False).execute()
         return jsonify(res.data or [])
     except Exception as e:
-        print(f'Error fetching emergency contacts: {e}')
+        logger.error(f'Error fetching emergency contacts: {e}')
         return jsonify([]), 500
 
 
@@ -3164,7 +3724,7 @@ def api_rwa_delivery_create():
         data = res.data[0] if res.data else None
         return jsonify({'success': True, 'id': data['id'] if data else None, 'qr_code': data.get('qr_code') if data else None})
     except Exception as e:
-        print(f'Error creating delivery: {e}')
+        logger.error(f'Error creating delivery: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -3195,7 +3755,7 @@ def api_rwa_delivery_patch(delivery_id):
         supabase.table('deliveries').update(allowed).eq('id', delivery_id).execute()
         return jsonify({'success': True})
     except Exception as e:
-        print(f'Error updating delivery: {e}')
+        logger.error(f'Error updating delivery: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -3226,7 +3786,7 @@ def api_rwa_deliveries():
             })
         return jsonify(rows)
     except Exception as e:
-        print(f'Error fetching deliveries: {e}')
+        logger.error(f'Error fetching deliveries: {e}')
         return jsonify([]), 500
 
 
@@ -3276,7 +3836,7 @@ def api_rwa_delivery_qr(delivery_id):
         from flask import send_file as _send_file
         return _send_file(buf, mimetype='image/png')
     except Exception as e:
-        print(f'Error generating delivery QR: {e}')
+        logger.error(f'Error generating delivery QR: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -3361,7 +3921,7 @@ def api_rwa_delivery_scan():
             'expires_at': (now_ist() + timedelta(minutes=20)).isoformat(),
         })
     except Exception as e:
-        print(f'Error scanning delivery QR: {e}')
+        logger.error(f'Error scanning delivery QR: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -3392,7 +3952,7 @@ def api_rwa_delivery_alerts():
             })
         return jsonify(rows)
     except Exception as e:
-        print(f'Error fetching delivery alerts: {e}')
+        logger.error(f'Error fetching delivery alerts: {e}')
         return jsonify([]), 500
 
 
@@ -3414,7 +3974,7 @@ def api_rwa_delivery_exit(delivery_id):
         }).eq('id', delivery_id).execute()
         return jsonify({'success': True})
     except Exception as e:
-        print(f'Error marking delivery exit: {e}')
+        logger.error(f'Error marking delivery exit: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -3430,7 +3990,7 @@ def api_rwa_daily_help():
             res = supabase.table('daily_help').select('*').eq('active', True).order('name').execute()
             return jsonify(res.data or [])
         except Exception as e:
-            print(f'Error fetching daily help: {e}')
+            logger.error(f'Error fetching daily help: {e}')
             return jsonify([]), 500
     else:
         body = request.get_json() or {}
@@ -3446,7 +4006,7 @@ def api_rwa_daily_help():
             res = supabase.table('daily_help').insert(row).execute()
             return jsonify({'success': True, 'id': res.data[0]['id'] if res.data else None})
         except Exception as e:
-            print(f'Error creating daily help: {e}')
+            logger.error(f'Error creating daily help: {e}')
             return jsonify({'error': str(e)}), 500
 
 
@@ -3467,7 +4027,7 @@ def api_rwa_daily_help_patch(help_id):
             supabase.table('daily_help').update(allowed).eq('id', help_id).execute()
             return jsonify({'success': True})
     except Exception as e:
-        print(f'Error updating daily help: {e}')
+        logger.error(f'Error updating daily help: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -3482,7 +4042,7 @@ def api_rwa_daily_help_attendance(help_id):
                 'daily_help_id', help_id).order('check_in', desc=True).limit(50).execute()
             return jsonify(res.data or [])
         except Exception as e:
-            print(f'Error fetching attendance: {e}')
+            logger.error(f'Error fetching attendance: {e}')
             return jsonify([]), 500
     else:
         body = request.get_json() or {}
@@ -3512,7 +4072,7 @@ def api_rwa_daily_help_attendance(help_id):
                 return jsonify({'success': True})
             return jsonify({'error': 'Invalid action'}), 400
         except Exception as e:
-            print(f'Error recording attendance: {e}')
+            logger.error(f'Error recording attendance: {e}')
             return jsonify({'error': str(e)}), 500
 
 
@@ -3541,7 +4101,7 @@ def api_rwa_vehicles():
                 })
             return jsonify(rows)
         except Exception as e:
-            print(f'Error fetching vehicles: {e}')
+            logger.error(f'Error fetching vehicles: {e}')
             return jsonify([]), 500
     else:
         if role != 'resident':
@@ -3560,7 +4120,7 @@ def api_rwa_vehicles():
         except Exception as e:
             if 'duplicate' in str(e).lower() or 'unique' in str(e).lower():
                 return jsonify({'error': 'Vehicle number already registered'}), 409
-            print(f'Error adding vehicle: {e}')
+            logger.error(f'Error adding vehicle: {e}')
             return jsonify({'error': str(e)}), 500
 
 
@@ -3602,7 +4162,7 @@ def api_rwa_vehicle_search():
             })
         return jsonify(results)
     except Exception as e:
-        print(f'Error searching vehicles: {e}')
+        logger.error(f'Error searching vehicles: {e}')
         return jsonify([]), 500
 
 
@@ -3633,7 +4193,7 @@ def api_rwa_kids_checkout():
                 })
             return jsonify(rows)
         except Exception as e:
-            print(f'Error fetching kids checkout: {e}')
+            logger.error(f'Error fetching kids checkout: {e}')
             return jsonify([]), 500
     else:
         body = request.get_json() or {}
@@ -3656,7 +4216,7 @@ def api_rwa_kids_checkout():
                 send_otp(mobile, code)
             return jsonify({'success': True, 'id': kid_id, 'otp': code})
         except Exception as e:
-            print(f'Error creating kids checkout: {e}')
+            logger.error(f'Error creating kids checkout: {e}')
             return jsonify({'error': str(e)}), 500
 
 
@@ -3686,7 +4246,7 @@ def api_rwa_kids_checkout_verify(kid_id):
         }).eq('id', kid_id).execute()
         return jsonify({'success': True})
     except Exception as e:
-        print(f'Error verifying kids checkout: {e}')
+        logger.error(f'Error verifying kids checkout: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -3714,7 +4274,7 @@ def api_rwa_directory():
             rows.append(row)
         return jsonify(rows)
     except Exception as e:
-        print(f'Error fetching directory: {e}')
+        logger.error(f'Error fetching directory: {e}')
         return jsonify([]), 500
 
 
@@ -3733,7 +4293,7 @@ def api_rwa_directory_opt_in():
         }).eq('id', user['id']).execute()
         return jsonify({'success': True})
     except Exception as e:
-        print(f'Error updating directory opt-in: {e}')
+        logger.error(f'Error updating directory opt-in: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -3767,7 +4327,7 @@ def api_rwa_pre_approve():
         visitor_id = res.data[0]['id'] if res.data else None
         return jsonify({'success': True, 'id': visitor_id})
     except Exception as e:
-        print(f'Error pre-approving visitor: {e}')
+        logger.error(f'Error pre-approving visitor: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -3815,7 +4375,7 @@ def api_rwa_visitor_pass_qr(visitor_id):
         from flask import send_file as _send_file
         return _send_file(buf, mimetype='image/png')
     except Exception as e:
-        print(f'Error generating visitor QR: {e}')
+        logger.error(f'Error generating visitor QR: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -3884,7 +4444,7 @@ def api_rwa_visitor_pass_scan():
             'visitor_count': vr.get('visitor_count', 1),
         })
     except Exception as e:
-        print(f'Error scanning visitor pass: {e}')
+        logger.error(f'Error scanning visitor pass: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -3915,7 +4475,7 @@ def api_rwa_pre_approved_passes():
             })
         return jsonify(rows)
     except Exception as e:
-        print(f'Error fetching pre-approved passes: {e}')
+        logger.error(f'Error fetching pre-approved passes: {e}')
         return jsonify([]), 500
 
 
@@ -3951,7 +4511,7 @@ def api_rwa_complaints():
                 })
             return jsonify(rows)
         except Exception as e:
-            print(f'Error fetching complaints: {e}')
+            logger.error(f'Error fetching complaints: {e}')
             return jsonify([]), 500
     else:
         body = request.get_json() or {}
@@ -3969,7 +4529,7 @@ def api_rwa_complaints():
             res = supabase.table('complaints').insert(row).execute()
             return jsonify({'success': True, 'id': res.data[0]['id'] if res.data else None})
         except Exception as e:
-            print(f'Error creating complaint: {e}')
+            logger.error(f'Error creating complaint: {e}')
             return jsonify({'error': str(e)}), 500
 
 
@@ -3991,7 +4551,7 @@ def api_rwa_complaints_patch(complaint_id):
         supabase.table('complaints').update(allowed).eq('id', complaint_id).execute()
         return jsonify({'success': True})
     except Exception as e:
-        print(f'Error updating complaint: {e}')
+        logger.error(f'Error updating complaint: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -4007,7 +4567,7 @@ def api_rwa_amenities():
             res = supabase.table('amenities').select('*').eq('active', True).order('name').execute()
             return jsonify(res.data or [])
         except Exception as e:
-            print(f'Error fetching amenities: {e}')
+            logger.error(f'Error fetching amenities: {e}')
             return jsonify([]), 500
     elif request.method == 'DELETE':
         user, role = _get_rwa_session_user()
@@ -4064,7 +4624,7 @@ def api_rwa_amenity_bookings():
                 })
             return jsonify(rows)
         except Exception as e:
-            print(f'Error fetching bookings: {e}')
+            logger.error(f'Error fetching bookings: {e}')
             return jsonify([]), 500
     else:
         if role != 'resident':
@@ -4085,7 +4645,7 @@ def api_rwa_amenity_bookings():
             err = str(e).lower()
             if 'duplicate' in err or 'unique' in err or 'violates' in err:
                 return jsonify({'error': 'Slot already booked for this date'}), 409
-            print(f'Error booking amenity: {e}')
+            logger.error(f'Error booking amenity: {e}')
             return jsonify({'error': str(e)}), 500
 
 
@@ -4116,7 +4676,7 @@ def api_rwa_notices():
                 rows = filtered
             return jsonify(rows)
         except Exception as e:
-            print(f'Error fetching notices: {e}')
+            logger.error(f'Error fetching notices: {e}')
             return jsonify([]), 500
     else:
         user, role = _get_rwa_session_user()
@@ -4137,7 +4697,7 @@ def api_rwa_notices():
             res = supabase.table('notices').insert(row).execute()
             return jsonify({'success': True, 'id': res.data[0]['id'] if res.data else None})
         except Exception as e:
-            print(f'Error creating notice: {e}')
+            logger.error(f'Error creating notice: {e}')
             return jsonify({'error': str(e)}), 500
 
 
@@ -4157,7 +4717,7 @@ def api_rwa_home_planner():
                 'resident_id', user['id']).order('done').order('due_date').execute()
             return jsonify(res.data or [])
         except Exception as e:
-            print(f'Error fetching planner: {e}')
+            logger.error(f'Error fetching planner: {e}')
             return jsonify([]), 500
     elif request.method == 'POST':
         body = request.get_json() or {}
@@ -4207,7 +4767,7 @@ def api_rwa_parking():
                 })
             return jsonify(rows)
         except Exception as e:
-            print(f'Error fetching parking: {e}')
+            logger.error(f'Error fetching parking: {e}')
             return jsonify([]), 500
     else:
         user, role = _get_rwa_session_user()
@@ -4270,7 +4830,7 @@ def api_rwa_sos_create():
         }).execute()
         return jsonify({'success': True, 'id': res.data[0]['id'] if res.data else None})
     except Exception as e:
-        print(f'Error creating SOS: {e}')
+        logger.error(f'Error creating SOS: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -4293,7 +4853,7 @@ def api_rwa_sos_active():
             })
         return jsonify(rows)
     except Exception as e:
-        print(f'Error fetching active SOS: {e}')
+        logger.error(f'Error fetching active SOS: {e}')
         return jsonify([]), 500
 
 
@@ -4314,7 +4874,7 @@ def api_rwa_sos_acknowledge(sos_id):
         }).eq('id', sos_id).execute()
         return jsonify({'success': True})
     except Exception as e:
-        print(f'Error acknowledging SOS: {e}')
+        logger.error(f'Error acknowledging SOS: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -4334,7 +4894,7 @@ def api_rwa_intercom():
             res = q.execute()
             return jsonify(res.data or [])
         except Exception as e:
-            print(f'Error fetching intercom calls: {e}')
+            logger.error(f'Error fetching intercom calls: {e}')
             return jsonify([]), 500
     else:
         body = request.get_json() or {}
@@ -4351,7 +4911,7 @@ def api_rwa_intercom():
             res = supabase.table('intercom_calls').insert(row).execute()
             return jsonify({'success': True, 'id': res.data[0]['id'] if res.data else None})
         except Exception as e:
-            print(f'Error creating intercom call: {e}')
+            logger.error(f'Error creating intercom call: {e}')
             return jsonify({'error': str(e)}), 500
 
 
@@ -4386,7 +4946,7 @@ def api_rwa_patrol_checkpoints():
             res = supabase.table('patrol_checkpoints').select('*').eq('active', True).order('name').execute()
             return jsonify(res.data or [])
         except Exception as e:
-            print(f'Error fetching checkpoints: {e}')
+            logger.error(f'Error fetching checkpoints: {e}')
             return jsonify([]), 500
     else:
         user, role = _get_rwa_session_user()
@@ -4426,7 +4986,7 @@ def api_rwa_patrol_log():
                 })
             return jsonify(rows)
         except Exception as e:
-            print(f'Error fetching patrol logs: {e}')
+            logger.error(f'Error fetching patrol logs: {e}')
             return jsonify([]), 500
     else:
         user, role = _get_rwa_session_user()
@@ -4443,7 +5003,7 @@ def api_rwa_patrol_log():
             }).execute()
             return jsonify({'success': True, 'id': res.data[0]['id'] if res.data else None})
         except Exception as e:
-            print(f'Error logging patrol: {e}')
+            logger.error(f'Error logging patrol: {e}')
             return jsonify({'error': str(e)}), 500
 
 
@@ -4483,7 +5043,7 @@ def api_rwa_patrol_checkpoint_qr(cp_id):
         from flask import send_file as _send_file
         return _send_file(buf, mimetype='image/png')
     except Exception as e:
-        print(f'Error generating patrol QR: {e}')
+        logger.error(f'Error generating patrol QR: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -4535,7 +5095,7 @@ def api_rwa_patrol_scan():
             'log_id': log_res.data[0]['id'] if log_res.data else None,
         })
     except Exception as e:
-        print(f'Error scanning patrol QR: {e}')
+        logger.error(f'Error scanning patrol QR: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -4567,7 +5127,7 @@ def api_rwa_invoices():
                 })
             return jsonify(rows)
         except Exception as e:
-            print(f'Error fetching RWA invoices: {e}')
+            logger.error(f'Error fetching RWA invoices: {e}')
             return jsonify([]), 500
     else:
         if role not in ('admin', 'manager'):
@@ -4592,7 +5152,7 @@ def api_rwa_invoices():
             res = supabase.table('rwa_invoices').insert(row).execute()
             return jsonify({'success': True, 'id': res.data[0]['id'] if res.data else None, 'invoice_number': invoice_number})
         except Exception as e:
-            print(f'Error creating invoice: {e}')
+            logger.error(f'Error creating invoice: {e}')
             return jsonify({'error': str(e)}), 500
 
 
@@ -4641,7 +5201,7 @@ def api_rwa_payments():
                 })
             return jsonify(rows)
         except Exception as e:
-            print(f'Error fetching payments: {e}')
+            logger.error(f'Error fetching payments: {e}')
             return jsonify([]), 500
     else:
         body = request.get_json() or {}
@@ -4663,7 +5223,7 @@ def api_rwa_payments():
                 supabase.table('rwa_invoices').update({'status': 'paid'}).eq('id', body['invoice_id']).execute()
             return jsonify({'success': True, 'id': res.data[0]['id'] if res.data else None})
         except Exception as e:
-            print(f'Error recording payment: {e}')
+            logger.error(f'Error recording payment: {e}')
             return jsonify({'error': str(e)}), 500
 
 
@@ -4701,7 +5261,7 @@ def api_rwa_razorpay_create_order():
             'note': 'Razorpay integration pending — set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET env vars'
         })
     except Exception as e:
-        print(f'Error creating Razorpay order: {e}')
+        logger.error(f'Error creating Razorpay order: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -4718,7 +5278,7 @@ def api_rwa_vendor_ledger():
             res = supabase.table('rwa_vendor_ledger').select('*').order('created_at', desc=True).execute()
             return jsonify(res.data or [])
         except Exception as e:
-            print(f'Error fetching vendor ledger: {e}')
+            logger.error(f'Error fetching vendor ledger: {e}')
             return jsonify([]), 500
     else:
         if role not in ('admin', 'manager'):
@@ -4826,7 +5386,7 @@ def api_rwa_reports_summary():
             }
         })
     except Exception as e:
-        print(f'Error generating report: {e}')
+        logger.error(f'Error generating report: {e}')
         return jsonify({}), 500
 
 
@@ -4880,7 +5440,7 @@ def _rera_get_thresholds(venture_id):
             if row.get('venture_id') == venture_id and row.get('work_item') is None:
                 thresholds[row['color']] = float(row['pct_value'])
     except Exception as e:
-        print(f'Error fetching RERA thresholds: {e}')
+        logger.error(f'Error fetching RERA thresholds: {e}')
     return thresholds
 
 
@@ -4933,7 +5493,7 @@ def _rera_compute_progress(venture_id, thresholds):
         overall = round(total_weighted / total_cells, 1) if total_cells else 0
         return {'blocks': blocks, 'overall_pct': overall}
     except Exception as e:
-        print(f'Error computing RERA progress: {e}')
+        logger.error(f'Error computing RERA progress: {e}')
         return {'blocks': [], 'overall_pct': 0}
 
 
@@ -4956,7 +5516,7 @@ def _rera_compute_financials(venture_id):
             if status in ('paid', 'received', 'completed'):
                 collected += amt
     except Exception as e:
-        print(f'Error fetching invoices for RERA: {e}')
+        logger.error(f'Error fetching invoices for RERA: {e}')
     try:
         # Funds utilized from expenditures
         exp_res = supabase.table('expenditures').select('*').eq('venture_id', venture_id).execute()
@@ -4964,7 +5524,7 @@ def _rera_compute_financials(venture_id):
             d = exp.get('data') or {}
             utilized += float(d.get('amount', 0))
     except Exception as e:
-        print(f'Error fetching expenditures for RERA: {e}')
+        logger.error(f'Error fetching expenditures for RERA: {e}')
     return {
         'collected': round(collected, 2),
         'utilized': round(utilized, 2),
@@ -5000,7 +5560,7 @@ def _rera_compute_milestones(venture_id):
                         }
         milestones = sorted(seen.values(), key=lambda m: (m['block'], m['work_item']))
     except Exception as e:
-        print(f'Error computing RERA milestones: {e}')
+        logger.error(f'Error computing RERA milestones: {e}')
     return milestones
 
 
@@ -5022,7 +5582,7 @@ def _rera_unit_status(venture_id):
         total = len(flats)
         return {'total': total, 'sold': 0, 'available': total, 'has_data': total > 0}
     except Exception as e:
-        print(f'Error computing RERA unit status: {e}')
+        logger.error(f'Error computing RERA unit status: {e}')
         return {'total': 0, 'sold': 0, 'available': 0, 'has_data': False}
 
 
@@ -5139,7 +5699,7 @@ def api_rera_readiness(venture_id):
             'existing_report': existing_report
         })
     except Exception as e:
-        print(f'Error in RERA readiness: {e}')
+        logger.error(f'Error in RERA readiness: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -5226,7 +5786,7 @@ def api_rera_draft(venture_id, quarter):
         }
         return jsonify(draft)
     except Exception as e:
-        print(f'Error generating RERA draft: {e}')
+        logger.error(f'Error generating RERA draft: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -5286,7 +5846,7 @@ def api_rera_report_submit():
             }).execute()
         return jsonify({'success': True, 'id': res.data[0]['id'] if res.data else None})
     except Exception as e:
-        print(f'Error submitting RERA report: {e}')
+        logger.error(f'Error submitting RERA report: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -5311,7 +5871,7 @@ def api_rera_reports_list(venture_id):
             'created_at': r.get('created_at', '')
         } for r in (res.data or [])])
     except Exception as e:
-        print(f'Error listing RERA reports: {e}')
+        logger.error(f'Error listing RERA reports: {e}')
         return jsonify([])
 
 
@@ -5340,7 +5900,7 @@ def api_rera_report_detail(report_id):
             'created_at': r.get('created_at', '')
         })
     except Exception as e:
-        print(f'Error fetching RERA report: {e}')
+        logger.error(f'Error fetching RERA report: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -5359,7 +5919,7 @@ def api_rera_approvals():
             res = q.order('created_at', desc=True).execute()
             return jsonify(res.data or [])
         except Exception as e:
-            print(f'Error fetching RERA approvals: {e}')
+            logger.error(f'Error fetching RERA approvals: {e}')
             return jsonify([])
     else:
         body = request.get_json() or {}
@@ -5380,7 +5940,7 @@ def api_rera_approvals():
             res = supabase.table('rera_statutory_approvals').insert(entry).execute()
             return jsonify({'success': True, 'id': res.data[0]['id'] if res.data else None})
         except Exception as e:
-            print(f'Error creating RERA approval: {e}')
+            logger.error(f'Error creating RERA approval: {e}')
             return jsonify({'error': str(e)}), 500
 
 
@@ -5422,7 +5982,7 @@ def api_rera_thresholds():
             res = supabase.table('rera_color_thresholds').select('*').execute()
             return jsonify(res.data or [])
         except Exception as e:
-            print(f'Error fetching RERA thresholds: {e}')
+            logger.error(f'Error fetching RERA thresholds: {e}')
             return jsonify([])
     else:
         body = request.get_json() or {}
@@ -5471,7 +6031,7 @@ def api_rera_delays():
             res = q.order('created_at', desc=True).execute()
             return jsonify(res.data or [])
         except Exception as e:
-            print(f'Error fetching RERA delays: {e}')
+            logger.error(f'Error fetching RERA delays: {e}')
             return jsonify([])
     else:
         body = request.get_json() or {}
@@ -5492,7 +6052,7 @@ def api_rera_delays():
             res = supabase.table('rera_delay_log').insert(entry).execute()
             return jsonify({'success': True, 'id': res.data[0]['id'] if res.data else None})
         except Exception as e:
-            print(f'Error creating RERA delay log: {e}')
+            logger.error(f'Error creating RERA delay log: {e}')
             return jsonify({'error': str(e)}), 500
 
 
@@ -5550,7 +6110,7 @@ def api_cell_usage(cell_id):
         err = str(e)
         if 'Insufficient stock' in err:
             return jsonify({'error': 'Insufficient stock. Ask admin to transfer more stock to this venture, then retry.'}), 400
-        print(f'Error recording cell usage: {e}')
+        logger.error(f'Error recording cell usage: {e}')
         return jsonify({'error': err}), 500
 
 
@@ -5576,7 +6136,7 @@ def api_cell_reverse_usage(cell_id):
         err = str(e)
         if 'Cannot reverse' in err:
             return jsonify({'error': err}), 400
-        print(f'Error reversing cell usage: {e}')
+        logger.error(f'Error reversing cell usage: {e}')
         return jsonify({'error': err}), 500
 
 
@@ -5596,7 +6156,7 @@ def api_cell_material_usage(cell_id):
                 reversal_rows.extend(rev_res.data or [])
         return jsonify({'usage': usage_rows, 'reversals': reversal_rows})
     except Exception as e:
-        print(f'Error fetching cell material usage: {e}')
+        logger.error(f'Error fetching cell material usage: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -5627,7 +6187,7 @@ def api_transfer_stock():
         err = str(e)
         if 'Insufficient warehouse stock' in err:
             return jsonify({'error': 'Insufficient warehouse stock for this material'}), 400
-        print(f'Error transferring stock: {e}')
+        logger.error(f'Error transferring stock: {e}')
         return jsonify({'error': err}), 500
 
 
@@ -5659,7 +6219,7 @@ def api_stock_projections():
             })
         return jsonify(projections)
     except Exception as e:
-        print(f'Error fetching projections: {e}')
+        logger.error(f'Error fetching projections: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -5685,7 +6245,7 @@ def api_stock_venture_usage():
         res = q.execute()
         return jsonify(res.data or [])
     except Exception as e:
-        print(f'Error fetching venture usage: {e}')
+        logger.error(f'Error fetching venture usage: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -5704,7 +6264,7 @@ def api_stock_wastage_report():
         res = supabase.table('stock_ledger').select('*').eq('venture_id', venture_id).eq('entry_type', 'OUT').eq('is_wastage', True).execute()
         return jsonify(res.data or [])
     except Exception as e:
-        print(f'Error fetching wastage report: {e}')
+        logger.error(f'Error fetching wastage report: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -5722,7 +6282,7 @@ def api_material_budgets():
             res = q.execute()
             return jsonify(res.data or [])
         except Exception as e:
-            print(f'Error fetching budgets: {e}')
+            logger.error(f'Error fetching budgets: {e}')
             return jsonify({'error': str(e)}), 500
     else:
         body = request.get_json() or {}
@@ -5744,7 +6304,7 @@ def api_material_budgets():
             }, on_conflict='venture_id,material_id').execute()
             return jsonify({'success': True})
         except Exception as e:
-            print(f'Error saving budget: {e}')
+            logger.error(f'Error saving budget: {e}')
             return jsonify({'error': str(e)}), 500
 
 
@@ -5761,7 +6321,7 @@ def api_inventory_alerts():
         res = q.execute()
         return jsonify(res.data or [])
     except Exception as e:
-        print(f'Error fetching alerts: {e}')
+        logger.error(f'Error fetching alerts: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -5774,7 +6334,7 @@ def api_inventory_resolve_alert(alert_id):
         supabase.table('inventory_alerts').update({'is_resolved': True}).eq('id', alert_id).execute()
         return jsonify({'success': True})
     except Exception as e:
-        print(f'Error resolving alert: {e}')
+        logger.error(f'Error resolving alert: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -5815,7 +6375,7 @@ def api_users_create():
         supabase.table('users').insert(new_user).execute()
         return jsonify({'success': True, 'id': new_user['id']})
     except Exception as e:
-        print(f'Error creating user: {e}')
+        logger.error(f'Error creating user: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -5846,7 +6406,7 @@ def api_users_update(user_id):
             _active_cache.pop(user_id, None)
         return jsonify({'success': True})
     except Exception as e:
-        print(f'Error updating user: {e}')
+        logger.error(f'Error updating user: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -5864,7 +6424,7 @@ def api_users_delete(user_id):
         _active_cache.pop(user_id, None)
         return jsonify({'success': True})
     except Exception as e:
-        print(f'Error deactivating user: {e}')
+        logger.error(f'Error deactivating user: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -5879,7 +6439,7 @@ def api_users_ventures(user_id):
         res = supabase.table('user_ventures').select('venture_id').eq('user_id', user_id).execute()
         return jsonify([r['venture_id'] for r in (res.data or [])])
     except Exception as e:
-        print(f'Error fetching user ventures: {e}')
+        logger.error(f'Error fetching user ventures: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -5903,7 +6463,7 @@ def api_users_ventures_set(user_id):
             supabase.table('user_ventures').insert(rows).execute()
         return jsonify({'success': True})
     except Exception as e:
-        print(f'Error setting user ventures: {e}')
+        logger.error(f'Error setting user ventures: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -5917,11 +6477,12 @@ def api_ventures_with_names():
         res = supabase.table('ventures').select('id, name').eq('org_id', org_id).execute()
         return jsonify(res.data or [])
     except Exception as e:
-        print(f'Error fetching ventures with names: {e}')
+        logger.error(f'Error fetching ventures with names: {e}')
         return jsonify({'error': str(e)}), 500
 
 
 if __name__ == '__main__':
-    # Disable reloader: background image-generation threads must not be killed
-    # when source files change during a design request.
-    app.run(debug=True, host='0.0.0.0', port=5000, use_reloader=False)
+    _dev = os.environ.get('DEV_MODE') == '1' or os.environ.get('FLASK_ENV') == 'development'
+    if _dev:
+        logger.info('Starting in DEVELOPMENT mode with debug=True')
+    app.run(debug=_dev, host='0.0.0.0', port=5000, use_reloader=False)

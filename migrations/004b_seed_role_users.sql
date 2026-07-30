@@ -1,5 +1,5 @@
 -- -----------------------------------------------------------
--- Migration 004: Seed role-based user accounts (live credentials)
+-- Migration 004b: Seed role-based user accounts (live credentials)
 --   supervisor : Vgrand01  / Infra1234
 --   manager    : vgrand02  / Infra123
 --   admin      : vgrand03  / Infra12345

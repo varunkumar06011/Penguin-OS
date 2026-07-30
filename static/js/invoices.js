@@ -29,9 +29,10 @@ async function saveInvoiceCategory(cat) {
     }
 }
 
-function openInvoicesPanel() {
+async function openInvoicesPanel() {
     hideAllMainPanels();
     document.getElementById('invoicesPanel').style.display = '';
+    await Promise.all([ensureInvoicesLoaded(), ensureCategoriesLoaded()]);
     populateInvoiceFilterVentures();
     populateInvoiceFilterCategories();
     restorePanelState('invoices');
@@ -342,7 +343,7 @@ function openInvoiceView(invoiceId) {
         showConfirm('Delete Invoice', `Delete this invoice (${inv.category} &#8212; ${dateDisplay})? This cannot be undone.`, async () => {
             await deleteInvoice(invoiceId);
             closeInvoiceView();
-        });
+        }, null, 'Delete', true);
     };
 
     document.getElementById('invoiceViewModal').classList.add('show');
@@ -353,11 +354,15 @@ function closeInvoiceView() {
 }
 
 async function deleteInvoice(invoiceId) {
-    const invoices = loadAllInvoices().filter(i => i.id !== invoiceId);
-    await apiDelete('/api/invoice/' + encodeURIComponent(invoiceId));
-    allInvoices = invoices;
-    renderInvoiceCards();
-    showToast('Invoice deleted');
+    try {
+        await apiDelete('/api/invoice/' + encodeURIComponent(invoiceId));
+        allInvoices = loadAllInvoices().filter(i => i.id !== invoiceId);
+        renderInvoiceCards();
+        showToast('Invoice deleted');
+    } catch (err) {
+        console.error('Failed to delete invoice:', err);
+        showToast('Delete failed — please retry', true);
+    }
 }
 
 function openLightbox(att) {
@@ -415,6 +420,9 @@ var _iab = document.getElementById('openInventoryAuditBtn'); if (_iab) _iab.addE
 document.getElementById('backFromInventoryAudit').addEventListener('click', () => closeInventoryAuditPanel());
 var _eb = document.getElementById('openExpenditureBtn'); if (_eb) _eb.addEventListener('click', () => openExpenditurePanel());
 document.getElementById('backFromExpenditure').addEventListener('click', () => closeExpenditurePanel());
+var _cpb = document.getElementById('openContractorPaymentsBtn'); if (_cpb) _cpb.addEventListener('click', () => openContractorPaymentsPanel());
+var _cpbBack = document.getElementById('backFromContractorPayments'); if (_cpbBack) _cpbBack.addEventListener('click', () => closeContractorPaymentsPanel());
+var _cpbAdd = document.getElementById('addContractBtn'); if (_cpbAdd) _cpbAdd.addEventListener('click', () => openContractForm());
 
 document.getElementById('addInvoiceBtn').addEventListener('click', () => openInvoiceForm(null));
 document.getElementById('closeInvoiceForm').addEventListener('click', closeInvoiceForm);
@@ -618,9 +626,10 @@ function isPOFlaggedUnpaid(po) {
     return outstanding > 0 && (po.status === 'delivered' || po.status === 'closed' || po.status === 'partial_delivered');
 }
 
-function openPOPanel() {
+async function openPOPanel() {
     hideAllMainPanels();
     document.getElementById('poPanel').style.display = '';
+    await Promise.all([ensurePOsLoaded(), ensureVendorsLoaded()]);
     populatePOFilters();
     restorePanelState('po');
     renderPOCards();
@@ -1115,12 +1124,17 @@ function openPOView(poId) {
     document.getElementById('addPaymentBtn').onclick = () => openPaymentModal(poId);
     document.getElementById('deletePOBtn').onclick = () => {
         showConfirm('Delete PO', 'Delete PO ' + (po.poNumber || '') + '? This cannot be undone.', async () => {
-            await apiDelete('/api/po/' + encodeURIComponent(poId));
-            allPOs = loadPOs().filter(p => p.id !== poId);
-            closePOView();
-            renderPOCards();
-            showToast('PO deleted');
-        });
+            try {
+                await apiDelete('/api/po/' + encodeURIComponent(poId));
+                allPOs = loadPOs().filter(p => p.id !== poId);
+                closePOView();
+                renderPOCards();
+                showToast('PO deleted');
+            } catch (err) {
+                console.error('Failed to delete PO:', err);
+                showToast('Delete failed — please retry', true);
+            }
+        }, null, 'Delete', true);
     };
 
     document.getElementById('poViewModal').classList.add('show');
@@ -1223,7 +1237,8 @@ document.getElementById('savePaymentBtn').addEventListener('click', async () => 
     openPOView(poPaymentTargetId);
 });
 
-function openVendorDirectory() {
+async function openVendorDirectory() {
+    await ensureVendorsLoaded();
     renderVendorDirList();
     document.getElementById('vendorDirModal').classList.add('show');
 }
@@ -1262,12 +1277,17 @@ function renderVendorDirList() {
         div.querySelector('.edit-vendor-btn').addEventListener('click', () => openVendorForm(v.id));
         div.querySelector('.del-vendor-btn').addEventListener('click', () => {
             showConfirm('Delete Vendor', 'Delete ' + v.name + '? POs referencing this vendor will still exist.', async () => {
-                await apiDelete('/api/vendor/' + encodeURIComponent(v.id));
-                allVendors = loadVendors().filter(x => x.id !== v.id);
-                renderVendorDirList();
-                populatePOFilters();
-                showToast('Vendor deleted');
-            });
+                try {
+                    await apiDelete('/api/vendor/' + encodeURIComponent(v.id));
+                    allVendors = loadVendors().filter(x => x.id !== v.id);
+                    renderVendorDirList();
+                    populatePOFilters();
+                    showToast('Vendor deleted');
+                } catch (err) {
+                    console.error('Failed to delete vendor:', err);
+                    showToast('Delete failed — please retry', true);
+                }
+            }, null, 'Delete', true);
         });
         list.appendChild(div);
     });

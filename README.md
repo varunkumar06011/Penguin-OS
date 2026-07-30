@@ -61,21 +61,82 @@ If you are looking for free, open-source, self-hosted construction software, a r
 
 ### 2. Database Setup
 
-Run the migrations in the Supabase SQL Editor in order, starting with `migrations/001_fix_upsert_and_dedupe.sql` and continuing through `migrations/011_rwa_elite.sql`. These add unique constraints, enable RLS, and create the full construction + RWA schema.
+Run the migrations in the Supabase SQL Editor in **strict filename order**:
 
-> For production, replace the permissive "Allow all" RLS policies with real policies tied to the Flask authorization layer.
+```
+000_baseline_schema.sql
+001_fix_upsert_and_dedupe.sql
+002_foundation.sql
+002b_inventory.sql
+003_material_tracking.sql
+003b_payroll.sql
+004_expenditures.sql
+004b_seed_role_users.sql
+005_visitor_management.sql
+006_interior_design_and_marketplace.sql
+007_remove_milestones.sql
+008_rwa_foundation.sql → 015_inventory_ready.sql
+```
 
-### 3. Run Locally
+> **Warning:** Migration files with `b` suffixes (002b, 003b, 004b) run **after** their `a` counterpart but **before** the next number. Running them out of order will result in a broken schema.
+
+> For production, replace the permissive "Allow all" RLS policies with real policies tied to the Flask authorization layer. The current "Allow all" policies provide zero database-level access control — all protection is in the Flask layer.
+
+### 3. Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `SECRET_KEY` | **Yes (production)** | Flask session signing key. App refuses to start without it unless `DEV_MODE=1`. |
+| `SUPABASE_URL` | Yes | Supabase project URL |
+| `SUPABASE_SERVICE_KEY` | Yes | Supabase service-role key (server-side only, never exposed to browser) |
+| `SUPABASE_ANON_KEY` | No | Used as fallback if service key not set |
+| `POLLINATIONS_API_TOKEN` | No | For AI interior design feature |
+| `DEV_MODE` | No | Set to `1` for local development (enables debug mode, insecure secret key, non-secure cookies) |
+| `FLASK_ENV` | No | Set to `development` for local dev |
+
+### 4. PDF Generation (WeasyPrint)
+
+WeasyPrint requires native system libraries that are **not** installed by `pip install`:
+
+- **Linux:** `libpango-1.0-0 libpangoft2-1.0-0 libcairo2 libgdk-pixbuf2.0-0`
+- **macOS:** `brew install pango cairo`
+- **Docker:** Add `RUN apt-get install -y libpango-1.0-0 libpangoft2-1.0-0 libcairo2 libgdk-pixbuf2.0-0` to your Dockerfile
+
+If WeasyPrint fails to import, the app falls back to `xhtml2pdf` (pure Python, no native deps). If neither is available, PDF generation returns an error.
+
+### 5. Run Locally
 
 ```bash
 # Install dependencies
 pip install -r requirements.txt
+
+# Set environment variables
+export DEV_MODE=1  # Enables debug mode + dev secret key
+export SUPABASE_URL=your_url
+export SUPABASE_SERVICE_KEY=your_key
 
 # Run the Flask server
 python app.py
 ```
 
 Open your browser and navigate to `http://localhost:5000`
+
+### 6. Production Deployment
+
+```bash
+# NEVER run with debug=True in production
+# Set SECRET_KEY (required) and run with gunicorn:
+export SECRET_KEY=$(python -c "import secrets; print(secrets.token_hex(32))")
+gunicorn -w 4 -b 0.0.0.0:5000 app:app
+```
+
+**Security checklist before going live:**
+- [ ] `SECRET_KEY` set to a strong random value (not in repo)
+- [ ] `DEV_MODE` is NOT set (debug off, secure cookies on)
+- [ ] RLS policies replaced with real role-based policies
+- [ ] HTTPS enabled (required for `Secure` cookies)
+- [ ] Reverse proxy sets `X-Forwarded-For` for rate limiting
+- [ ] Razorpay integration is a **stub** — billing is NOT functional until implemented
 
 ## Data Structure
 
@@ -103,7 +164,7 @@ RWA-specific data (flats, residents, deliveries, vehicles, complaints, amenities
   requirements.txt          ← Python dependencies
   generate_invoices.py      ← Bulk monthly invoice generator script
   payroll_verify.py         ← Payroll verification helper
-  migrations/               ← SQL migrations (001-011)
+  migrations/               ← SQL migrations (000-015, with 002b/003b/004b sub-sequences)
   live_data/                ← Exported data / snapshots
   static/
     js/

@@ -37,7 +37,12 @@ async function apiUpload(path, formData) {
 }
 
 async function apiDelete(path) {
-    await fetch(path, { method: 'DELETE' });
+    const res = await fetch(path, { method: 'DELETE' });
+    if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(`HTTP ${res.status}: ${text}`);
+    }
+    return res.json().catch(() => ({}));
 }
 
 function generateId() {
@@ -79,6 +84,7 @@ const SIDEBAR_CONFIG = {
                     { id: 'openPOBtn', icon: '\u{1F4DD}', label: 'Purchase Orders' },
                     { id: 'openPayrollBtn', icon: '\u{1F4B0}', label: 'Payroll' },
                     { id: 'openVendorsBtn', icon: '\u{1F465}', label: 'Vendors' },
+                    { id: 'openContractorPaymentsBtn', icon: '\u{1F527}', label: 'Payments' },
                 ]
             },
             {
@@ -274,9 +280,12 @@ let currentBlock = 'A';
 let currentFloor = 1;
 let workItems = [];
 let cellsCache = {};
+const CELL_NOT_FOUND = Object.freeze({ __notFound: true });
 const pendingSaves = new Map(); // cellKey -> debounce timeout
+let inFlightSaves = 0; // count of API save calls currently in-flight
 let bulkMode = false;
 let bulkSelectedColor = null; // when set, clicking a cell instantly applies this color (paint mode)
+let bulkIsDragging = false; // when true, mouse drag applies paint color to cells
 const bulkSelected = new Set(); // set of cacheKeys selected in bulk mode
 let selectedCellId = null;
 let selectedWorkItem = null;
@@ -284,11 +293,64 @@ let selectedFlat = null;
 let venturesList = [];
 let remarksImagesBuffer = [];
 
-// Global caches for invoices, POs, vendors, categories (loaded once at init)
+// Global caches for invoices, POs, vendors, categories (lazy-loaded when panel opens)
 let allInvoices = [];
 let allCategories = [];
 let allPOs = [];
 let allVendors = [];
+let _invoicesLoaded = false;
+let _posLoaded = false;
+let _vendorsLoaded = false;
+let _categoriesLoaded = false;
+
+const DEFAULT_INVOICE_CATEGORIES = [
+    'Brick', 'Sand', 'Steel', 'Cement', 'Tiles',
+    'Electrical', 'Plumbing', 'Labour', 'Paint', 'Wood'
+];
+
+async function ensureInvoicesLoaded() {
+    if (_invoicesLoaded) return;
+    _invoicesLoaded = true;
+    try {
+        allInvoices = await apiGet('/api/invoices') || [];
+    } catch (e) {
+        allInvoices = [];
+        _invoicesLoaded = false;
+    }
+}
+
+async function ensurePOsLoaded() {
+    if (_posLoaded) return;
+    _posLoaded = true;
+    try {
+        allPOs = await apiGet('/api/pos') || [];
+    } catch (e) {
+        allPOs = [];
+        _posLoaded = false;
+    }
+}
+
+async function ensureVendorsLoaded() {
+    if (_vendorsLoaded) return;
+    _vendorsLoaded = true;
+    try {
+        allVendors = await apiGet('/api/vendors') || [];
+    } catch (e) {
+        allVendors = [];
+        _vendorsLoaded = false;
+    }
+}
+
+async function ensureCategoriesLoaded() {
+    if (_categoriesLoaded) return;
+    _categoriesLoaded = true;
+    try {
+        allCategories = await apiGet('/api/settings/invoice_categories') || DEFAULT_INVOICE_CATEGORIES;
+    } catch (e) {
+        allCategories = DEFAULT_INVOICE_CATEGORIES;
+        _categoriesLoaded = false;
+    }
+}
 
 const DEFAULT_WORK_ITEMS = [
     "BRICK WORK", "ELECTRICAL PIPES", "MESH", "PLASTERING",
@@ -373,7 +435,7 @@ const SUPER_STRUCTURE_ITEMS = [
     "Compound Wall Paint", "Final Coat"
 ];
 
-let currentView = 'flat';
+let currentView = 'work';
 let editMode = false;
 let archivedItems = {};
 let pendingFilterFloor = 'all';
@@ -503,7 +565,7 @@ function buildTrackerRoute() {
     if (!currentVenture) return '#/ventures';
     const block = currentBlock || 'A';
     const floor = currentFloor || 1;
-    const view = ['flat', 'work', 'super'].includes(currentView) ? currentView : 'flat';
+    const view = ['work', 'super'].includes(currentView) ? currentView : 'work';
     return `#/venture/${encodeURIComponent(currentVenture.id)}/${block}/${floor}/${view}`;
 }
 
@@ -529,6 +591,7 @@ function parseHash(hash) {
     if (parts[0] === 'payroll') return { route: 'payroll' };
     if (parts[0] === 'inventory') return { route: 'inventory' };
     if (parts[0] === 'expenditure') return { route: 'expenditure' };
+    if (parts[0] === 'contractor-payments') return { route: 'contractor-payments' };
     if (parts[0] === 'reports') return { route: 'reports' };
     if (parts[0] === 'instant-reports') return { route: 'instant-reports' };
     if (parts[0] === 'inventory-audit') return { route: 'inventory-audit' };
@@ -573,6 +636,8 @@ async function applyHashRoute() {
         openInventoryPanel();
     } else if (route.route === 'expenditure') {
         openExpenditurePanel();
+    } else if (route.route === 'contractor-payments') {
+        openContractorPaymentsPanel();
     } else if (route.route === 'reports') {
         openReportsPanel();
     } else if (route.route === 'instant-reports') {
@@ -595,6 +660,23 @@ window.addEventListener('hashchange', () => {
     applyHashRoute();
 });
 window.addEventListener('beforeunload', saveAppState);
+window.addEventListener('beforeunload', flushPendingSaves);
+
+function flushPendingSaves() {
+    if (pendingSaves.size === 0) return;
+    // Fire each pending save immediately via sendBeacon (fire-and-forget during page teardown)
+    pendingSaves.forEach((timer, ck) => {
+        clearTimeout(timer);
+        const cellData = cellsCache[ck];
+        if (cellData && !cellData.__notFound) {
+            try {
+                const blob = new Blob([JSON.stringify(cellData)], { type: 'application/json' });
+                navigator.sendBeacon('/api/cell/' + encodeURIComponent(ck), blob);
+            } catch (e) {}
+        }
+    });
+    pendingSaves.clear();
+}
 
 function cacheKey(cellId) {
     return currentVenture ? `${currentVenture.id}_${cellId}` : cellId;
@@ -650,8 +732,11 @@ function slugId(text) {
 
 function ensureItemIds(items) {
     if (!items || !items.length) return [];
-    if (typeof items[0] === 'object' && items[0].id) return items;
-    return items.map((label, i) => ({ id: `item_${slugId(label)}_${i}`, label }));
+    return items.map((item) => {
+        if (typeof item === 'object' && item.id) return item;
+        const label = typeof item === 'string' ? item : (item && item.label) || 'Untitled';
+        return { id: `item_${slugId(label)}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label };
+    });
 }
 
 function getWorkCategoryDisplayName(cat) {
@@ -710,7 +795,7 @@ function cellKeyById(block, floor, flat, itemId) {
 }
 
 function ssCellKeyById(itemId) {
-    return `superstructure_${itemId}`;
+    return `superstructure_${currentBlock}_${itemId}`;
 }
 
 // ========================
@@ -720,7 +805,6 @@ const els = {
     userEmail: document.getElementById('userEmail'),
     signOutBtn: document.getElementById('signOutBtn'),
     settingsBtn: document.getElementById('settingsBtn'),
-    gridBody: document.getElementById('gridBody'),
     statusPopup: document.getElementById('statusPopup'),
     popupTitle: document.getElementById('popupTitle'),
     popupCurrentStatus: document.getElementById('popupCurrentStatus'),
@@ -885,25 +969,12 @@ async function init() {
     const ok = await checkSession();
     if (!ok) return;
 
-    const defaultCategories = [
-        'Brick', 'Sand', 'Steel', 'Cement', 'Tiles',
-        'Electrical', 'Plumbing', 'Labour', 'Paint', 'Wood'
-    ];
-
-    // Load all initial data in parallel so the page opens faster.
+    // Load only ventures on init — everything else lazy-loads when its panel opens.
     // A failed fetch must never be treated as "no data exists".
     try {
-        await Promise.all([
-            loadVentures().catch(err => {
-                console.error('Ventures load failed on init:', err);
-                // Keep current state intact; do not seed defaults on a failed fetch.
-            }),
-            preloadCells().catch(() => {}),
-            (currentUserPermissions.viewInvoices ? apiGet('/api/invoices').then(d => allInvoices = d || []).catch(() => { allInvoices = []; }) : Promise.resolve()),
-            (currentUserPermissions.viewInvoices ? apiGet('/api/settings/invoice_categories').then(d => allCategories = d || defaultCategories).catch(() => { allCategories = defaultCategories; }) : Promise.resolve()),
-            (currentUserPermissions.viewPOs ? apiGet('/api/pos').then(d => allPOs = d || []).catch(() => { allPOs = []; }) : Promise.resolve()),
-            apiGet('/api/vendors').then(d => allVendors = d || []).catch(() => { allVendors = []; })
-        ]);
+        await loadVentures().catch(err => {
+            console.error('Ventures load failed on init:', err);
+        });
     } catch (e) {}
 
     // loadVenturesFromLS already seeds defaults on a confirmed empty list.
@@ -1043,6 +1114,7 @@ function renderSidebar() {
         'openDesignGeneratorBtn': () => { if (typeof openDesignGeneratorPanel === 'function') openDesignGeneratorPanel(); },
         'openStockPurchasesBtn': () => { if (typeof openStockPurchasesPanel === 'function') openStockPurchasesPanel(); },
         'openLenderReportBtn': () => { openLenderReportModal(); },
+        'openContractorPaymentsBtn': () => { if (typeof openContractorPaymentsPanel === 'function') openContractorPaymentsPanel(); },
     };
 
     nav.addEventListener('click', (e) => {
@@ -1080,10 +1152,12 @@ function setActiveNav(id) {
 }
 
 async function preloadCells() {
-    const allCells = await apiGet('/api/cells');
-    if (allCells) {
-        cellsCache = allCells;
+    if (currentVenture && currentVenture.id) {
+        const ventureCells = await apiGet('/api/cells?venture_id=' + encodeURIComponent(currentVenture.id));
+        if (ventureCells) Object.assign(cellsCache, ventureCells);
     }
+    // If no venture selected, defer loading until a venture is opened
+    // (ensureCellsInCache will lazy-load when needed)
 }
 
 let pollInterval = null;
@@ -1211,9 +1285,9 @@ async function pollData() {
 
     let changed = false;
 
-    // Categories — only fetch if invoices panel is visible
+    // Categories — only fetch if invoices panel is visible and categories were loaded
     const invoicesVisible = document.getElementById('invoicesPanel')?.style.display !== 'none';
-    if (invoicesVisible) {
+    if (invoicesVisible && _categoriesLoaded) {
         try {
             const fresh = await apiGet('/api/settings/invoice_categories');
             if (fresh && JSON.stringify(fresh) !== JSON.stringify(allCategories)) {
@@ -1224,22 +1298,21 @@ async function pollData() {
         } catch (e) {}
     }
 
-    // Ventures — only fetch if dashboard is visible
+    // Ventures — always poll in the background so all users stay synchronized
+    // regardless of which panel is currently open.
     const dashboardVisible = document.getElementById('venturesDashboard')?.style.display !== 'none';
-    if (dashboardVisible) {
-        try {
-            const fresh = await apiGet('/api/ventures');
-            if (fresh && JSON.stringify(fresh) !== JSON.stringify(venturesList)) {
-                venturesList = fresh;
-                refreshCurrentVentureFromList();
-                changed = true;
-                renderVentureDashboard();
-            }
-        } catch (e) {}
-    }
+    try {
+        const fresh = await apiGet('/api/ventures');
+        if (fresh && JSON.stringify(fresh) !== JSON.stringify(venturesList)) {
+            venturesList = fresh;
+            refreshCurrentVentureFromList();
+            changed = true;
+            if (dashboardVisible) renderVentureDashboard();
+        }
+    } catch (e) {}
 
-    // Invoices — only fetch if invoices panel is visible and user has access
-    if (invoicesVisible && currentUserPermissions.viewInvoices) {
+    // Invoices — only fetch if invoices panel is visible, loaded, and user has access
+    if (invoicesVisible && _invoicesLoaded && currentUserPermissions.viewInvoices) {
         try {
             const fresh = await apiGet('/api/invoices') || [];
             const diff = diffByIds(allInvoices, fresh);
@@ -1255,9 +1328,9 @@ async function pollData() {
         } catch (e) {}
     }
 
-    // POs — only fetch if PO panel is visible and user has access
+    // POs — only fetch if PO panel is visible, loaded, and user has access
     const poVisible = document.getElementById('poPanel')?.style.display !== 'none';
-    if (poVisible && currentUserPermissions.viewPOs) {
+    if (poVisible && _posLoaded && currentUserPermissions.viewPOs) {
         try {
             const fresh = await apiGet('/api/pos') || [];
             const diff = diffByIds(allPOs, fresh);
@@ -1273,9 +1346,9 @@ async function pollData() {
         } catch (e) {}
     }
 
-    // Vendors — only fetch if vendor directory modal is open
+    // Vendors — only fetch if vendor directory modal is open and vendors were loaded
     const dirModal = document.getElementById('vendorDirModal');
-    if (dirModal && dirModal.classList.contains('show')) {
+    if (dirModal && dirModal.classList.contains('show') && _vendorsLoaded) {
         try {
             const fresh = await apiGet('/api/vendors') || [];
             if (JSON.stringify(fresh) !== JSON.stringify(allVendors)) {
@@ -1286,15 +1359,20 @@ async function pollData() {
         } catch (e) {}
     }
 
-    // Cells — skip if saves still pending to avoid overwriting optimistic state
-    if (pendingSaves.size > 0) return;
+    // Cells — skip if saves are pending (debounced) or in-flight (API call in progress)
+    // to avoid overwriting optimistic state with stale data from Supabase.
+    if (pendingSaves.size > 0 || inFlightSaves > 0) return;
 
     const tracker = document.getElementById('trackerView');
     const trackerVisible = tracker && tracker.style.display !== 'none';
     if (!trackerVisible) return;
 
     try {
-        const fresh = await apiGet('/api/cells');
+        let cellsUrl = '/api/cells';
+        if (currentVenture && currentVenture.id) {
+            cellsUrl += '?venture_id=' + encodeURIComponent(currentVenture.id);
+        }
+        const fresh = await apiGet(cellsUrl);
         if (fresh) {
             let cellsChanged = false;
             const changedKeys = [];
@@ -1305,13 +1383,23 @@ async function pollData() {
                     cellsChanged = true;
                 }
             }
+            // Remove cells from cache that are no longer in the DB (deleted by another user)
+            const freshKeys = new Set(Object.keys(fresh));
+            const venturePrefix = currentVenture ? currentVenture.id + '_' : null;
+            for (const ck of Object.keys(cellsCache)) {
+                // Only clean up keys belonging to the current venture
+                if (venturePrefix && !ck.startsWith(venturePrefix)) continue;
+                if (!freshKeys.has(ck) && cellsCache[ck] && !cellsCache[ck]?.__notFound) {
+                    cellsCache[ck] = CELL_NOT_FOUND;
+                    changedKeys.push(ck);
+                    cellsChanged = true;
+                }
+            }
             if (cellsChanged) {
                 changed = true;
-                if (currentView === 'flat') {
-                    patchCellsInDOM(changedKeys);
-                } else if (currentView === 'work') {
+                if (currentView === 'work') {
                     renderWorkView();
-                } else if (currentView === 'super_structure') {
+                } else if (currentView === 'super') {
                     renderSuperStructure();
                 } else if (currentView === 'pending') {
                     await renderPendingView();
@@ -1325,9 +1413,8 @@ async function pollData() {
 // Immediate sync triggers (visibility, focus, online)
 // ========================
 function triggerImmediateSync() {
-    // Only sync cells when tracker is visible and no modal is open
-    const tracker = document.getElementById('trackerView');
-    if (tracker && tracker.style.display !== 'none' && !document.querySelector('.modal.show')) {
+    // Sync whenever the app becomes active again, as long as no modal is open.
+    if (!document.querySelector('.modal.show')) {
         pollData();
     }
 }

@@ -319,10 +319,10 @@ async function renderInstantReports() {
 
     // --- Export buttons ---
     document.getElementById('irExportPdfBtn').addEventListener('click', () => {
-        window.print();
+        printInstantReport();
     });
     document.getElementById('irPrintBtn').addEventListener('click', () => {
-        window.print();
+        printInstantReport();
     });
     document.getElementById('irExportExcelBtn').addEventListener('click', exportInstantReportExcel);
 
@@ -586,6 +586,96 @@ function renderInstantReportCharts(data) {
             }
         });
     }
+}
+
+function printInstantReport() {
+    const output = document.getElementById('irOutput');
+    if (!output || !_irLastData) return;
+
+    // Remove any existing print container
+    const oldPrint = document.getElementById('irPrintContainer');
+    if (oldPrint) oldPrint.remove();
+
+    const filters = _irLastFilters || {};
+    const data = _irLastData;
+    const s = data.summary;
+
+    // Build print header
+    const now = new Date();
+    const timestamp = now.toLocaleString('en-IN', { dateStyle: 'full', timeStyle: 'short' });
+
+    const printDiv = document.createElement('div');
+    printDiv.id = 'irPrintContainer';
+    printDiv.className = 'ir-print-container';
+
+    let headerHtml = `
+        <div class="ir-print-header">
+            <h1>Instant Progress Report</h1>
+            <div class="ir-print-meta">
+                <div><strong>Venture:</strong> ${escapeHtml(filters.venture || '')}</div>
+                <div><strong>Block:</strong> ${escapeHtml(filters.block || 'All')}</div>
+                <div><strong>Floor:</strong> ${escapeHtml(filters.floor || 'All')}</div>
+                <div><strong>Flat:</strong> ${escapeHtml(filters.flat || 'All')}</div>
+                <div><strong>Category:</strong> ${escapeHtml(filters.category || 'All')}</div>
+                ${filters.dateFrom ? `<div><strong>From:</strong> ${filters.dateFrom}</div>` : ''}
+                ${filters.dateTo ? `<div><strong>To:</strong> ${filters.dateTo}</div>` : ''}
+                <div><strong>Generated:</strong> ${timestamp}</div>
+            </div>
+            <div class="ir-print-summary">
+                <table class="ir-print-summary-table">
+                    <tr>
+                        <td><strong>Total Work Items</strong><br>${s.total_work_items}</td>
+                        <td><strong>Total Cells</strong><br>${s.total_cells}</td>
+                        <td><strong>Completed</strong><br>${s.completed}</td>
+                        <td><strong>In Progress</strong><br>${s.in_progress}</td>
+                        <td><strong>Yet to Start</strong><br>${s.yet_to_start}</td>
+                        <td><strong>Patch Work</strong><br>${s.patch_work}</td>
+                        <td><strong>Pending</strong><br>${s.pending}</td>
+                        <td><strong>Completion</strong><br>${s.completion_pct}%</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    `;
+
+    // Clone the output content
+    const contentClone = output.cloneNode(true);
+    contentClone.className = 'ir-print-content';
+
+    // Convert canvas charts to images for print.
+    // CRITICAL: cloneNode does NOT copy canvas bitmap content.
+    // Must read toDataURL from the ORIGINAL canvas, then replace in clone.
+    const originalCanvases = output.querySelectorAll('canvas');
+    const clonedCanvases = contentClone.querySelectorAll('canvas');
+    originalCanvases.forEach((origCanvas, i) => {
+        const clonedCanvas = clonedCanvases[i];
+        if (!clonedCanvas) return;
+        try {
+            const img = document.createElement('img');
+            img.src = origCanvas.toDataURL('image/png');
+            img.style.maxWidth = '100%';
+            img.style.height = 'auto';
+            img.className = 'ir-print-chart-img';
+            clonedCanvas.parentNode.replaceChild(img, clonedCanvas);
+        } catch (e) {
+            // If canvas is tainted (cross-origin), hide it
+            clonedCanvas.style.display = 'none';
+        }
+    });
+
+    printDiv.innerHTML = headerHtml;
+    printDiv.appendChild(contentClone);
+
+    // Append to body (hidden on screen, visible only in print)
+    document.body.appendChild(printDiv);
+
+    // Trigger print
+    window.print();
+
+    // Clean up after print
+    setTimeout(() => {
+        printDiv.remove();
+    }, 1000);
 }
 
 function exportInstantReportExcel() {

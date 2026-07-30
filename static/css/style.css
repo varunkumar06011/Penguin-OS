@@ -818,9 +818,8 @@ body {
 /* Work View */
 .work-view-container {
     padding: 24px;
-    overflow-y: auto;
     overflow-x: auto;
-    max-height: calc(100vh - var(--tracker-header-offset, 200px));
+    overflow-y: clip; /* Don't create a vertical scroll container — preserves position:sticky relative to window */
     -webkit-overflow-scrolling: touch;
 }
 
@@ -828,7 +827,7 @@ body {
     margin-bottom: 24px;
     background: #fff;
     border-radius: var(--card-radius);
-    overflow: visible;
+    overflow: visible; /* Don't create a scroll container — preserves position:sticky */
     box-shadow: var(--elevation-1);
 }
 
@@ -1426,22 +1425,31 @@ body {
     top: auto;
     z-index: 90;
     box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.controls-sticky .view-toggle {
+    padding: 12px 16px;
+}
+.controls-sticky .legend {
+    padding: 8px 16px;
 }
 
 /* ============================================================
    STICKY HEADER — Tracker View
+   Only #bulkStickyBar and table thead are sticky.
+   Everything else scrolls away naturally.
    ============================================================ */
 .tracker-sticky-header {
-    position: sticky;
-    top: 0;
-    z-index: 100;
+    position: relative;
+    top: auto;
+    z-index: auto;
     background: #fff;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-    /* Will-change for smooth scrolling performance */
-    will-change: transform;
 }
 
-/* Remove individual sticky from children — parent handles it */
+/* Remove individual sticky from children */
 .tracker-sticky-header .venture-header,
 .tracker-sticky-header .block-tabs,
 .tracker-sticky-header .floor-tabs {
@@ -1449,13 +1457,26 @@ body {
     top: auto;
 }
 
-/* Table header sticky — sticks to top of grid-container scroll area */
-.tracker-table thead th {
+/* Bulk sticky bar — the ONLY sticky container above the table */
+#bulkStickyBar {
     position: sticky;
     top: 0;
+    z-index: 100;
+    background: #fff;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 16px;
+    will-change: transform;
+}
+
+/* Table header sticky — sticks below the bulk bar */
+.tracker-table thead th {
+    position: sticky;
+    top: var(--bulk-bar-h, 44px);
     z-index: 95;
     background: #f8f9fb;
-    /* Ensure header cells don't shrink */
     min-width: 40px;
 }
 
@@ -1472,8 +1493,7 @@ body {
 
 /* ============================================================
    WORK VIEW STICKY OVERRIDES
-   Make section headers and table headers sticky within
-   the work-view-container scroll area.
+   Sticky stack: bulk bar → section header → table thead
    ============================================================ */
 
 /* Remove independent scroll from grid-container inside work view */
@@ -1488,23 +1508,164 @@ body {
     box-shadow: none;
 }
 
-/* Section headers stick at top of work-view-container scroll */
+/* Section headers stick below the bulk bar */
 .work-view-container .section-header {
     position: sticky;
-    top: 0;
+    top: var(--bulk-bar-h, 44px);
     z-index: 96;
     border-radius: var(--card-radius) var(--card-radius) 0 0;
 }
 
 /* Table headers stick below the section header */
 .work-view-container .tracker-table thead th {
-    top: var(--work-section-h, 46px);
+    top: calc(var(--bulk-bar-h, 44px) + var(--section-h, 40px));
 }
 
 .cell-btn.bulk-selected {
     outline: 3px solid #1a1a1a;
     outline-offset: 2px;
     transform: scale(0.92);
+}
+
+/* ============================================================
+   ADD WORK DESCRIPTION — Compact FAB + Dialog
+   ============================================================ */
+
+/* Compact + button on section header */
+.work-add-fab {
+    background: var(--accent-primary);
+    color: #fff;
+    border: none;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    line-height: 1;
+    cursor: pointer;
+    margin-left: 10px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+    transition: transform 0.15s, box-shadow 0.15s;
+    vertical-align: middle;
+}
+.work-add-fab:hover {
+    transform: scale(1.08);
+    box-shadow: 0 3px 8px rgba(0,0,0,0.25);
+}
+
+/* Dialog overlay */
+#workAddDialogOverlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 1000;
+    display: none;
+    align-items: flex-end;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+#workAddDialogOverlay.open {
+    display: flex;
+    opacity: 1;
+}
+
+/* Dialog container: bottom sheet by default, modal on desktop */
+#workAddDialog {
+    background: #fff;
+    width: 100%;
+    max-width: 420px;
+    border-radius: 16px 16px 0 0;
+    padding: 20px;
+    box-shadow: 0 -4px 20px rgba(0,0,0,0.15);
+    transform: translateY(20px);
+    transition: transform 0.25s ease;
+}
+#workAddDialogOverlay.open #workAddDialog {
+    transform: translateY(0);
+}
+
+.work-add-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin: 0 0 16px 0;
+    color: #1a1a1a;
+}
+
+.work-add-form {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.work-add-form label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #444;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.work-add-form input[type="text"] {
+    padding: 12px 14px;
+    border: 1px solid #d0d4d8;
+    border-radius: var(--form-field-radius);
+    font-size: 1rem;
+    outline: none;
+    transition: border-color 0.2s;
+}
+.work-add-form input[type="text"]:focus {
+    border-color: var(--accent-primary);
+}
+
+.work-add-scope {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: #555;
+    cursor: pointer;
+}
+.work-add-scope input {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+}
+
+.work-add-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 4px;
+}
+.work-add-actions button {
+    flex: 1;
+    padding: 12px 16px;
+    border-radius: var(--form-field-radius);
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+}
+.work-add-actions .btn-add {
+    background: var(--accent-primary);
+    color: #fff;
+}
+.work-add-actions .btn-cancel {
+    background: #f0f2f5;
+    color: #444;
+}
+
+@media (min-width: 769px) {
+    #workAddDialogOverlay {
+        align-items: center;
+    }
+    #workAddDialog {
+        border-radius: var(--card-radius);
+    }
 }
 
 .back-btn {
@@ -1936,6 +2097,40 @@ body {
         top: auto;
     }
 
+    /* Mobile: same behavior as desktop — only bulk bar + table header sticky */
+    .tracker-sticky-header {
+        position: relative;
+        top: auto;
+        z-index: auto;
+        box-shadow: none;
+    }
+    #bulkStickyBar {
+        position: sticky;
+        top: 0;
+        z-index: 100;
+        padding: 6px 12px;
+    }
+    #bulkActionBar {
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 8px;
+    }
+    #bulkActionBar .bulk-color-btn {
+        width: 36px;
+        height: 36px;
+    }
+    /* Mobile: same sticky stack as desktop — bulk bar → section header → table thead */
+    .work-view-container .section-header {
+        position: sticky;
+        top: var(--bulk-bar-h, 44px);
+        z-index: 96;
+    }
+    .work-view-container .tracker-table thead th {
+        position: sticky;
+        top: calc(var(--bulk-bar-h, 44px) + var(--section-h, 35px));
+        z-index: 95;
+    }
+
     /* Venture header */
     .venture-header {
         padding: 8px 12px;
@@ -2035,48 +2230,52 @@ body {
     }
     .tracker-table th,
     .tracker-table td {
-        padding: 4px;
-        font-size: 0.75rem;
+        padding: 6px 4px;
+        font-size: 0.8rem;
     }
     .tracker-table .work-col {
-        min-width: 120px;
-        padding-left: 8px;
+        min-width: 130px;
+        padding-left: 10px;
     }
     .tracker-table .remarks-col {
         min-width: 140px;
-        padding-left: 8px;
+        padding-left: 10px;
     }
     .cell-btn {
-        width: 32px;
-        height: 32px;
-        border-radius: 4px;
+        width: 36px;
+        height: 36px;
+        border-radius: 6px;
     }
     .cell-wrapper {
-        gap: 2px;
+        gap: 3px;
     }
     .history-link {
-        font-size: 0.6rem;
+        font-size: 0.65rem;
     }
     .work-cell {
-        font-size: 0.75rem;
-        padding-left: 8px;
+        font-size: 0.8rem;
+        padding-left: 10px;
+        line-height: 1.4;
     }
     .remarks-cell {
-        font-size: 0.7rem;
+        font-size: 0.72rem;
         max-width: 140px;
+        line-height: 1.3;
     }
 
     /* Work view */
     .work-view-container {
         padding: 8px;
-        --work-section-h: 35px;
     }
     .work-view-section {
-        margin-bottom: 16px;
+        margin-bottom: 20px;
+        border-radius: var(--card-radius);
+        overflow: visible;
     }
     .section-header {
-        padding: 8px 12px;
-        font-size: 0.85rem;
+        padding: 10px 14px;
+        font-size: 0.9rem;
+        letter-spacing: 0.3px;
     }
 
     /* Super structure */
@@ -2248,8 +2447,8 @@ body {
         font-size: 0.75rem;
     }
     .cell-btn {
-        width: 28px;
-        height: 28px;
+        width: 32px;
+        height: 32px;
     }
     .ss-cell {
         width: 26px;
@@ -2271,6 +2470,158 @@ body {
     }
     .venture-card .blocks-list {
         font-size: 0.8rem;
+    }
+}
+
+/* ========================
+   Mobile UX Improvements (Issues #3, #5, #7)
+   ======================== */
+@media (max-width: 768px) {
+    /* Work View: ensure horizontal scroll is smooth on touch */
+    .work-view-container {
+        overflow-x: auto;
+        overflow-y: clip;
+        -webkit-overflow-scrolling: touch;
+        padding: 8px;
+    }
+    .work-view-section .grid-container {
+        overflow: visible;
+        padding: 0;
+    }
+    /* Work view tables: smaller min-width for mobile */
+    .work-view-section table {
+        min-width: 500px;
+    }
+    .work-view-section .work-col {
+        min-width: 90px;
+        font-size: 0.75rem;
+    }
+
+    /* Super Structure: stack vertically, full width */
+    .ss-wrapper {
+        flex-direction: column;
+        gap: 12px;
+    }
+    .ss-section {
+        width: 100%;
+    }
+    .ss-container {
+        padding: 4px;
+    }
+    .ss-table {
+        width: 100%;
+        min-width: 300px;
+    }
+    .ss-table .work-col {
+        min-width: 70px;
+        font-size: 0.7rem;
+    }
+
+    /* View toggle: make touch targets bigger */
+    .view-tab {
+        padding: 10px 16px;
+        font-size: 0.85rem;
+        flex: 1;
+        text-align: center;
+    }
+    .view-toggle {
+        padding: 8px 8px;
+        gap: 4px;
+    }
+    .btn-bulk-select {
+        padding: 10px 12px;
+        font-size: 0.8rem;
+    }
+
+    /* Bulk action bar: wrap on mobile */
+    #bulkActionBar {
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 8px;
+    }
+    #bulkActionBar .bulk-color-btn {
+        width: 36px;
+        height: 36px;
+    }
+
+    /* Block/floor tabs: horizontal scroll on mobile */
+    .block-tabs,
+    .floor-tabs {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        flex-wrap: nowrap;
+        padding: 4px 8px;
+    }
+    .block-tab,
+    .floor-tab {
+        white-space: nowrap;
+        flex-shrink: 0;
+    }
+
+    /* Controls sticky: reduce padding */
+    .controls-sticky {
+        padding: 4px 8px;
+    }
+    .legend {
+        flex-wrap: wrap;
+        gap: 6px;
+        font-size: 0.75rem;
+    }
+
+    /* Status popup: full width on mobile */
+    .status-popup {
+        left: 0 !important;
+        right: 0 !important;
+        max-width: 100% !important;
+        margin: 0 auto;
+    }
+
+    /* Cell buttons: bigger touch targets */
+    .cell-btn {
+        width: 36px;
+        height: 36px;
+    }
+
+    /* Settings modal work items list: better touch */
+    .work-item-name {
+        padding: 8px 4px;
+        font-size: 0.9rem;
+        min-height: 36px;
+    }
+    .drag-handle {
+        font-size: 1.2rem;
+        padding: 4px 8px;
+    }
+    .remove-btn {
+        font-size: 1.3rem;
+        padding: 4px 10px;
+    }
+}
+
+@media (max-width: 480px) {
+    /* Super structure cells even smaller */
+    .ss-cell {
+        width: 22px;
+        height: 22px;
+    }
+    .ss-table th,
+    .ss-table td {
+        padding: 2px 1px;
+        font-size: 0.65rem;
+    }
+    /* Work view: hide remarks column on very small screens */
+    .work-view-section .remarks-col {
+        display: none;
+    }
+    /* Cell buttons: slightly smaller for density */
+    .cell-btn {
+        width: 28px;
+        height: 28px;
+    }
+    /* View tabs: more compact */
+    .view-tab {
+        padding: 8px 10px;
+        font-size: 0.75rem;
     }
 }
 
@@ -6140,13 +6491,13 @@ body {
 @media (max-width: 768px) {
     /* Body: prevent horizontal scroll */
     body {
-        overflow-x: hidden;
+        overflow-x: clip;
     }
     #app {
-        overflow-x: hidden;
+        overflow-x: clip;
     }
     #appMain {
-        overflow-x: hidden;
+        overflow-x: clip;
         padding-top: 48px;
     }
 
@@ -6407,7 +6758,7 @@ body {
 @media (max-width: 480px) {
     /* Body and html: no horizontal scroll */
     html, body {
-        overflow-x: hidden;
+        overflow-x: clip;
         max-width: 100vw;
     }
     #appMain {
@@ -6558,7 +6909,7 @@ body {
 #inventoryAuditPanel,
 #designGeneratorPanel {
     max-width: 100%;
-    overflow-x: hidden;
+    overflow-x: clip;
 }
 
 /* Tables: allow horizontal scroll within their containers */
@@ -6981,27 +7332,554 @@ video {
     }
 }
 
+/* Print container: hidden on screen, visible only in print */
+#irPrintContainer {
+    display: none;
+}
+
 /* Print styles for Instant Reports */
 @media print {
-    .ir-filter-bar,
-    .ir-export-bar,
-    .sidebar,
-    .invoice-panel-header,
-    .breadcrumb-bar {
+    /* Hide app chrome completely to avoid blank pages */
+    #appSidebar,
+    #appMain,
+    .modal,
+    .edit-mode-banner,
+    #irPrintContainer ~ * {
         display: none !important;
     }
-    .ir-output {
+    /* Also hide everything via visibility as fallback */
+    body * {
+        visibility: hidden;
+    }
+    /* Show only the print container and its children */
+    #irPrintContainer,
+    #irPrintContainer * {
+        visibility: visible;
+    }
+    #irPrintContainer {
+        display: block !important;
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        padding: 20px;
+        box-sizing: border-box;
+    }
+
+    /* Print header */
+    .ir-print-header h1 {
+        font-size: 1.4rem;
+        margin: 0 0 12px 0;
+        color: #1a1a1a;
+        text-align: center;
+        border-bottom: 2px solid #333;
+        padding-bottom: 8px;
+    }
+    .ir-print-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 24px;
+        font-size: 0.8rem;
+        margin-bottom: 16px;
+        padding: 12px;
+        background: #f8f9fb;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+    }
+    .ir-print-meta div {
+        white-space: nowrap;
+    }
+    .ir-print-summary {
+        margin-bottom: 20px;
+    }
+    .ir-print-summary-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.8rem;
+    }
+    .ir-print-summary-table td {
+        text-align: center;
+        padding: 10px 6px;
+        border: 1px solid #ddd;
+        background: #f8f9fb;
+    }
+    .ir-print-summary-table td strong {
+        font-size: 0.7rem;
+        color: #666;
+        text-transform: uppercase;
+        display: block;
+        margin-bottom: 4px;
+    }
+
+    /* Print content */
+    .ir-print-content {
         padding: 0;
     }
-    .ir-card {
-        break-inside: avoid;
+    .ir-print-content .ir-cards-row {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 8px;
+        margin-bottom: 16px;
     }
-    .ir-table-wrap {
+    .ir-print-content .ir-card {
+        break-inside: avoid;
         box-shadow: none;
         border: 1px solid #ddd;
     }
-    .ir-section {
+    .ir-print-content .ir-charts-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        margin-bottom: 16px;
+    }
+    .ir-print-content .ir-chart-card {
+        break-inside: avoid;
+        box-shadow: none;
+        border: 1px solid #ddd;
+    }
+    .ir-print-content .ir-chart-wrap {
+        height: 220px;
+    }
+    .ir-print-content .ir-print-chart-img {
+        max-width: 100%;
+        height: auto;
+    }
+    .ir-print-content .ir-section {
         break-inside: avoid;
         page-break-inside: avoid;
+        margin-bottom: 16px;
     }
+    .ir-print-content .ir-table-wrap {
+        box-shadow: none;
+        border: 1px solid #ddd;
+        overflow: visible;
+    }
+    .ir-print-content .ir-detail-table {
+        max-height: none;
+        overflow: visible;
+    }
+    .ir-print-content .ir-table {
+        font-size: 0.75rem;
+    }
+    .ir-print-content .ir-table th {
+        background: #f8f9fb !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+    .ir-print-content .ir-table td {
+        white-space: normal;
+        word-break: break-word;
+    }
+    .ir-print-content .ir-progress-bar {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+    .ir-print-content .ir-progress-fill {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+    .ir-print-content .ir-status-badge {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+    .ir-print-content .ir-card {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+    .ir-print-content .ir-td-green,
+    .ir-print-content .ir-td-yellow,
+    .ir-print-content .ir-td-red,
+    .ir-print-content .ir-td-blue {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+    .ir-print-content .ir-section-title {
+        border-bottom: 2px solid #333;
+    }
+
+    /* Page setup */
+    @page {
+        size: A4 landscape;
+        margin: 15mm;
+    }
+}
+
+/* ======================== */
+/* Progress Bar (shared)    */
+/* ======================== */
+.progress-bar-container {
+    background: #e8e8e8;
+    border-radius: 10px;
+    height: 24px;
+    overflow: hidden;
+    position: relative;
+}
+.progress-bar-fill {
+    height: 100%;
+    border-radius: 10px;
+    transition: width 0.5s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #fff;
+}
+.progress-bar-fill.high { background: linear-gradient(90deg, #27ae60, #2ecc71); }
+.progress-bar-fill.mid { background: linear-gradient(90deg, #2980b9, #3498db); }
+.progress-bar-fill.low { background: linear-gradient(90deg, #e67e22, #f39c12); }
+.progress-bar-fill.zero { background: linear-gradient(90deg, #c0392b, #e74c3c); }
+
+/* ======================== */
+/* Contractor Payments      */
+/* ======================== */
+.cp-contract-card { cursor: pointer; transition: box-shadow 0.2s; }
+.cp-contract-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.12); }
+
+.cp-card-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 10px; }
+.cp-card-title { font-size: 1rem; font-weight: 700; color: #222; }
+.cp-card-subtitle { font-size: 0.82rem; color: #555; margin-top: 2px; }
+.cp-card-footer { display: flex; justify-content: space-between; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid #f0f0f0; }
+.cp-status { font-size: 0.72rem; color: #fff; padding: 2px 10px; border-radius: 12px; white-space: nowrap; font-weight: 600; }
+.cp-status.completed { background: #27ae60; }
+.cp-status.active { background: #2980b9; }
+.cp-status.cancelled { background: #95a5a6; }
+
+.cp-progress-section { margin-top: 12px; }
+.cp-progress-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.cp-progress-label { font-size: 0.78rem; font-weight: 600; color: #555; }
+.cp-progress-detail { font-size: 0.75rem; color: #888; }
+
+.cp-risk-badge {
+    margin-top: 10px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+.cp-risk-warn { background: #fdecea; color: #c0392b; }
+.cp-risk-info { background: #fff3cd; color: #856404; }
+
+.cp-summary-card {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 10px 14px;
+}
+.cp-summary-label { font-size: 0.72rem; color: #888; }
+.cp-summary-value { font-size: 1.1rem; font-weight: 700; }
+
+.po-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+.po-table th { text-align: left; padding: 8px 10px; border-bottom: 2px solid #eee; font-weight: 700; color: #555; }
+.po-table td { padding: 8px 10px; border-bottom: 1px solid #f0f0f0; }
+
+/* ========================
+   Mobile Work View
+   ======================== */
+.mobile-work-view {
+    padding: 0;
+    overflow-x: clip;
+    overflow-y: visible;
+}
+
+/* Flat navigation bar — sticky below bulk bar */
+.mobile-flat-nav {
+    position: sticky;
+    top: var(--bulk-bar-h, 44px);
+    z-index: 90;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    padding: 6px 10px;
+    background: #fff;
+    border-bottom: 1px solid #e0e4e8;
+    min-height: 48px;
+}
+
+.mobile-flat-nav-btn {
+    flex-shrink: 0;
+    width: 44px;
+    height: 44px;
+    border: none;
+    border-radius: 8px;
+    background: #f0f2f5;
+    color: #1a1a1a;
+    font-size: 0.9rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s;
+}
+
+.mobile-flat-nav-btn:active {
+    background: #d0d5dd;
+}
+
+.mobile-flat-nav-btn:disabled {
+    opacity: 0.3;
+    cursor: default;
+}
+
+.mobile-flat-display {
+    flex: 1;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+}
+
+.mobile-flat-number {
+    font-size: 1.3rem;
+    font-weight: 800;
+    color: #1a1a1a;
+    line-height: 1;
+}
+
+.mobile-flat-counter {
+    font-size: 0.7rem;
+    color: #999;
+}
+
+/* Flat chips (horizontal scroll, quick jump) — sticky below mobile nav */
+.mobile-flat-chips {
+    position: sticky;
+    top: calc(var(--bulk-bar-h, 44px) + var(--mobile-nav-h, 48px));
+    z-index: 89;
+    display: flex;
+    gap: 6px;
+    padding: 6px 12px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    flex-wrap: nowrap;
+    background: #fff;
+    border-bottom: 2px solid #e0e4e8;
+}
+
+.mobile-flat-chip {
+    flex-shrink: 0;
+    min-width: 48px;
+    padding: 6px 12px;
+    border: 2px solid #d0d5dd;
+    border-radius: 8px;
+    background: #fff;
+    color: #555;
+    font-size: 0.85rem;
+    font-weight: 700;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.15s;
+}
+
+.mobile-flat-chip.active {
+    border-color: var(--accent-primary, #1a1a1a);
+    background: var(--accent-primary, #1a1a1a);
+    color: #fff;
+}
+
+.mobile-flat-chip:active {
+    transform: scale(0.93);
+}
+
+.mobile-flat-content {
+    padding: 8px 12px 24px;
+}
+
+.mobile-category-section {
+    margin-bottom: 16px;
+    background: #fff;
+    border-radius: 10px;
+    overflow: visible;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+.mobile-category-header {
+    background: var(--sidebar-bg, #1a1a1a);
+    color: #fff;
+    padding: 12px 16px;
+    font-weight: 700;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-radius: 10px 10px 0 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.mobile-cat-progress {
+    font-size: 0.72rem;
+    opacity: 0.8;
+    font-weight: 400;
+}
+
+.mobile-progress-bar {
+    height: 4px;
+    background: #e8eaf0;
+    overflow: hidden;
+}
+
+.mobile-progress-fill {
+    height: 100%;
+    background: var(--accent-primary, #1a1a1a);
+    transition: width 0.3s ease;
+}
+
+.mobile-work-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    border-bottom: 1px solid #f0f2f5;
+    min-height: 56px;
+}
+
+.mobile-work-row:last-child {
+    border-bottom: none;
+}
+
+.mobile-sno {
+    flex-shrink: 0;
+    width: 28px;
+    text-align: center;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #999;
+}
+
+.mobile-work-label {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.mobile-work-label > span:first-child {
+    font-size: 0.88rem;
+    color: #1a1a1a;
+    line-height: 1.3;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+.mobile-work-edit-btn {
+    flex-shrink: 0;
+    font-size: 0.85rem;
+    opacity: 0.5;
+}
+
+.mobile-status-area {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    min-width: 64px;
+}
+
+.mobile-cell-btn {
+    width: 48px !important;
+    height: 48px !important;
+    border-radius: 10px;
+    border: 2px solid rgba(0,0,0,0.08);
+}
+
+.mobile-cell-btn:active {
+    transform: scale(0.92);
+}
+
+.mobile-cell-btn.bulk-selected {
+    outline: 3px solid var(--accent-primary, #1a1a1a);
+    outline-offset: 2px;
+}
+
+.mobile-status-label {
+    font-size: 0.68rem;
+    color: #777;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.mobile-remarks-btn,
+.mobile-history-btn {
+    flex-shrink: 0;
+    border: none;
+    background: none;
+    cursor: pointer;
+    font-size: 0.75rem;
+    color: var(--accent-primary, #1a1a1a);
+    padding: 8px;
+    border-radius: 6px;
+    transition: background 0.15s;
+}
+
+.mobile-remarks-btn {
+    font-size: 1.1rem;
+}
+
+.mobile-remarks-btn:active,
+.mobile-history-btn:active {
+    background: rgba(0,0,0,0.06);
+}
+
+.mobile-add-item-btn {
+    display: block;
+    width: 100%;
+    padding: 12px 16px;
+    border: none;
+    border-top: 1px dashed #d0d5dd;
+    background: #f8f9fb;
+    color: var(--accent-primary, #1a1a1a);
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    border-radius: 0 0 10px 10px;
+}
+
+.mobile-add-item-btn:active {
+    background: #eef0f3;
+}
+
+.mobile-empty-state {
+    padding: 32px 16px;
+    text-align: center;
+    color: #999;
+    font-size: 0.9rem;
+}
+
+/* Hide desktop work view elements on mobile */
+@media (max-width: 768px) {
+    .mobile-work-view .work-view-section,
+    .mobile-work-view .category-chip-bar {
+        display: none !important;
+    }
+}
+
+/* Bulk button inside mobile nav bar */
+.mst-bulk-btn {
+    flex-shrink: 0;
+    height: 32px;
+    padding: 0 14px;
+    border: 1.5px solid #d0d5dd;
+    border-radius: 6px;
+    background: #fff;
+    color: #555;
+    font-size: 0.78rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.mst-bulk-btn:active {
+    transform: scale(0.95);
+}
+
+.mst-bulk-btn.active {
+    border-color: var(--accent-primary, #1a1a1a);
+    background: var(--accent-primary, #1a1a1a);
+    color: #fff;
 }

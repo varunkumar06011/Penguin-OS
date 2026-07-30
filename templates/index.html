@@ -10,7 +10,7 @@
     <link rel="icon" href="/static/images/favicon.jpg" type="image/jpeg">
     <link rel="stylesheet" href="/static/css/fonts.css?v=15">
     <link rel="stylesheet" href="/static/css/theme.css?v=15">
-    <link rel="stylesheet" href="/static/css/style.css?v=24">
+    <link rel="stylesheet" href="/static/css/style.css?v=39">
     <style>
         /* Fallback: ensure sidebar is always dark and readable */
         #app #appSidebar.app-sidebar {
@@ -273,6 +273,17 @@
             <div id="expenditureContent"></div>
         </div>
 
+        <!-- Contractor Payments Panel -->
+        <div id="contractorPaymentsPanel" style="display:none;">
+            <div class="invoice-panel-header">
+                <button id="backFromContractorPayments" class="back-btn">&larr; Back to Ventures</button>
+                <h2 class="invoice-panel-title">Contractor Payments</h2>
+                <button id="addContractBtn" class="btn-primary">+ New Contract</button>
+            </div>
+            <div id="contractorSummaryBar" class="po-outstanding-banner"></div>
+            <div id="contractorCardsGrid" class="po-cards-grid"></div>
+        </div>
+
         <!-- Design Generator Panel -->
         <div id="designGeneratorPanel" style="display:none;">
             <div class="invoice-panel-header">
@@ -372,7 +383,7 @@
 
         <!-- Tracker View -->
         <div id="trackerView" style="display:none;">
-            <!-- Sticky Header Wrapper: venture header + block tabs + floor tabs + controls -->
+            <!-- Header Wrapper: venture header + block tabs + floor tabs + controls (scrolls away) -->
             <div id="trackerStickyHeader" class="tracker-sticky-header">
                 <!-- Venture Header -->
                 <div class="venture-header">
@@ -386,14 +397,12 @@
                 <!-- Floor Tabs (dynamic) -->
                 <div class="floor-tabs" id="floorTabsContainer"></div>
 
-                <!-- Sticky controls: view toggle, legend, and bulk action bar -->
+                <!-- Controls: view toggle, legend (scrolls away) -->
                 <div class="controls-sticky">
                     <!-- View Toggle -->
                     <div class="view-toggle">
-                        <button class="view-tab active" data-view="flat">Flat View</button>
-                        <button class="view-tab" data-view="work">Work View</button>
+                        <button class="view-tab active" data-view="work">Work View</button>
                         <button class="view-tab" data-view="super">Super Structure</button>
-                        <button id="bulkSelectBtn" class="btn-bulk-select">Bulk Select</button>
                     </div>
 
                     <!-- Legend -->
@@ -403,42 +412,26 @@
                         <span class="legend-item"><span class="dot blue"></span> Patch work</span>
                         <span class="legend-item"><span class="dot green"></span> Completed</span>
                     </div>
+                </div>
+            </div>
 
-                    <!-- Bulk Action Bar -->
-                    <div id="bulkActionBar" class="bulk-action-bar" style="display:none;">
-                        <span id="bulkCount">0 cells selected</span>
-                        <div class="bulk-colors">
-                            <button class="bulk-color-btn" data-color="red" title="Yet to start"></button>
-                            <button class="bulk-color-btn" data-color="yellow" title="In progress"></button>
-                            <button class="bulk-color-btn" data-color="blue" title="Patch work"></button>
-                            <button class="bulk-color-btn" data-color="green" title="Completed"></button>
-                            <button class="bulk-color-btn empty" data-color="" title="No status">&#10005;</button>
-                        </div>
-                        <button id="bulkCancelBtn" class="btn-bulk-cancel">Cancel</button>
+            <!-- Sticky Bulk Bar: stays at top while scrolling -->
+            <div id="bulkStickyBar">
+                <button id="bulkSelectBtn" class="btn-bulk-select">Bulk Select</button>
+                <!-- Bulk Action Bar -->
+                <div id="bulkActionBar" class="bulk-action-bar" style="display:none;">
+                    <span id="bulkCount">0 cells selected</span>
+                    <div class="bulk-colors">
+                        <button class="bulk-color-btn" data-color="red" title="Yet to start"></button>
+                        <button class="bulk-color-btn" data-color="yellow" title="In progress"></button>
+                        <button class="bulk-color-btn" data-color="blue" title="Patch work"></button>
+                        <button class="bulk-color-btn" data-color="green" title="Completed"></button>
+                        <button class="bulk-color-btn empty" data-color="" title="No status">&#10005;</button>
                     </div>
+                    <button id="bulkCancelBtn" class="btn-bulk-cancel">Cancel</button>
                 </div>
             </div>
 
-            <!-- Flat View -->
-            <div id="flatViewContainer">
-                <div class="grid-container">
-                    <table id="trackerGrid" class="tracker-table">
-                        <thead>
-                            <tr id="gridHeader">
-                                <th class="work-col">Work Item</th>
-                                <th>101</th>
-                                <th>102</th>
-                                <th>103</th>
-                                <th>104</th>
-                                <th>105</th>
-                                <th>106</th>
-                                <th class="remarks-col">Remarks</th>
-                            </tr>
-                        </thead>
-                        <tbody id="gridBody"></tbody>
-                    </table>
-                </div>
-            </div>
 
             <!-- Work View -->
             <div id="workViewContainer" class="work-view-container" style="display:none;"></div>
@@ -529,7 +522,7 @@
             </div>
 
             <h4 class="settings-section-title">Work Items</h4>
-            <p class="settings-hint">Flat view work items. Drag to reorder. Click text to rename. Use + to add, &times; to remove.</p>
+            <p class="settings-hint">Work items. Drag to reorder. Click text to rename. Use + to add, &times; to remove.</p>
             <ul id="workItemsList" class="sortable-list"></ul>
             <div class="settings-actions">
                 <button id="addWorkItemBtn" class="btn-secondary">+ Add Work Item</button>
@@ -700,7 +693,7 @@
             <input type="text" id="confirmInput" class="confirm-input" style="display:none;" placeholder="Type to confirm">
             <div class="confirm-actions">
                 <button id="confirmCancel" class="btn-secondary">Cancel</button>
-                <button id="confirmAction" class="btn-primary" style="background:#c0392b;">Delete</button>
+                <button id="confirmAction" class="btn-primary">Confirm</button>
             </div>
         </div>
     </div>
@@ -1304,16 +1297,129 @@
         </div>
     </div>
 
+    <!-- Contractor Payments: New Contract Modal -->
+    <div id="contractFormModal" class="modal">
+        <div class="modal-content" style="max-width:520px;">
+            <div class="modal-header">
+                <h3 id="contractFormTitle">New Contract</h3>
+                <button class="close-btn" id="closeContractForm">&times;</button>
+            </div>
+            <div class="invoice-form-body">
+                <div class="invoice-form-row">
+                    <div class="invoice-form-field" style="flex:2;">
+                        <label>Contractor Name *</label>
+                        <input type="text" id="cpFormName" placeholder="e.g. Ramesh Electrician">
+                    </div>
+                    <div class="invoice-form-field">
+                        <label>Venture (optional)</label>
+                        <select id="cpFormVenture"><option value="">-- None --</option></select>
+                    </div>
+                </div>
+                <div class="invoice-form-field" style="margin-bottom:12px;">
+                    <label>Work Description *</label>
+                    <input type="text" id="cpFormDesc" placeholder="e.g. Electrical wiring for 50 rooms">
+                </div>
+                <div class="invoice-form-row">
+                    <div class="invoice-form-field">
+                        <label>Total Amount (&#8377;) *</label>
+                        <input type="number" id="cpFormAmount" placeholder="20000000" step="0.01" min="0">
+                    </div>
+                    <div class="invoice-form-field">
+                        <label>Total Units *</label>
+                        <input type="number" id="cpFormUnits" placeholder="50" min="1">
+                    </div>
+                    <div class="invoice-form-field">
+                        <label>Unit Label</label>
+                        <input type="text" id="cpFormUnitLabel" placeholder="rooms">
+                    </div>
+                </div>
+                <div class="invoice-form-field" style="margin-bottom:12px;">
+                    <label>Notes</label>
+                    <textarea id="cpFormNotes" rows="2" placeholder="Optional notes..."></textarea>
+                </div>
+                <div class="invoice-form-actions">
+                    <button id="cancelContractForm" class="btn-secondary">Cancel</button>
+                    <button id="saveContractBtn" class="btn-primary">Create Contract</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Contractor Payments: Detail Modal -->
+    <div id="contractDetailModal" class="modal">
+        <div class="modal-content" style="max-width:860px;">
+            <div class="modal-header">
+                <h3 id="contractDetailTitle">Contract Detail</h3>
+                <button class="close-btn" id="closeContractDetail">&times;</button>
+            </div>
+            <div id="contractDetailSummary" style="margin-bottom:16px;"></div>
+            <div class="invoice-form-row" style="align-items:flex-end;margin-bottom:16px;">
+                <div class="invoice-form-field">
+                    <label>Completed Units</label>
+                    <input type="number" id="cpDetailCompletedUnits" min="0">
+                </div>
+                <div class="invoice-form-field">
+                    <label>Status</label>
+                    <select id="cpDetailStatus">
+                        <option value="active">Active</option>
+                        <option value="completed">Completed</option>
+                        <option value="cancelled">Cancelled</option>
+                    </select>
+                </div>
+                <div class="invoice-form-field" style="flex:2;">
+                    <label>Notes</label>
+                    <input type="text" id="cpDetailNotes" placeholder="Notes...">
+                </div>
+                <button id="cpUpdateContractBtn" class="btn-primary" style="white-space:nowrap;">Update</button>
+            </div>
+            <h4 style="margin:16px 0 8px;">Record Payment</h4>
+            <div class="invoice-form-row" style="align-items:flex-end;margin-bottom:16px;">
+                <div class="invoice-form-field">
+                    <label>Amount (&#8377;)</label>
+                    <input type="number" id="cpPayAmount" step="0.01" min="0">
+                </div>
+                <div class="invoice-form-field">
+                    <label>Date</label>
+                    <input type="date" id="cpPayDate">
+                </div>
+                <div class="invoice-form-field">
+                    <label>Method</label>
+                    <select id="cpPayMethod">
+                        <option value="cash">Cash</option>
+                        <option value="upi">UPI</option>
+                        <option value="cheque">Cheque</option>
+                        <option value="bank_transfer">Bank Transfer</option>
+                    </select>
+                </div>
+                <div class="invoice-form-field">
+                    <label>Reference</label>
+                    <input type="text" id="cpPayRef" placeholder="Cheque/UTR no.">
+                </div>
+                <div class="invoice-form-field" style="flex:2;">
+                    <label>Notes</label>
+                    <input type="text" id="cpPayNotes" placeholder="Optional...">
+                </div>
+                <button id="cpRecordPaymentBtn" class="btn-primary" style="white-space:nowrap;">Record</button>
+            </div>
+            <h4 style="margin:16px 0 8px;">Payment History</h4>
+            <div id="contractPaymentsList"></div>
+            <div style="margin-top:20px;border-top:1px solid #eee;padding-top:16px;">
+                <button id="cpCancelContractBtn" class="btn-secondary" style="color:#c0392b;">Cancel Contract</button>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-    <script src="/static/js/app.js?v=22"></script>
-    <script src="/static/js/cells.js?v=19"></script>
-    <script src="/static/js/invoices.js?v=16"></script>
-    <script src="/static/js/payroll.js?v=16"></script>
+    <script src="/static/js/app.js?v=29"></script>
+    <script src="/static/js/cells.js?v=32"></script>
+    <script src="/static/js/invoices.js?v=18"></script>
+    <script src="/static/js/payroll.js?v=17"></script>
     <script src="/static/js/inventory.js?v=19"></script>
-    <script src="/static/js/reports.js?v=18"></script>
-    <script src="/static/js/features.js?v=22"></script>
-    <script src="/static/js/theme-ui.js?v=6"></script>
+    <script src="/static/js/reports.js?v=20"></script>
+    <script src="/static/js/features.js?v=26"></script>
+    <script src="/static/js/contractor_payments.js?v=3"></script>
+    <script src="/static/js/theme-ui.js?v=10"></script>
     <script>
         (function() {
             var sb = document.getElementById('appSidebar');
