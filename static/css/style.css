@@ -1125,6 +1125,9 @@ body {
     border-radius: var(--card-radius);
     padding: 24px;
     box-shadow: var(--elevation-1);
+    overflow: hidden;
+    box-sizing: border-box;
+    min-width: 0;
 }
 
 .overview-chart-card h3 {
@@ -1162,6 +1165,56 @@ body {
     margin: 0;
 }
 
+/* Skeleton Loading State */
+@keyframes skel-shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+}
+
+.overview-skeleton {
+    padding: 0;
+}
+
+.skel-card,
+.skel-line,
+.skel-chart,
+.skel-vrow {
+    background: linear-gradient(90deg, #f0f2f5 25%, #e4e7ec 50%, #f0f2f5 75%);
+    background-size: 200% 100%;
+    animation: skel-shimmer 1.5s ease-in-out infinite;
+    border-radius: var(--card-radius, 10px);
+}
+
+.skel-card {
+    height: 80px;
+    border-radius: var(--card-radius, 10px);
+}
+
+.skel-line {
+    height: 18px;
+    border-radius: 6px;
+    margin-bottom: 16px;
+}
+
+.skel-w-40 { width: 40%; }
+.skel-w-30 { width: 30%; }
+
+.skel-chart {
+    height: 240px;
+    border-radius: 8px;
+}
+
+.skel-vrow {
+    height: 80px;
+    border-radius: var(--form-field-radius, 8px);
+    margin-bottom: 12px;
+}
+
+.overview-skeleton .overview-ventures {
+    padding: 24px;
+    margin-top: 20px;
+}
+
 .overview-ventures {
     background: #fff;
     border-radius: var(--card-radius);
@@ -1186,14 +1239,25 @@ body {
     display: flex;
     flex-direction: column;
     gap: 8px;
-    padding: 14px;
+    padding: 16px 18px;
     border-radius: var(--form-field-radius);
     background: #f8f9fb;
-    transition: background 0.2s ease;
+    transition: background 0.2s ease, box-shadow 0.2s ease;
+    border: 1px solid #eef0f3;
+    min-width: 0;
+    overflow: hidden;
+    box-sizing: border-box;
 }
 
 .overview-vrow:hover {
     background: #f0f2f5;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+
+.overview-vrow-empty {
+    text-align: center;
+    color: #999;
+    padding: 24px;
 }
 
 .overview-vrow .ov-row-header {
@@ -1201,34 +1265,65 @@ body {
     align-items: center;
     justify-content: space-between;
     gap: 12px;
+    min-width: 0;
 }
 
 .overview-vrow .ov-name {
     font-weight: 700;
+    font-size: 0.95rem;
     color: #1a1a1a;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1 1 auto;
 }
+
+.overview-vrow .ov-header-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+.overview-vrow .ov-status-badge {
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+}
+
+.ov-status-good { background: #e8faf0; color: #27ae60; }
+.ov-status-warn { background: #fef5e7; color: #f39c12; }
+.ov-status-bad { background: #fdeaea; color: #e74c3c; }
 
 .overview-vrow .ov-bar {
     flex: 1;
-    height: 12px;
+    height: 10px;
     background: #e0e4e8;
-    border-radius: 6px;
+    border-radius: 5px;
     overflow: hidden;
     min-width: 80px;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .overview-vrow .ov-bar-fill {
     height: 100%;
-    background: var(--accent-primary);
-    border-radius: 6px;
+    border-radius: 5px;
     transition: width 0.3s ease;
+    max-width: 100%;
 }
 
 .overview-vrow .ov-pct {
-    font-weight: 700;
-    color: var(--accent-primary);
-    min-width: 44px;
+    font-weight: 800;
+    font-size: 0.95rem;
+    min-width: 40px;
     text-align: right;
+    white-space: nowrap;
 }
 
 .overview-vrow .ov-row-stats {
@@ -1236,6 +1331,7 @@ body {
     gap: 16px;
     font-size: 0.78rem;
     color: #888;
+    flex-wrap: wrap;
 }
 
 .overview-vrow .ov-stat strong {

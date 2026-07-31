@@ -10,7 +10,7 @@
     <link rel="icon" href="/static/images/favicon.jpg" type="image/jpeg">
     <link rel="stylesheet" href="/static/css/fonts.css?v=15">
     <link rel="stylesheet" href="/static/css/theme.css?v=15">
-    <link rel="stylesheet" href="/static/css/style.css?v=43">
+    <link rel="stylesheet" href="/static/css/style.css?v=45">
     <style>
         /* Fallback: ensure sidebar is always dark and readable */
         #app #appSidebar.app-sidebar {
@@ -79,31 +79,63 @@
                 <h2>Overview</h2>
                 <p>Complete summary across all your ventures</p>
             </div>
-            <div class="overview-kpi-row" id="overviewKpiRow"></div>
-            <div class="overview-charts">
-                <div class="overview-chart-card">
-                    <h3>Work Status Distribution</h3>
-                    <div class="overview-chart-wrap overview-donut-wrap">
-                        <canvas id="overviewPieChart"></canvas>
-                        <div class="overview-donut-center" id="overviewDonutCenter"></div>
-                        <div class="chart-empty-state" id="overviewPieEmpty" style="display:none;">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
-                            <p>No data available yet</p>
-                        </div>
+
+            <!-- Skeleton Loading State -->
+            <div id="overviewSkeleton" class="overview-skeleton">
+                <div class="overview-kpi-row">
+                    <div class="skel-card"></div>
+                    <div class="skel-card"></div>
+                    <div class="skel-card"></div>
+                    <div class="skel-card"></div>
+                    <div class="skel-card"></div>
+                    <div class="skel-card"></div>
+                </div>
+                <div class="overview-charts">
+                    <div class="overview-chart-card">
+                        <div class="skel-line skel-w-40"></div>
+                        <div class="skel-chart"></div>
+                    </div>
+                    <div class="overview-chart-card">
+                        <div class="skel-line skel-w-40"></div>
+                        <div class="skel-chart"></div>
                     </div>
                 </div>
-                <div class="overview-chart-card">
-                    <h3>Venture Completion</h3>
-                    <div class="overview-chart-wrap">
-                        <canvas id="overviewBarChart"></canvas>
-                        <div class="chart-empty-state" id="overviewBarEmpty" style="display:none;">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
-                            <p>No ventures to display</p>
-                        </div>
-                    </div>
+                <div class="overview-ventures">
+                    <div class="skel-line skel-w-30"></div>
+                    <div class="skel-vrow"></div>
+                    <div class="skel-vrow"></div>
+                    <div class="skel-vrow"></div>
                 </div>
             </div>
-            <div class="overview-ventures" id="overviewVentures"></div>
+
+            <!-- Actual Content (hidden until data ready) -->
+            <div id="overviewContent" style="display:none;">
+                <div class="overview-kpi-row" id="overviewKpiRow"></div>
+                <div class="overview-charts">
+                    <div class="overview-chart-card">
+                        <h3>Work Status Distribution</h3>
+                        <div class="overview-chart-wrap overview-donut-wrap">
+                            <canvas id="overviewPieChart"></canvas>
+                            <div class="overview-donut-center" id="overviewDonutCenter"></div>
+                            <div class="chart-empty-state" id="overviewPieEmpty" style="display:none;">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+                                <p>No data available yet</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="overview-chart-card">
+                        <h3>Venture Completion</h3>
+                        <div class="overview-chart-wrap">
+                            <canvas id="overviewBarChart"></canvas>
+                            <div class="chart-empty-state" id="overviewBarEmpty" style="display:none;">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+                                <p>No ventures to display</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="overview-ventures" id="overviewVentures"></div>
+            </div>
         </div>
 
         <!-- Invoices Panel -->
@@ -1418,7 +1450,7 @@
     <script src="/static/js/payroll.js?v=17"></script>
     <script src="/static/js/inventory.js?v=19"></script>
     <script src="/static/js/reports.js?v=24"></script>
-    <script src="/static/js/features.js?v=30"></script>
+    <script src="/static/js/features.js?v=32"></script>
     <script src="/static/js/contractor_payments.js?v=3"></script>
     <script src="/static/js/theme-ui.js?v=10"></script>
     <script>

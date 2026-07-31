@@ -1443,10 +1443,13 @@ async function renderOverviewPage() {
     page.style.display = '';
     if (typeof setActiveNav === 'function') setActiveNav('sidebarOverview');
 
-    const kpiRow = document.getElementById('overviewKpiRow');
-    kpiRow.innerHTML = '<div style="padding:20px;color:#999;">Loading overview data...</div>';
+    // Show skeleton, hide content
+    const skeleton = document.getElementById('overviewSkeleton');
+    const content = document.getElementById('overviewContent');
+    if (skeleton) skeleton.style.display = '';
+    if (content) content.style.display = 'none';
 
-    // Preload all cells across all ventures if cache is mostly empty
+    // Preload all cells across all ventures
     try {
         const allCells = await apiGet('/api/cells');
         if (allCells) {
@@ -1515,6 +1518,13 @@ async function renderOverviewPage() {
         completed: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
         pending: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>'
     };
+
+    // All data is ready — hide skeleton, show content
+    if (skeleton) skeleton.style.display = 'none';
+    if (content) content.style.display = '';
+
+    const kpiRow = document.getElementById('overviewKpiRow');
+    if (kpiRow) kpiRow.innerHTML = '';
 
     const kpis = [
         { svg: kpiIcons.ventures, c: 'blue', label: 'Active Ventures', value: venturesList.length, sub: totalBlocks + ' blocks' },
@@ -1595,13 +1605,13 @@ async function renderOverviewPage() {
                     }
                 }
             });
-            // Insert custom legend below the canvas
-            const wrap = pieCtx.parentElement;
-            let legendEl = wrap.querySelector('.overview-pie-legend');
-            if (!legendEl) {
+            // Insert custom legend inside the chart card, below the wrap
+            const chartCard = pieCtx.closest('.overview-chart-card');
+            let legendEl = chartCard ? chartCard.querySelector('.overview-pie-legend') : null;
+            if (!legendEl && chartCard) {
                 legendEl = document.createElement('div');
                 legendEl.className = 'overview-pie-legend';
-                wrap.appendChild(legendEl);
+                chartCard.appendChild(legendEl);
             }
             legendEl.innerHTML = pieLegendHtml;
             // Click legend item to go to dashboard
@@ -1619,8 +1629,8 @@ async function renderOverviewPage() {
         } else {
             pieCtx.style.display = 'none';
             if (pieEmpty) pieEmpty.style.display = '';
-            const wrap = pieCtx.parentElement;
-            const legendEl = wrap.querySelector('.overview-pie-legend');
+            const chartCard = pieCtx.closest('.overview-chart-card');
+            const legendEl = chartCard ? chartCard.querySelector('.overview-pie-legend') : null;
             if (legendEl) legendEl.innerHTML = '';
             const donutCenter = document.getElementById('overviewDonutCenter');
             if (donutCenter) donutCenter.classList.remove('show');
@@ -1681,24 +1691,32 @@ async function renderOverviewPage() {
     }
 
     const vList = document.getElementById('overviewVentures');
-    vList.innerHTML = '<h3>Venture Completion</h3>';
+    if (vList) {
+        vList.innerHTML = '<h3>Venture Completion</h3>';
+    }
     const list = document.createElement('div');
     list.className = 'overview-vlist';
     if (ventureProgress.length === 0) {
-        list.innerHTML = '<div class="overview-vrow"><span>No ventures available</span></div>';
+        list.innerHTML = '<div class="overview-vrow overview-vrow-empty"><span>No ventures available</span></div>';
     } else {
         ventureProgress.forEach(v => {
+            const statusLabel = v.pct >= 75 ? 'On Track' : v.pct >= 40 ? 'At Risk' : 'Behind';
+            const statusClass = v.pct >= 75 ? 'ov-status-good' : v.pct >= 40 ? 'ov-status-warn' : 'ov-status-bad';
+            const barColor = v.pct >= 75 ? '#2ecc71' : v.pct >= 40 ? '#f1c40f' : '#e74c3c';
             const row = document.createElement('div');
             row.className = 'overview-vrow';
             row.style.cursor = 'pointer';
             row.innerHTML = `
                 <div class="ov-row-header">
                     <span class="ov-name">${escapeHtml(v.name)}</span>
-                    <span class="ov-pct">${v.pct}%</span>
+                    <div class="ov-header-right">
+                        <span class="ov-status-badge ${statusClass}">${statusLabel}</span>
+                        <span class="ov-pct" style="color:${barColor};">${v.pct}%</span>
+                    </div>
                 </div>
-                <div class="ov-bar"><div class="ov-bar-fill" style="width:${v.pct}%"></div></div>
+                <div class="ov-bar"><div class="ov-bar-fill" style="width:${v.pct}%;background:${barColor};"></div></div>
                 <div class="ov-row-stats">
-                    <span class="ov-stat">Total: <strong>${v.total}</strong></span>
+                    <span class="ov-stat ov-stat-total">Total: <strong>${v.total}</strong></span>
                     <span class="ov-stat ov-stat-green">Completed: <strong>${v.completed}</strong></span>
                     <span class="ov-stat ov-stat-red">Pending: <strong>${v.pending}</strong></span>
                 </div>
@@ -1713,7 +1731,7 @@ async function renderOverviewPage() {
             list.appendChild(row);
         });
     }
-    vList.appendChild(list);
+    if (vList) vList.appendChild(list);
     _overviewRendering = false;
 }
 
