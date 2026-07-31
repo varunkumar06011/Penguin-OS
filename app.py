@@ -1481,15 +1481,21 @@ def api_ventures_apply_settings():
     if not settings:
         return jsonify({'error': 'No settings provided'}), 400
 
+    # scope='all' is a destructive, company-wide action — admin only
+    if scope == 'all' and session['user'].get('role') != 'admin':
+        return jsonify({'error': 'Only admins can apply settings to all ventures'}), 403
+
     # Valid setting keys that can be applied
     valid_keys = {'flat_view_items', 'super_structure_items', 'work_categories', 'blocks'}
     apply_keys = set(settings.keys()) & valid_keys
     if not apply_keys:
         return jsonify({'error': 'No valid setting keys provided'}), 400
 
+    user_email = session['user'].get('email', 'unknown')
+    org_id = session['user'].get('org_id')
+
     try:
         if scope == 'all':
-            org_id = session['user'].get('org_id')
             res = supabase.table('ventures').select('*').eq('org_id', org_id).execute()
             if not res.data:
                 return jsonify({'error': 'No ventures found'}), 404
@@ -1502,9 +1508,22 @@ def api_ventures_apply_settings():
                         vdata = _json.loads(vdata)
                     except Exception:
                         vdata = {}
+                old_data = {k: vdata.get(k) for k in apply_keys}
                 for key in apply_keys:
                     vdata[key] = settings[key]
                 supabase.table('ventures').update({'data': vdata}).eq('id', row['id']).execute()
+                # Audit log: preserve the previous config for recovery
+                try:
+                    supabase.table('audit_log').insert({
+                        'org_id': org_id,
+                        'user_email': user_email,
+                        'action': 'apply_settings_all',
+                        'target_id': row['id'],
+                        'old_data': old_data,
+                        'new_data': {k: settings[k] for k in apply_keys},
+                    }).execute()
+                except Exception as audit_err:
+                    logger.warning(f'Audit log insert failed (non-fatal): {audit_err}')
                 updated += 1
             return jsonify({'success': True, 'updated': updated})
         else:
@@ -1522,9 +1541,21 @@ def api_ventures_apply_settings():
                     vdata = _json.loads(vdata)
                 except Exception:
                     vdata = {}
+            old_data = {k: vdata.get(k) for k in apply_keys}
             for key in apply_keys:
                 vdata[key] = settings[key]
             supabase.table('ventures').update({'data': vdata}).eq('id', venture_id).execute()
+            try:
+                supabase.table('audit_log').insert({
+                    'org_id': org_id,
+                    'user_email': user_email,
+                    'action': 'apply_settings_single',
+                    'target_id': venture_id,
+                    'old_data': old_data,
+                    'new_data': {k: settings[k] for k in apply_keys},
+                }).execute()
+            except Exception as audit_err:
+                logger.warning(f'Audit log insert failed (non-fatal): {audit_err}')
             return jsonify({'success': True, 'updated': 1})
     except Exception as e:
         logger.error(f'Error applying settings: {e}')

@@ -2206,3 +2206,431 @@
 2026-07-30 20:42:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
 2026-07-30 20:42:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
 2026-07-30 20:42:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 20:42:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 20:43:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 20:43:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 20:43:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 20:43:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 20:43:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 20:44:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 20:44:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 20:44:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 20:44:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 20:44:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 20:45:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 20:45:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 20:45:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 20:45:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 20:46:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 20:46:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 20:46:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 20:46:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 20:46:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 20:47:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 20:47:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 20:47:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 20:47:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 20:48:22 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 20:48:22 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 20:48:22 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 20:48:22 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 20:48:23 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 20:48:23 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 20:48:23 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 20:48:23] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 20:48:23 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 20:48:23] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 20:48:33 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 20:48:33 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 20:48:33 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 20:48:33] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 20:48:43 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 20:48:43 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 20:48:43 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 20:48:43] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 20:48:53 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 20:48:53 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 20:48:53 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 20:48:53] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 20:49:03 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 20:49:03 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 20:49:03 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 20:49:03] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 20:49:13 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 20:49:13 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 20:49:13 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 20:49:13] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 20:49:23 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 20:49:23 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 20:49:23 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 20:49:23 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 20:49:23] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 20:49:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 20:49:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 20:49:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 20:49:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 20:50:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 20:50:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 20:50:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 20:50:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 20:50:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 20:51:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 20:51:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 20:51:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 20:51:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 20:52:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 20:52:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 20:52:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 20:52:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 20:52:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 20:53:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 20:53:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 20:53:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 20:53:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 20:54:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 20:54:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 20:54:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 20:54:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 20:54:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 20:55:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 20:55:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 20:55:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 20:55:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 20:56:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 20:56:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 20:56:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 20:56:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 20:56:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 20:57:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 20:57:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 20:57:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 20:57:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 20:58:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 20:58:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 20:58:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 20:58:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 20:58:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 20:59:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 20:59:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 20:59:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 20:59:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:00:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 21:00:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:00:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:00:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:00:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:01:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 21:01:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:01:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:01:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:01:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:02:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:02:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:02:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:02:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:03:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 21:03:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:03:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:03:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:03:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:04:21 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:04:21 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:04:21 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:04:21 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:04:21 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:04:21] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:04:21 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:04:21] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:04:22 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:04:22 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:04:22 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:04:22] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:04:33 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:04:33 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:04:33 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:04:33] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:04:43 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:04:43 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:04:43 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:04:43] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:04:53 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:04:53 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:04:53 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:04:53] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:05:03 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 21:05:03 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:05:03 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:05:03 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:05:03] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:05:13 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:05:13 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:05:13 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:05:13] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:05:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:05:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:05:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:05:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:06:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 21:06:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:06:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:06:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:06:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:07:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 21:07:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:07:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:07:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:07:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:08:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:08:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:08:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:08:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:09:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 21:09:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:09:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:09:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:09:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:10:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 21:10:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:10:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:10:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:10:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:11:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 21:11:57 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:11:57 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:11:57 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:11:57] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:12:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:12:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:12:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:12:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:13:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 21:13:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:13:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:13:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:13:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:14:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 21:14:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:14:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:14:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:14:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:15:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:15:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:15:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:15:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:16:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 21:16:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:16:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:16:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:16:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:17:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:17:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:17:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:17:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:18:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 21:18:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:18:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:18:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:18:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:19:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:19:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:19:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:19:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:20:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 21:20:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:20:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:20:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:20:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:21:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:21:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:21:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:21:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:22:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 21:22:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:22:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:22:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:22:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:23:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:23:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:23:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:23:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:24:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 21:24:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:24:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:24:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:24:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:25:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:25:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:25:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:25:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:26:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 21:26:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:26:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:26:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:26:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:27:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 21:27:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:27:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:27:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:27:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:28:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:28:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:28:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:28:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:29:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 21:29:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:29:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:29:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:29:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:30:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:30:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:30:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:30:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:31:33 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 21:31:34 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:31:34 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:31:34 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:31:34] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:31:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:31:57 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:31:57 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:31:57] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:32:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 21:32:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:32:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:32:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:32:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:33:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 21:33:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:33:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:33:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:33:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:34:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:34:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:34:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:34:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:35:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 21:35:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:35:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:35:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:35:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:36:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 21:36:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:36:57 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:36:57 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:36:57] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:37:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:37:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:37:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:37:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:38:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 21:38:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:38:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:38:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:38:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:39:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 21:39:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:39:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:39:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:39:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:40:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:40:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:40:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:40:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:42:10 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 21:42:10 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:42:10 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:42:10 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:42:10] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:42:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 21:42:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:42:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:42:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:42:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:43:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:43:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:43:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:43:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:44:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 21:44:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:44:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:44:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:44:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:45:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:45:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:45:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:45:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:46:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 21:46:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:46:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:46:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:46:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:47:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 21:47:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:47:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:47:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:47:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:48:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:48:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:48:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:48:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:49:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 21:49:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:49:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:49:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:49:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:50:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 21:50:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:50:57 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:50:57 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:50:57] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:51:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:51:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:51:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:51:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:52:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 21:52:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:52:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:52:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:52:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:53:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 21:53:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:53:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:53:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:53:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:54:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:54:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:54:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:54:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:55:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 21:55:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:55:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:55:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:55:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:56:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 21:56:57 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:56:57 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:56:57 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:56:57] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:57:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 21:57:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:57:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:57:56 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:57:56] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:58:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 21:58:57 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:58:57 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:58:57 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:58:57] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 21:59:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:59:57 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 21:59:57 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 21:59:57] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 22:00:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 22:00:57 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:00:57 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:00:57 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 22:00:57] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 22:01:57 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:01:58 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:01:58 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 22:01:58] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 22:02:44 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 22:02:45 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:02:45 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:02:45 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 22:02:45] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 22:02:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:02:57 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:02:57 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 22:02:57] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 22:03:19 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:03:19 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:03:19 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 22:03:19] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 22:03:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 22:03:57 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:03:57 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:03:57 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 22:03:57] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 22:04:57 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 22:04:57 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:04:58 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:04:58 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 22:04:58] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 22:05:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:05:57 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:05:57 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 22:05:57] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 22:06:57 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 22:06:57 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:06:57 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:06:58 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 22:06:58] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 22:07:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 22:07:57 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:07:57 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:07:57 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 22:07:57] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 22:08:57 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:08:57 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:08:57 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 22:08:57] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 22:09:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 22:09:57 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:09:57 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:09:57 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 22:09:57] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 22:10:57 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:10:57 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:10:57 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 22:10:57] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 22:11:57 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 22:11:57 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:11:58 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:11:58 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 22:11:58] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 22:12:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:12:57 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:12:57 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 22:12:57] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 22:13:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 22:13:57 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:13:57 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:13:57 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 22:13:57] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 22:14:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 22:14:57 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:14:57 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:14:57 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 22:14:57] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 22:15:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 22:15:57 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:15:57 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:15:57 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 22:15:57] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 22:16:57 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 22:16:57 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:16:58 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:16:58 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 22:16:58] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 22:17:57 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 22:17:58 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:17:59 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:17:59 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 22:17:59] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 22:18:57 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:18:57 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:18:57 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 22:18:57] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 22:19:57 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 22:19:57 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:19:57 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:19:57 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 22:19:57] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 22:20:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 22:20:57 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:20:57 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:20:57 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 22:20:57] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 22:21:57 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:21:57 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:21:57 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 22:21:57] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 22:22:59 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 22:23:00 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:23:01 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:23:01 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 22:23:01] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 22:24:00 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 22:24:01 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:24:01 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:24:01 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 22:24:01] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 22:24:57 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:24:57 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:24:57 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 22:24:57] "GET /api/ventures HTTP/1.1" 200 -
+2026-07-30 22:25:56 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.63d8fc79-6fc3-4bbc-a4e7-0cb84ca7227c "HTTP/2 200 OK"
+2026-07-30 22:25:57 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:25:57 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=id&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-07-30 22:25:57 [INFO] werkzeug: 127.0.0.1 - - [30/Jul/2026 22:25:57] "GET /api/ventures HTTP/1.1" 200 -

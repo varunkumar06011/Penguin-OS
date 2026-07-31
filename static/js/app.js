@@ -586,6 +586,7 @@ function parseHash(hash) {
     if (!h) return { route: 'ventures' };
     const parts = h.split('/').filter(Boolean);
     if (parts[0] === 'ventures') return { route: 'ventures' };
+    if (parts[0] === 'overview') return { route: 'overview' };
     if (parts[0] === 'invoices') return { route: 'invoices' };
     if (parts[0] === 'pos') return { route: 'pos' };
     if (parts[0] === 'payroll') return { route: 'payroll' };
@@ -606,7 +607,12 @@ function parseHash(hash) {
 async function applyHashRoute() {
     const saved = loadAppState();
     let hash = window.location.hash;
-    if (!hash && saved.hash) {
+    // Admins always land on Overview by default — don't restore last page
+    if (!hash && currentUserRole === 'admin') {
+        hash = '#/overview';
+        ignoreNextHashChange = true;
+        window.location.hash = '#/overview';
+    } else if (!hash && saved.hash) {
         hash = saved.hash;
         ignoreNextHashChange = true;
         window.location.hash = saved.hash;
@@ -615,6 +621,8 @@ async function applyHashRoute() {
 
     if (route.route === 'ventures') {
         exitToDashboard();
+    } else if (route.route === 'overview') {
+        if (typeof renderOverviewPage === 'function') renderOverviewPage();
     } else if (route.route === 'tracker') {
         const venture = venturesList.find(v => v.id === route.ventureId);
         if (venture) {
@@ -1128,6 +1136,7 @@ function renderSidebar() {
     const overviewBtn = document.getElementById('sidebarOverview');
     if (overviewBtn && !overviewBtn._bound) {
         overviewBtn.addEventListener('click', () => {
+            navigateTo('#/overview');
             if (typeof renderOverviewPage === 'function') renderOverviewPage();
         });
         overviewBtn._bound = true;
@@ -1365,7 +1374,8 @@ async function pollData() {
 
     const tracker = document.getElementById('trackerView');
     const trackerVisible = tracker && tracker.style.display !== 'none';
-    if (!trackerVisible) return;
+    const overviewVisible = document.getElementById('overviewPage')?.style.display !== 'none';
+    if (!trackerVisible && !overviewVisible) return;
 
     try {
         let cellsUrl = '/api/cells';
@@ -1397,7 +1407,9 @@ async function pollData() {
             }
             if (cellsChanged) {
                 changed = true;
-                if (currentView === 'work') {
+                if (overviewVisible) {
+                    if (typeof renderOverviewPage === 'function') renderOverviewPage();
+                } else if (currentView === 'work') {
                     renderWorkView();
                 } else if (currentView === 'super') {
                     renderSuperStructure();

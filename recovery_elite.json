@@ -1,0 +1,1189 @@
+{
+  "venture_id": "elite",
+  "venture_name": "Elite",
+  "stats": {
+    "total_cells": 12,
+    "old_flat_items": 3,
+    "old_work_items": 0,
+    "old_ss_items": 5,
+    "orphaned_flat": 2,
+    "orphaned_work": 0,
+    "orphaned_ss": 4
+  },
+  "current_data": {
+    "id": "elite",
+    "name": "Elite",
+    "blocks": [
+      {
+        "id": "A",
+        "name": "A Block",
+        "floors": 5,
+        "flats_per_floor": 6
+      },
+      {
+        "id": "B",
+        "name": "B Block",
+        "floors": 5,
+        "flats_per_floor": 6
+      }
+    ],
+    "archived": {},
+    "flat_view_items": [
+      {
+        "id": "item_brick_work_1785407800278_zhuy2",
+        "label": "BRICK WORK"
+      },
+      {
+        "id": "item_electrical_pipes_1785407800278_0ke2p",
+        "label": "ELECTRICAL PIPES"
+      },
+      {
+        "id": "item_mesh_1785407800278_zg2xk",
+        "label": "MESH"
+      },
+      {
+        "id": "item_plastering_1785407800278_f73q7",
+        "label": "PLASTERING"
+      },
+      {
+        "id": "item_ceiling_paint_1785407800278_3l04d",
+        "label": "CEILING PAINT"
+      },
+      {
+        "id": "item_pop_frame_1785407800278_z60ih",
+        "label": "POP FRAME"
+      },
+      {
+        "id": "item_ceiling_wiring_1785407800278_rnyb1",
+        "label": "CEILING WIRING"
+      },
+      {
+        "id": "item_pop_sheets_1785407800278_em0aa",
+        "label": "POP SHEETS"
+      },
+      {
+        "id": "item_wall_care_1785407800278_hyu1x",
+        "label": "WALL CARE"
+      },
+      {
+        "id": "item_bathroom_plumbing_1785407800278_3tfgk",
+        "label": "BATHROOM PLUMBING"
+      },
+      {
+        "id": "item_window_frame_1785407800278_q84td",
+        "label": "WINDOW FRAME"
+      },
+      {
+        "id": "item_bath_swr_lines_1785407800278_6v4oh",
+        "label": "BATH SWR LINES"
+      },
+      {
+        "id": "item_bath_concealing_1785407800278_kdsjh",
+        "label": "BATH CONCEALING"
+      },
+      {
+        "id": "item_tiles_1785407800278_41ru6",
+        "label": "TILES"
+      },
+      {
+        "id": "item_doors_fitting_1785407800278_3po2c",
+        "label": "DOORS FITTING"
+      },
+      {
+        "id": "item_paint_primer_1785407800278_j2wwo",
+        "label": "PAINT PRIMER"
+      },
+      {
+        "id": "item_paint_1st_coat_1785407800278_hp0z4",
+        "label": "PAINT 1st COAT"
+      },
+      {
+        "id": "item_windows_paint_1785407800278_14ygl",
+        "label": "WINDOWS PAINT"
+      },
+      {
+        "id": "item_switch_board_fitting_1785407800278_ov359",
+        "label": "SWITCH BOARD FITTING"
+      },
+      {
+        "id": "item_patch_work_1785407800278_urtlu",
+        "label": "PATCH WORK"
+      },
+      {
+        "id": "item_2nd_coat_painting_1785407800278_ju9ez",
+        "label": "2nd COAT PAINTING"
+      },
+      {
+        "id": "item_hhhh_1785407800278_97nwl",
+        "label": "HHHH"
+      },
+      {
+        "id": "item_new_1785407804914_lfnym",
+        "label": "EEE"
+      },
+      {
+        "id": "corridor_0",
+        "label": "Corridor"
+      }
+    ],
+    "work_categories": {
+      "eeee": [],
+      "FLOORING": [
+        {
+          "id": "item_flooring_bathroom_wall_tiles_0",
+          "label": "Bathroom Wall Tiles"
+        },
+        {
+          "id": "item_flooring_tile_laying_1",
+          "label": "Tile Laying"
+        },
+        {
+          "id": "item_flooring_tile_cutting_2",
+          "label": "Tile Cutting"
+        },
+        {
+          "id": "item_flooring_connections_3",
+          "label": "Connections"
+        },
+        {
+          "id": "item_flooring_window_dhanis_4",
+          "label": "Window Dhanis"
+        },
+        {
+          "id": "item_flooring_colour_to_edge_5",
+          "label": "Colour to Edge"
+        },
+        {
+          "id": "item_flooring_wedding_dhanis_6",
+          "label": "Wedding Dhanis"
+        }
+      ],
+      "PAINTING": [
+        {
+          "id": "item_painting_colour_primer_0",
+          "label": "Colour Primer"
+        },
+        {
+          "id": "item_painting_wall_care_plaster_1",
+          "label": "Wall Care Plaster"
+        },
+        {
+          "id": "item_painting_wall_care_slastoat_2",
+          "label": "Wall Care Slastoat"
+        },
+        {
+          "id": "item_painting_wall_primer_3",
+          "label": "Wall Primer"
+        },
+        {
+          "id": "item_painting_primer_4",
+          "label": "Primer"
+        },
+        {
+          "id": "item_painting_colour_to_edge_5",
+          "label": "Colour to Edge"
+        }
+      ],
+      "CORRIDORS": [
+        {
+          "id": "corridor_0",
+          "label": "Plaster"
+        },
+        {
+          "id": "corridor_1",
+          "label": "Mesh"
+        },
+        {
+          "id": "corridor_2",
+          "label": "Lanter"
+        },
+        {
+          "id": "corridor_3",
+          "label": "Wiring"
+        },
+        {
+          "id": "corridor_4",
+          "label": "Stains & Cleaning"
+        },
+        {
+          "id": "corridor_5",
+          "label": "Flooring"
+        }
+      ],
+      "CIVIL WORK": [
+        {
+          "id": "item_civil_work_brick_work_0",
+          "label": "Brick work"
+        },
+        {
+          "id": "item_civil_work_lintel_1",
+          "label": "Lintel"
+        },
+        {
+          "id": "item_civil_work_lanter_2",
+          "label": "Lanter"
+        },
+        {
+          "id": "item_civil_work_mesh_3",
+          "label": "Mesh"
+        },
+        {
+          "id": "item_civil_work_mesh___brickwork_ncc_4",
+          "label": "Mesh & Brickwork NCC"
+        },
+        {
+          "id": "item_civil_work_connections_5",
+          "label": "Connections"
+        },
+        {
+          "id": "item_civil_work_lift_6",
+          "label": "Lift"
+        },
+        {
+          "id": "item_civil_work_cupboards_7",
+          "label": "Cupboards"
+        },
+        {
+          "id": "item_civil_work_red_oxide_duraplus_primer_8",
+          "label": "Red Oxide Duraplus Primer"
+        },
+        {
+          "id": "item_civil_work_red_oxide_duraplus_primer__2nd_9",
+          "label": "Red Oxide Duraplus Primer (2nd coat)"
+        },
+        {
+          "id": "item_civil_work_bathroom_service_chargable_10",
+          "label": "Bathroom Service Chargable"
+        }
+      ],
+      "POP CEILING": [
+        {
+          "id": "item_pop_ceiling_pop_bolster_work_0",
+          "label": "Pop bolster work"
+        },
+        {
+          "id": "item_pop_ceiling_pop_ready_work_1",
+          "label": "Pop ready work"
+        },
+        {
+          "id": "item_pop_ceiling_casing_2",
+          "label": "Casing"
+        },
+        {
+          "id": "item_pop_ceiling_balloon_pvc_box_fitting_3",
+          "label": "Balloon PVC Box Fitting"
+        },
+        {
+          "id": "item_pop_ceiling_connections___measurement_4",
+          "label": "Connections / Measurement"
+        }
+      ],
+      "ELEVATION WORK": [
+        {
+          "id": "elevation_0",
+          "label": "Marka"
+        },
+        {
+          "id": "elevation_1",
+          "label": "Elevation"
+        },
+        {
+          "id": "elevation_2",
+          "label": "Electrics"
+        },
+        {
+          "id": "elevation_3",
+          "label": "Wall Care"
+        },
+        {
+          "id": "elevation_4",
+          "label": "Texture"
+        }
+      ],
+      "ELECTRICAL & PLUMBING WORK": [
+        {
+          "id": "item_electrical___plumbing_work_electrical_pipe_0",
+          "label": "Electrical pipe"
+        },
+        {
+          "id": "item_electrical___plumbing_work_pipe___gi_box_1",
+          "label": "Pipe & GI box"
+        },
+        {
+          "id": "item_electrical___plumbing_work_wiring_2",
+          "label": "Wiring"
+        },
+        {
+          "id": "item_electrical___plumbing_work_bathroom_chipped_3",
+          "label": "Bathroom Chipped"
+        },
+        {
+          "id": "item_electrical___plumbing_work_bathroom_geyser_pipe_4",
+          "label": "Bathroom Geyser Pipe"
+        },
+        {
+          "id": "item_electrical___plumbing_work_bathroom_geyser___pipes_5",
+          "label": "Bathroom Geyser & Pipes"
+        },
+        {
+          "id": "item_electrical___plumbing_work_sanitary_board___nand_6",
+          "label": "Sanitary Board & Nand"
+        },
+        {
+          "id": "item_electrical___plumbing_work_gc___bath_fitting_7",
+          "label": "GC & Bath Fitting"
+        },
+        {
+          "id": "item_electrical___plumbing_work_eee_1785409514495",
+          "label": "eee"
+        }
+      ]
+    },
+    "super_structure_items": [
+      {
+        "id": "ss_site_preparation_1785394155539",
+        "label": "Site Preparation"
+      },
+      {
+        "id": "ss_excavation_1785394155539",
+        "label": "Excavation"
+      },
+      {
+        "id": "ss_marking_1785394155539",
+        "label": "Marking"
+      },
+      {
+        "id": "ss_piles_1785394155539",
+        "label": "Piles"
+      },
+      {
+        "id": "ss_piles_concrete_1785394155539",
+        "label": "Piles Concrete"
+      },
+      {
+        "id": "ss_pile_caps_1785394155539",
+        "label": "Pile Caps"
+      },
+      {
+        "id": "ss_plinth_beam_1785394155539",
+        "label": "Plinth Beam"
+      },
+      {
+        "id": "ss_plinth_wall_1785394155539",
+        "label": "Plinth Wall"
+      },
+      {
+        "id": "ss_filling_1785394155539",
+        "label": "Filling"
+      },
+      {
+        "id": "ss_40mm_bed_1785394155539",
+        "label": "40mm Bed"
+      },
+      {
+        "id": "ss_sunken_tank_1785394155539",
+        "label": "Sunken Tank"
+      },
+      {
+        "id": "ss_columns_for_1st_slab_1785394155539",
+        "label": "Columns for 1st Slab"
+      },
+      {
+        "id": "ss_slab_shuttering_for_1st_slab_1785394155539",
+        "label": "Slab Shuttering for 1st Slab"
+      },
+      {
+        "id": "ss_bar_bending_for_1st_slab_1785394155539",
+        "label": "Bar Bending for 1st Slab"
+      },
+      {
+        "id": "ss_electrical_pipes_1785394155539",
+        "label": "Electrical Pipes"
+      },
+      {
+        "id": "ss_1st_slab_casting_1785394155539",
+        "label": "1st Slab Casting"
+      },
+      {
+        "id": "ss_columns_for_2nd_slab_1785394155539",
+        "label": "Columns for 2nd Slab"
+      },
+      {
+        "id": "ss_shuttering_for_2nd_slab_1785394155539",
+        "label": "Shuttering for 2nd Slab"
+      },
+      {
+        "id": "ss_bar_bending_for_2nd_slab_1785394155539",
+        "label": "Bar Bending for 2nd Slab"
+      },
+      {
+        "id": "ss_electrical_pipes_1785394155539",
+        "label": "Electrical Pipes"
+      },
+      {
+        "id": "ss_2nd_slab_casting_1785394155539",
+        "label": "2nd Slab Casting"
+      },
+      {
+        "id": "ss_columns_for_3rd_slab_1785394155539",
+        "label": "Columns for 3rd Slab"
+      },
+      {
+        "id": "ss_slab_shuttering_for_3rd_slab_1785394155539",
+        "label": "Slab Shuttering for 3rd Slab"
+      },
+      {
+        "id": "ss_bar_bending_for_3rd_slab_1785394155539",
+        "label": "Bar Bending for 3rd Slab"
+      },
+      {
+        "id": "ss_electrical_pipes_1785394155539",
+        "label": "Electrical Pipes"
+      },
+      {
+        "id": "ss_3rd_slab_casting_1785394155539",
+        "label": "3rd Slab Casting"
+      },
+      {
+        "id": "ss_columns_for_4th_slab_1785394155539",
+        "label": "Columns for 4th Slab"
+      },
+      {
+        "id": "ss_slab_shuttering_for_4th_slab_1785394155539",
+        "label": "Slab Shuttering for 4th Slab"
+      },
+      {
+        "id": "ss_bar_bending_for_4th_slab_1785394155540",
+        "label": "Bar Bending for 4th Slab"
+      },
+      {
+        "id": "ss_electrical_pipes_1785394155540",
+        "label": "Electrical Pipes"
+      },
+      {
+        "id": "ss_4th_slab_casting_1785394155540",
+        "label": "4th Slab Casting"
+      },
+      {
+        "id": "ss_columns_for_5th_slab_1785394155540",
+        "label": "Columns for 5th Slab"
+      },
+      {
+        "id": "ss_slab_shuttering_for_5th_slab_1785394155540",
+        "label": "Slab Shuttering for 5th Slab"
+      },
+      {
+        "id": "ss_bar_bending_for_5th_slab_1785394155540",
+        "label": "Bar Bending for 5th Slab"
+      },
+      {
+        "id": "ss_electrical_pipes_1785394155540",
+        "label": "Electrical Pipes"
+      },
+      {
+        "id": "ss_5th_slab_casting_1785394155540",
+        "label": "5th Slab Casting"
+      },
+      {
+        "id": "ss_columns_for_6th_slab_1785394155540",
+        "label": "Columns for 6th Slab"
+      },
+      {
+        "id": "ss_slab_shuttering_for_6th_slab_1785394155540",
+        "label": "Slab Shuttering for 6th Slab"
+      },
+      {
+        "id": "ss_bar_bending_for_6th_slab_1785394155540",
+        "label": "Bar Bending for 6th Slab"
+      },
+      {
+        "id": "ss_electrical_pipes_1785394155540",
+        "label": "Electrical Pipes"
+      },
+      {
+        "id": "ss_6th_slab_casting_1785394155540",
+        "label": "6th Slab Casting"
+      },
+      {
+        "id": "ss_columns_for_lift_tank___stairs_1785394155540",
+        "label": "Columns for Lift Tank & Stairs"
+      },
+      {
+        "id": "ss_shuttering_for_above_1785394155540",
+        "label": "Shuttering for Above"
+      },
+      {
+        "id": "ss_slab_casting_1785394155540",
+        "label": "Slab Casting"
+      },
+      {
+        "id": "ss_water_tank_bar_bending_1785394155540",
+        "label": "Water Tank Bar Bending"
+      },
+      {
+        "id": "ss_water_tank_ncc_1785394155540",
+        "label": "Water Tank NCC"
+      },
+      {
+        "id": "ss_elevation_scaffolding_1785394155540",
+        "label": "Elevation Scaffolding"
+      },
+      {
+        "id": "ss_elevation_mess___packing_1785394155540",
+        "label": "Elevation Mess & Packing"
+      },
+      {
+        "id": "ss_elevation_brick_work_1785394155540",
+        "label": "Elevation Brick Work"
+      },
+      {
+        "id": "ss_elevation__plastering__1785394155540",
+        "label": "Elevation (Plastering)"
+      },
+      {
+        "id": "ss_electrical_swm___plumbing_outs_1785394155540",
+        "label": "Electrical SWM & Plumbing Outside Lines"
+      },
+      {
+        "id": "ss_1m_ch_work_1785394155540",
+        "label": "1M CH Work"
+      },
+      {
+        "id": "ss_scaffolding_removal_1785394155540",
+        "label": "Scaffolding Removal"
+      },
+      {
+        "id": "ss_patch_work_1785394155540",
+        "label": "Patch Work"
+      },
+      {
+        "id": "ss_elevation_texture_1785394155540",
+        "label": "Elevation Texture"
+      },
+      {
+        "id": "ss_elevation_primer_1785394155540",
+        "label": "Elevation Primer"
+      },
+      {
+        "id": "ss_elevation_paint_1st_coat_1785394155540",
+        "label": "Elevation Paint 1st Coat"
+      },
+      {
+        "id": "ss_compound_wall_columns___beam_1785394155540",
+        "label": "Compound Wall Columns & Beam"
+      },
+      {
+        "id": "ss_compound_wall_brick___plasteri_1785394155540",
+        "label": "Compound Wall Brick & Plastering"
+      },
+      {
+        "id": "ss_compound_wall_paint_1785394155540",
+        "label": "Compound Wall Paint"
+      },
+      {
+        "id": "ss_final_coat_1785394155540",
+        "label": "Final Coat"
+      }
+    ]
+  },
+  "recovered_data": {
+    "id": "elite",
+    "name": "Elite",
+    "blocks": [
+      {
+        "id": "A",
+        "name": "A Block",
+        "floors": 5,
+        "flats_per_floor": 6
+      },
+      {
+        "id": "B",
+        "name": "B Block",
+        "floors": 5,
+        "flats_per_floor": 6
+      }
+    ],
+    "archived": {},
+    "flat_view_items": [
+      {
+        "id": "item_brick_work_1785407800278_zhuy2",
+        "label": "BRICK WORK"
+      },
+      {
+        "id": "item_electrical_pipes_1785407800278_0ke2p",
+        "label": "ELECTRICAL PIPES"
+      },
+      {
+        "id": "item_mesh_1785407800278_zg2xk",
+        "label": "MESH"
+      },
+      {
+        "id": "item_plastering_1785407800278_f73q7",
+        "label": "PLASTERING"
+      },
+      {
+        "id": "item_ceiling_paint_1785407800278_3l04d",
+        "label": "CEILING PAINT"
+      },
+      {
+        "id": "item_pop_frame_1785407800278_z60ih",
+        "label": "POP FRAME"
+      },
+      {
+        "id": "item_ceiling_wiring_1785407800278_rnyb1",
+        "label": "CEILING WIRING"
+      },
+      {
+        "id": "item_pop_sheets_1785407800278_em0aa",
+        "label": "POP SHEETS"
+      },
+      {
+        "id": "item_wall_care_1785407800278_hyu1x",
+        "label": "WALL CARE"
+      },
+      {
+        "id": "item_bathroom_plumbing_1785407800278_3tfgk",
+        "label": "BATHROOM PLUMBING"
+      },
+      {
+        "id": "item_window_frame_1785407800278_q84td",
+        "label": "WINDOW FRAME"
+      },
+      {
+        "id": "item_bath_swr_lines_1785407800278_6v4oh",
+        "label": "BATH SWR LINES"
+      },
+      {
+        "id": "item_bath_concealing_1785407800278_kdsjh",
+        "label": "BATH CONCEALING"
+      },
+      {
+        "id": "item_tiles_1785407800278_41ru6",
+        "label": "TILES"
+      },
+      {
+        "id": "item_doors_fitting_1785407800278_3po2c",
+        "label": "DOORS FITTING"
+      },
+      {
+        "id": "item_paint_primer_1785407800278_j2wwo",
+        "label": "PAINT PRIMER"
+      },
+      {
+        "id": "item_paint_1st_coat_1785407800278_hp0z4",
+        "label": "PAINT 1st COAT"
+      },
+      {
+        "id": "item_windows_paint_1785407800278_14ygl",
+        "label": "WINDOWS PAINT"
+      },
+      {
+        "id": "item_switch_board_fitting_1785407800278_ov359",
+        "label": "SWITCH BOARD FITTING"
+      },
+      {
+        "id": "item_patch_work_1785407800278_urtlu",
+        "label": "PATCH WORK"
+      },
+      {
+        "id": "item_2nd_coat_painting_1785407800278_ju9ez",
+        "label": "2nd COAT PAINTING"
+      },
+      {
+        "id": "item_hhhh_1785407800278_97nwl",
+        "label": "HHHH"
+      },
+      {
+        "id": "item_new_1785407804914_lfnym",
+        "label": "EEE"
+      },
+      {
+        "id": "corridor_0",
+        "label": "Corridor"
+      },
+      {
+        "id": "item_civil_work_lintel_1",
+        "label": "Item Civil Work Lintel"
+      },
+      {
+        "id": "item_civil_work_brick_work_0",
+        "label": "Item Civil Work Brick Work"
+      }
+    ],
+    "work_categories": {
+      "eeee": [],
+      "FLOORING": [
+        {
+          "id": "item_flooring_bathroom_wall_tiles_0",
+          "label": "Bathroom Wall Tiles"
+        },
+        {
+          "id": "item_flooring_tile_laying_1",
+          "label": "Tile Laying"
+        },
+        {
+          "id": "item_flooring_tile_cutting_2",
+          "label": "Tile Cutting"
+        },
+        {
+          "id": "item_flooring_connections_3",
+          "label": "Connections"
+        },
+        {
+          "id": "item_flooring_window_dhanis_4",
+          "label": "Window Dhanis"
+        },
+        {
+          "id": "item_flooring_colour_to_edge_5",
+          "label": "Colour to Edge"
+        },
+        {
+          "id": "item_flooring_wedding_dhanis_6",
+          "label": "Wedding Dhanis"
+        }
+      ],
+      "PAINTING": [
+        {
+          "id": "item_painting_colour_primer_0",
+          "label": "Colour Primer"
+        },
+        {
+          "id": "item_painting_wall_care_plaster_1",
+          "label": "Wall Care Plaster"
+        },
+        {
+          "id": "item_painting_wall_care_slastoat_2",
+          "label": "Wall Care Slastoat"
+        },
+        {
+          "id": "item_painting_wall_primer_3",
+          "label": "Wall Primer"
+        },
+        {
+          "id": "item_painting_primer_4",
+          "label": "Primer"
+        },
+        {
+          "id": "item_painting_colour_to_edge_5",
+          "label": "Colour to Edge"
+        }
+      ],
+      "CORRIDORS": [
+        {
+          "id": "corridor_0",
+          "label": "Plaster"
+        },
+        {
+          "id": "corridor_1",
+          "label": "Mesh"
+        },
+        {
+          "id": "corridor_2",
+          "label": "Lanter"
+        },
+        {
+          "id": "corridor_3",
+          "label": "Wiring"
+        },
+        {
+          "id": "corridor_4",
+          "label": "Stains & Cleaning"
+        },
+        {
+          "id": "corridor_5",
+          "label": "Flooring"
+        }
+      ],
+      "CIVIL WORK": [
+        {
+          "id": "item_civil_work_brick_work_0",
+          "label": "Brick work"
+        },
+        {
+          "id": "item_civil_work_lintel_1",
+          "label": "Lintel"
+        },
+        {
+          "id": "item_civil_work_lanter_2",
+          "label": "Lanter"
+        },
+        {
+          "id": "item_civil_work_mesh_3",
+          "label": "Mesh"
+        },
+        {
+          "id": "item_civil_work_mesh___brickwork_ncc_4",
+          "label": "Mesh & Brickwork NCC"
+        },
+        {
+          "id": "item_civil_work_connections_5",
+          "label": "Connections"
+        },
+        {
+          "id": "item_civil_work_lift_6",
+          "label": "Lift"
+        },
+        {
+          "id": "item_civil_work_cupboards_7",
+          "label": "Cupboards"
+        },
+        {
+          "id": "item_civil_work_red_oxide_duraplus_primer_8",
+          "label": "Red Oxide Duraplus Primer"
+        },
+        {
+          "id": "item_civil_work_red_oxide_duraplus_primer__2nd_9",
+          "label": "Red Oxide Duraplus Primer (2nd coat)"
+        },
+        {
+          "id": "item_civil_work_bathroom_service_chargable_10",
+          "label": "Bathroom Service Chargable"
+        }
+      ],
+      "POP CEILING": [
+        {
+          "id": "item_pop_ceiling_pop_bolster_work_0",
+          "label": "Pop bolster work"
+        },
+        {
+          "id": "item_pop_ceiling_pop_ready_work_1",
+          "label": "Pop ready work"
+        },
+        {
+          "id": "item_pop_ceiling_casing_2",
+          "label": "Casing"
+        },
+        {
+          "id": "item_pop_ceiling_balloon_pvc_box_fitting_3",
+          "label": "Balloon PVC Box Fitting"
+        },
+        {
+          "id": "item_pop_ceiling_connections___measurement_4",
+          "label": "Connections / Measurement"
+        }
+      ],
+      "ELEVATION WORK": [
+        {
+          "id": "elevation_0",
+          "label": "Marka"
+        },
+        {
+          "id": "elevation_1",
+          "label": "Elevation"
+        },
+        {
+          "id": "elevation_2",
+          "label": "Electrics"
+        },
+        {
+          "id": "elevation_3",
+          "label": "Wall Care"
+        },
+        {
+          "id": "elevation_4",
+          "label": "Texture"
+        }
+      ],
+      "ELECTRICAL & PLUMBING WORK": [
+        {
+          "id": "item_electrical___plumbing_work_electrical_pipe_0",
+          "label": "Electrical pipe"
+        },
+        {
+          "id": "item_electrical___plumbing_work_pipe___gi_box_1",
+          "label": "Pipe & GI box"
+        },
+        {
+          "id": "item_electrical___plumbing_work_wiring_2",
+          "label": "Wiring"
+        },
+        {
+          "id": "item_electrical___plumbing_work_bathroom_chipped_3",
+          "label": "Bathroom Chipped"
+        },
+        {
+          "id": "item_electrical___plumbing_work_bathroom_geyser_pipe_4",
+          "label": "Bathroom Geyser Pipe"
+        },
+        {
+          "id": "item_electrical___plumbing_work_bathroom_geyser___pipes_5",
+          "label": "Bathroom Geyser & Pipes"
+        },
+        {
+          "id": "item_electrical___plumbing_work_sanitary_board___nand_6",
+          "label": "Sanitary Board & Nand"
+        },
+        {
+          "id": "item_electrical___plumbing_work_gc___bath_fitting_7",
+          "label": "GC & Bath Fitting"
+        },
+        {
+          "id": "item_electrical___plumbing_work_eee_1785409514495",
+          "label": "eee"
+        }
+      ]
+    },
+    "super_structure_items": [
+      {
+        "id": "ss_site_preparation_1785394155539",
+        "label": "Site Preparation"
+      },
+      {
+        "id": "ss_excavation_1785394155539",
+        "label": "Excavation"
+      },
+      {
+        "id": "ss_marking_1785394155539",
+        "label": "Marking"
+      },
+      {
+        "id": "ss_piles_1785394155539",
+        "label": "Piles"
+      },
+      {
+        "id": "ss_piles_concrete_1785394155539",
+        "label": "Piles Concrete"
+      },
+      {
+        "id": "ss_pile_caps_1785394155539",
+        "label": "Pile Caps"
+      },
+      {
+        "id": "ss_plinth_beam_1785394155539",
+        "label": "Plinth Beam"
+      },
+      {
+        "id": "ss_plinth_wall_1785394155539",
+        "label": "Plinth Wall"
+      },
+      {
+        "id": "ss_filling_1785394155539",
+        "label": "Filling"
+      },
+      {
+        "id": "ss_40mm_bed_1785394155539",
+        "label": "40mm Bed"
+      },
+      {
+        "id": "ss_sunken_tank_1785394155539",
+        "label": "Sunken Tank"
+      },
+      {
+        "id": "ss_columns_for_1st_slab_1785394155539",
+        "label": "Columns for 1st Slab"
+      },
+      {
+        "id": "ss_slab_shuttering_for_1st_slab_1785394155539",
+        "label": "Slab Shuttering for 1st Slab"
+      },
+      {
+        "id": "ss_bar_bending_for_1st_slab_1785394155539",
+        "label": "Bar Bending for 1st Slab"
+      },
+      {
+        "id": "ss_electrical_pipes_1785394155539",
+        "label": "Electrical Pipes"
+      },
+      {
+        "id": "ss_1st_slab_casting_1785394155539",
+        "label": "1st Slab Casting"
+      },
+      {
+        "id": "ss_columns_for_2nd_slab_1785394155539",
+        "label": "Columns for 2nd Slab"
+      },
+      {
+        "id": "ss_shuttering_for_2nd_slab_1785394155539",
+        "label": "Shuttering for 2nd Slab"
+      },
+      {
+        "id": "ss_bar_bending_for_2nd_slab_1785394155539",
+        "label": "Bar Bending for 2nd Slab"
+      },
+      {
+        "id": "ss_electrical_pipes_1785394155539",
+        "label": "Electrical Pipes"
+      },
+      {
+        "id": "ss_2nd_slab_casting_1785394155539",
+        "label": "2nd Slab Casting"
+      },
+      {
+        "id": "ss_columns_for_3rd_slab_1785394155539",
+        "label": "Columns for 3rd Slab"
+      },
+      {
+        "id": "ss_slab_shuttering_for_3rd_slab_1785394155539",
+        "label": "Slab Shuttering for 3rd Slab"
+      },
+      {
+        "id": "ss_bar_bending_for_3rd_slab_1785394155539",
+        "label": "Bar Bending for 3rd Slab"
+      },
+      {
+        "id": "ss_electrical_pipes_1785394155539",
+        "label": "Electrical Pipes"
+      },
+      {
+        "id": "ss_3rd_slab_casting_1785394155539",
+        "label": "3rd Slab Casting"
+      },
+      {
+        "id": "ss_columns_for_4th_slab_1785394155539",
+        "label": "Columns for 4th Slab"
+      },
+      {
+        "id": "ss_slab_shuttering_for_4th_slab_1785394155539",
+        "label": "Slab Shuttering for 4th Slab"
+      },
+      {
+        "id": "ss_bar_bending_for_4th_slab_1785394155540",
+        "label": "Bar Bending for 4th Slab"
+      },
+      {
+        "id": "ss_electrical_pipes_1785394155540",
+        "label": "Electrical Pipes"
+      },
+      {
+        "id": "ss_4th_slab_casting_1785394155540",
+        "label": "4th Slab Casting"
+      },
+      {
+        "id": "ss_columns_for_5th_slab_1785394155540",
+        "label": "Columns for 5th Slab"
+      },
+      {
+        "id": "ss_slab_shuttering_for_5th_slab_1785394155540",
+        "label": "Slab Shuttering for 5th Slab"
+      },
+      {
+        "id": "ss_bar_bending_for_5th_slab_1785394155540",
+        "label": "Bar Bending for 5th Slab"
+      },
+      {
+        "id": "ss_electrical_pipes_1785394155540",
+        "label": "Electrical Pipes"
+      },
+      {
+        "id": "ss_5th_slab_casting_1785394155540",
+        "label": "5th Slab Casting"
+      },
+      {
+        "id": "ss_columns_for_6th_slab_1785394155540",
+        "label": "Columns for 6th Slab"
+      },
+      {
+        "id": "ss_slab_shuttering_for_6th_slab_1785394155540",
+        "label": "Slab Shuttering for 6th Slab"
+      },
+      {
+        "id": "ss_bar_bending_for_6th_slab_1785394155540",
+        "label": "Bar Bending for 6th Slab"
+      },
+      {
+        "id": "ss_electrical_pipes_1785394155540",
+        "label": "Electrical Pipes"
+      },
+      {
+        "id": "ss_6th_slab_casting_1785394155540",
+        "label": "6th Slab Casting"
+      },
+      {
+        "id": "ss_columns_for_lift_tank___stairs_1785394155540",
+        "label": "Columns for Lift Tank & Stairs"
+      },
+      {
+        "id": "ss_shuttering_for_above_1785394155540",
+        "label": "Shuttering for Above"
+      },
+      {
+        "id": "ss_slab_casting_1785394155540",
+        "label": "Slab Casting"
+      },
+      {
+        "id": "ss_water_tank_bar_bending_1785394155540",
+        "label": "Water Tank Bar Bending"
+      },
+      {
+        "id": "ss_water_tank_ncc_1785394155540",
+        "label": "Water Tank NCC"
+      },
+      {
+        "id": "ss_elevation_scaffolding_1785394155540",
+        "label": "Elevation Scaffolding"
+      },
+      {
+        "id": "ss_elevation_mess___packing_1785394155540",
+        "label": "Elevation Mess & Packing"
+      },
+      {
+        "id": "ss_elevation_brick_work_1785394155540",
+        "label": "Elevation Brick Work"
+      },
+      {
+        "id": "ss_elevation__plastering__1785394155540",
+        "label": "Elevation (Plastering)"
+      },
+      {
+        "id": "ss_electrical_swm___plumbing_outs_1785394155540",
+        "label": "Electrical SWM & Plumbing Outside Lines"
+      },
+      {
+        "id": "ss_1m_ch_work_1785394155540",
+        "label": "1M CH Work"
+      },
+      {
+        "id": "ss_scaffolding_removal_1785394155540",
+        "label": "Scaffolding Removal"
+      },
+      {
+        "id": "ss_patch_work_1785394155540",
+        "label": "Patch Work"
+      },
+      {
+        "id": "ss_elevation_texture_1785394155540",
+        "label": "Elevation Texture"
+      },
+      {
+        "id": "ss_elevation_primer_1785394155540",
+        "label": "Elevation Primer"
+      },
+      {
+        "id": "ss_elevation_paint_1st_coat_1785394155540",
+        "label": "Elevation Paint 1st Coat"
+      },
+      {
+        "id": "ss_compound_wall_columns___beam_1785394155540",
+        "label": "Compound Wall Columns & Beam"
+      },
+      {
+        "id": "ss_compound_wall_brick___plasteri_1785394155540",
+        "label": "Compound Wall Brick & Plastering"
+      },
+      {
+        "id": "ss_compound_wall_paint_1785394155540",
+        "label": "Compound Wall Paint"
+      },
+      {
+        "id": "ss_final_coat_1785394155540",
+        "label": "Final Coat"
+      },
+      {
+        "id": "A_ss_marking_1785394155539",
+        "label": "A Ss Marking (fuzzy match: Marking)"
+      },
+      {
+        "id": "A_ss_compound_wall_paint_1785394155540",
+        "label": "A Ss Compound Wall Paint (fuzzy match: Compound Wall Paint)"
+      },
+      {
+        "id": "A_ss_excavation_1785394155539",
+        "label": "A Ss Excavation (fuzzy match: Excavation)"
+      },
+      {
+        "id": "A_ss_site_preparation_1785394155539",
+        "label": "A Ss Site Preparation (fuzzy match: Site Preparation)"
+      }
+    ]
+  }
+}

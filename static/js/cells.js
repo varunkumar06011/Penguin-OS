@@ -55,6 +55,8 @@ async function getSsCellData(cellId) {
     }
 }
 
+let _allCellsBulkLoaded = false;
+
 async function ensureCellsInCache(requiredKeys) {
     const missing = requiredKeys.filter(k => cellsCache[k] === undefined);
     if (missing.length === 0) return;
@@ -71,19 +73,28 @@ async function ensureCellsInCache(requiredKeys) {
         }
         // Fallback: if filtered query missed some keys (pre-backfill rows lack
         // venture_id/block/floor in data JSON), fetch those individually by cell ID.
+        // Skip individual fetches if we already bulk-loaded all cells via overview.
         const stillMissing = requiredKeys.filter(k => cellsCache[k] === undefined);
-        if (stillMissing.length > 0) {
-            await Promise.all(stillMissing.map(ck =>
-                apiGet('/api/cell/' + encodeURIComponent(ck))
-                    .then(cellData => {
-                        if (cellData && Object.keys(cellData).length > 0) {
-                            cellsCache[ck] = cellData;
-                        } else {
-                            cellsCache[ck] = CELL_NOT_FOUND;
-                        }
-                    })
-                    .catch(() => { cellsCache[ck] = CELL_NOT_FOUND; })
-            ));
+        if (stillMissing.length > 0 && !_allCellsBulkLoaded) {
+            // Limit concurrency to avoid ERR_NO_BUFFER_SPACE
+            const BATCH_SIZE = 10;
+            for (let i = 0; i < stillMissing.length; i += BATCH_SIZE) {
+                const batch = stillMissing.slice(i, i + BATCH_SIZE);
+                await Promise.all(batch.map(ck =>
+                    apiGet('/api/cell/' + encodeURIComponent(ck))
+                        .then(cellData => {
+                            if (cellData && Object.keys(cellData).length > 0) {
+                                cellsCache[ck] = cellData;
+                            } else {
+                                cellsCache[ck] = CELL_NOT_FOUND;
+                            }
+                        })
+                        .catch(() => { cellsCache[ck] = CELL_NOT_FOUND; })
+                ));
+            }
+        } else if (stillMissing.length > 0) {
+            // All cells were bulk-loaded; remaining keys simply don't exist in DB
+            stillMissing.forEach(ck => { cellsCache[ck] = CELL_NOT_FOUND; });
         }
     } catch (e) {
         console.error('Failed to bulk load cells:', e);

@@ -418,93 +418,97 @@ function renderInstantReportOutput(container, data) {
     html += '<div class="ir-chart-card"><div class="ir-chart-title">Category-wise Completion</div><div class="ir-chart-wrap"><canvas id="irBarChart"></canvas></div></div>';
     html += '</div>';
 
-    // --- Category Summary Table ---
+    // --- Category Summary Cards ---
     if (data.category_summary && data.category_summary.length > 0) {
         html += '<div class="ir-section"><h3 class="ir-section-title">Category-wise Summary</h3>';
-        html += '<div class="ir-table-wrap"><table class="tracker-table ir-table"><thead><tr>';
-        html += '<th>Category</th><th>Total</th><th>Completed</th><th>In Progress</th><th>Patch Work</th><th>Yet to Start</th><th>Not Started</th><th>Completion %</th>';
-        html += '</tr></thead><tbody>';
+        html += '<div class="ir-cat-cards">';
         data.category_summary.forEach(c => {
-            html += `<tr>
-                <td>${escapeHtml(c.category)}</td>
-                <td>${c.total}</td>
-                <td class="ir-td-green">${c.completed}</td>
-                <td class="ir-td-yellow">${c.in_progress}</td>
-                <td class="ir-td-blue">${c.patch_work}</td>
-                <td class="ir-td-red">${c.yet_to_start}</td>
-                <td>${c.not_started}</td>
-                <td><div class="ir-progress-bar"><div class="ir-progress-fill" style="width:${c.pct}%"></div><span>${c.pct}%</span></div></td>
-            </tr>`;
+            const catTotal = c.total || 0;
+            const catPct = c.pct || 0;
+            html += `<div class="ir-cat-card">
+                <div class="ir-cat-header">
+                    <h4 class="ir-cat-name">${escapeHtml(c.category)}</h4>
+                    <span class="ir-cat-pct-badge" style="background:${catPct >= 75 ? '#2ecc71' : catPct >= 40 ? '#f1c40f' : '#e74c3c'};">${catPct}%</span>
+                </div>
+                <div class="ir-cat-progress-bar"><div class="ir-cat-progress-fill" style="width:${catPct}%;background:${catPct >= 75 ? '#2ecc71' : catPct >= 40 ? '#f1c40f' : '#e74c3c'};"></div></div>
+                <div class="ir-cat-stats">
+                    <div class="ir-cat-stat-row">
+                        <span class="ir-cat-stat-label">Total Work Items</span>
+                        <span class="ir-cat-stat-value">${catTotal}</span>
+                    </div>
+                    <div class="ir-cat-stat-row">
+                        <span class="ir-cat-stat-label"><span class="ir-cat-dot" style="background:#2ecc71;"></span>Completed</span>
+                        <span class="ir-cat-stat-value ir-cat-val-green">${c.completed} &#x1F7E2;</span>
+                    </div>
+                    <div class="ir-cat-stat-row">
+                        <span class="ir-cat-stat-label"><span class="ir-cat-dot" style="background:#f1c40f;"></span>In Progress</span>
+                        <span class="ir-cat-stat-value ir-cat-val-yellow">${c.in_progress} &#x1F7E1;</span>
+                    </div>
+                    <div class="ir-cat-stat-row">
+                        <span class="ir-cat-stat-label"><span class="ir-cat-dot" style="background:#3498db;"></span>Patch Work</span>
+                        <span class="ir-cat-stat-value ir-cat-val-blue">${c.patch_work} &#x1F535;</span>
+                    </div>
+                    <div class="ir-cat-stat-row">
+                        <span class="ir-cat-stat-label"><span class="ir-cat-dot" style="background:#e74c3c;"></span>Yet to Start</span>
+                        <span class="ir-cat-stat-value ir-cat-val-red">${c.yet_to_start} &#x1F534;</span>
+                    </div>
+                    <div class="ir-cat-stat-row">
+                        <span class="ir-cat-stat-label"><span class="ir-cat-dot" style="background:#ccc;"></span>Not Started</span>
+                        <span class="ir-cat-stat-value">${c.not_started}</span>
+                    </div>
+                </div>
+            </div>`;
         });
-        html += '</tbody></table></div></div>';
+        html += '</div></div>';
     }
 
-    // --- Work Item Breakdown Table ---
+    // --- Work Item Breakdown Cards ---
     if (data.work_item_breakdown && data.work_item_breakdown.length > 0) {
         html += '<div class="ir-section"><h3 class="ir-section-title">Work Item-wise Breakdown</h3>';
-        html += '<div class="ir-table-wrap"><table class="tracker-table ir-table"><thead><tr>';
-        html += '<th>Work Item</th><th>Category</th><th>Total</th><th>Completed</th><th>In Progress</th><th>Patch Work</th><th>Yet to Start</th><th>Not Started</th><th>Pending</th><th>Completion %</th>';
-        html += '</tr></thead><tbody>';
+        html += '<div class="ir-wi-cards">';
         data.work_item_breakdown.forEach(w => {
-            html += `<tr>
-                <td>${escapeHtml(w.work_item)}</td>
-                <td>${escapeHtml(w.category || '—')}</td>
-                <td>${w.total}</td>
-                <td class="ir-td-green">${w.completed}</td>
-                <td class="ir-td-yellow">${w.in_progress}</td>
-                <td class="ir-td-blue">${w.patch_work}</td>
-                <td class="ir-td-red">${w.yet_to_start}</td>
-                <td>${w.not_started}</td>
-                <td>${w.pending}</td>
-                <td><div class="ir-progress-bar"><div class="ir-progress-fill" style="width:${w.pct}%"></div><span>${w.pct}%</span></div></td>
-            </tr>`;
+            const wiPct = w.pct || 0;
+            const barColor = wiPct >= 75 ? '#2ecc71' : wiPct >= 40 ? '#f1c40f' : '#e74c3c';
+            html += `<div class="ir-wi-card">
+                <div class="ir-wi-header">
+                    <h4 class="ir-wi-name">${escapeHtml(w.work_item)}</h4>
+                    <span class="ir-wi-pct-badge" style="background:${barColor};">${wiPct}%</span>
+                </div>
+                ${w.category ? `<div class="ir-wi-category"><span class="ir-wi-cat-label">Category:</span> ${escapeHtml(w.category)}</div>` : ''}
+                <div class="ir-wi-progress-bar"><div class="ir-wi-progress-fill" style="width:${wiPct}%;background:${barColor};"></div></div>
+                <div class="ir-wi-stats">
+                    <div class="ir-wi-stat-row">
+                        <span class="ir-wi-stat-label">Total Work Items</span>
+                        <span class="ir-wi-stat-value">${w.total}</span>
+                    </div>
+                    <div class="ir-wi-stat-row">
+                        <span class="ir-wi-stat-label"><span class="ir-wi-dot" style="background:#2ecc71;"></span>Completed</span>
+                        <span class="ir-wi-stat-value ir-wi-val-green">${w.completed} &#x1F7E2;</span>
+                    </div>
+                    <div class="ir-wi-stat-row">
+                        <span class="ir-wi-stat-label"><span class="ir-wi-dot" style="background:#f1c40f;"></span>In Progress</span>
+                        <span class="ir-wi-stat-value ir-wi-val-yellow">${w.in_progress} &#x1F7E1;</span>
+                    </div>
+                    <div class="ir-wi-stat-row">
+                        <span class="ir-wi-stat-label"><span class="ir-wi-dot" style="background:#3498db;"></span>Patch Work</span>
+                        <span class="ir-wi-stat-value ir-wi-val-blue">${w.patch_work} &#x1F535;</span>
+                    </div>
+                    <div class="ir-wi-stat-row">
+                        <span class="ir-wi-stat-label"><span class="ir-wi-dot" style="background:#e74c3c;"></span>Yet to Start</span>
+                        <span class="ir-wi-stat-value ir-wi-val-red">${w.yet_to_start} &#x1F534;</span>
+                    </div>
+                    <div class="ir-wi-stat-row">
+                        <span class="ir-wi-stat-label"><span class="ir-wi-dot" style="background:#ccc;"></span>Not Started</span>
+                        <span class="ir-wi-stat-value">${w.not_started}</span>
+                    </div>
+                    <div class="ir-wi-stat-row">
+                        <span class="ir-wi-stat-label">Pending</span>
+                        <span class="ir-wi-stat-value">${w.pending}</span>
+                    </div>
+                </div>
+            </div>`;
         });
-        html += '</tbody></table></div></div>';
-    }
-
-    // --- Block Summary Table ---
-    if (data.block_summary && data.block_summary.length > 0) {
-        html += '<div class="ir-section"><h3 class="ir-section-title">Block-wise Summary</h3>';
-        html += '<div class="ir-table-wrap"><table class="tracker-table ir-table"><thead><tr>';
-        html += '<th>Block</th><th>Total</th><th>Completed</th><th>In Progress</th><th>Patch Work</th><th>Yet to Start</th><th>Not Started</th><th>Completion %</th>';
-        html += '</tr></thead><tbody>';
-        data.block_summary.forEach(b => {
-            html += `<tr>
-                <td>${escapeHtml(b.block)}</td>
-                <td>${b.total}</td>
-                <td class="ir-td-green">${b.completed}</td>
-                <td class="ir-td-yellow">${b.in_progress}</td>
-                <td class="ir-td-blue">${b.patch_work}</td>
-                <td class="ir-td-red">${b.yet_to_start}</td>
-                <td>${b.not_started}</td>
-                <td><div class="ir-progress-bar"><div class="ir-progress-fill" style="width:${b.pct}%"></div><span>${b.pct}%</span></div></td>
-            </tr>`;
-        });
-        html += '</tbody></table></div></div>';
-    }
-
-    // --- Detail Table ---
-    if (data.detail_rows && data.detail_rows.length > 0) {
-        html += '<div class="ir-section"><h3 class="ir-section-title">Detailed Report</h3>';
-        html += '<div class="ir-table-wrap ir-detail-table"><table class="tracker-table ir-table"><thead><tr>';
-        html += '<th>Block</th><th>Floor</th><th>Flat</th><th>Work Item</th><th>Category</th><th>Status</th><th>Updated</th><th>Updated By</th>';
-        html += '</tr></thead><tbody>';
-        data.detail_rows.forEach(r => {
-            const statusLabel = COLOR_LABELS[r.color] || 'Not Started';
-            const statusClass = r.color || 'none';
-            const dateStr = r.updated_at ? r.updated_at.slice(0, 10) : '—';
-            html += `<tr>
-                <td>${escapeHtml(r.block)}</td>
-                <td>${r.floor}</td>
-                <td>${r.flat}</td>
-                <td>${escapeHtml(r.work_item)}</td>
-                <td>${escapeHtml(r.category || '—')}</td>
-                <td><span class="ir-status-badge ir-status-${statusClass}">${statusLabel}</span></td>
-                <td>${dateStr}</td>
-                <td>${escapeHtml(r.updated_by || '—')}</td>
-            </tr>`;
-        });
-        html += '</tbody></table></div></div>';
+        html += '</div></div>';
     }
 
     if (total === 0) {
@@ -642,24 +646,19 @@ function printInstantReport() {
     const contentClone = output.cloneNode(true);
     contentClone.className = 'ir-print-content';
 
-    // Convert canvas charts to images for print.
-    // CRITICAL: cloneNode does NOT copy canvas bitmap content.
-    // Must read toDataURL from the ORIGINAL canvas, then replace in clone.
-    const originalCanvases = output.querySelectorAll('canvas');
-    const clonedCanvases = contentClone.querySelectorAll('canvas');
-    originalCanvases.forEach((origCanvas, i) => {
-        const clonedCanvas = clonedCanvases[i];
-        if (!clonedCanvas) return;
-        try {
-            const img = document.createElement('img');
-            img.src = origCanvas.toDataURL('image/png');
-            img.style.maxWidth = '100%';
-            img.style.height = 'auto';
-            img.className = 'ir-print-chart-img';
-            clonedCanvas.parentNode.replaceChild(img, clonedCanvas);
-        } catch (e) {
-            // If canvas is tainted (cross-origin), hide it
-            clonedCanvas.style.display = 'none';
+    // Remove sections that should not appear in PDF — keep only Category-wise Summary and Work Item-wise Breakdown
+    const sectionsToKeep = new Set();
+    const allSections = contentClone.querySelectorAll('.ir-section');
+    allSections.forEach(sec => {
+        const title = sec.querySelector('.ir-section-title');
+        if (title && (title.textContent.includes('Category-wise') || title.textContent.includes('Work Item-wise'))) {
+            sectionsToKeep.add(sec);
+        }
+    });
+    // Remove all children except the kept sections
+    Array.from(contentClone.children).forEach(child => {
+        if (!sectionsToKeep.has(child)) {
+            child.remove();
         }
     });
 
@@ -726,18 +725,6 @@ function exportInstantReportExcel() {
     if (data.category_summary && data.category_summary.length > 0) {
         const wsCats = XLSX.utils.json_to_sheet(data.category_summary);
         XLSX.utils.book_append_sheet(wb, wsCats, 'Categories');
-    }
-
-    // Block summary
-    if (data.block_summary && data.block_summary.length > 0) {
-        const wsBlocks = XLSX.utils.json_to_sheet(data.block_summary);
-        XLSX.utils.book_append_sheet(wb, wsBlocks, 'Blocks');
-    }
-
-    // Detail rows
-    if (data.detail_rows && data.detail_rows.length > 0) {
-        const wsDetail = XLSX.utils.json_to_sheet(data.detail_rows);
-        XLSX.utils.book_append_sheet(wb, wsDetail, 'Details');
     }
 
     const filename = `Instant_Report_${(filters.venture || 'report').replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().slice(0, 10)}.xlsx`;

@@ -718,12 +718,12 @@ if (els.applyChangesConfirm) {
         const scope = scopeRadio ? scopeRadio.value : 'selected';
 
         if (scope === 'all') {
-            // Confirmation for global change
+            // Confirmation for global change — require typed confirmation
             showConfirm('Apply to ALL Ventures',
-                'This will overwrite configuration for ALL ventures. This cannot be undone. Continue?',
+                'This will overwrite configuration for ALL ventures. This cannot be undone. Type APPLY TO ALL to confirm.',
                 async () => {
                     await doApplySettings('all', null);
-                }, null, 'Apply to All');
+                }, 'APPLY TO ALL', 'Apply to All', true);
         } else {
             const ventureId = els.applyVentureSelect ? els.applyVentureSelect.value : '';
             if (!ventureId) {
@@ -1433,15 +1433,29 @@ async function renderHomeReports(container) {
 // ========================
 // Overview Page (cross-venture summary)
 // ========================
-function renderOverviewPage() {
+let _overviewRendering = false;
+async function renderOverviewPage() {
+    if (_overviewRendering) return;
+    _overviewRendering = true;
     hideAllMainPanels();
     const page = document.getElementById('overviewPage');
-    if (!page) return;
+    if (!page) { _overviewRendering = false; return; }
     page.style.display = '';
     if (typeof setActiveNav === 'function') setActiveNav('sidebarOverview');
 
     const kpiRow = document.getElementById('overviewKpiRow');
-    kpiRow.innerHTML = '';
+    kpiRow.innerHTML = '<div style="padding:20px;color:#999;">Loading overview data...</div>';
+
+    // Preload all cells across all ventures if cache is mostly empty
+    try {
+        const allCells = await apiGet('/api/cells');
+        if (allCells) {
+            Object.assign(cellsCache, allCells);
+            if (typeof _allCellsBulkLoaded !== 'undefined') _allCellsBulkLoaded = true;
+        }
+    } catch (e) {
+        console.error('Failed to preload cells for overview:', e);
+    }
 
     let totalCells = 0;
     const statusCounts = { red: 0, yellow: 0, blue: 0, green: 0, none: 0 };
@@ -1485,9 +1499,11 @@ function renderOverviewPage() {
 
         ventureProgress.push({
             name: venture.name,
+            id: venture.id,
             pct: vTotal > 0 ? Math.round((vCompleted / vTotal) * 100) : 0,
             total: vTotal,
-            completed: vCompleted
+            completed: vCompleted,
+            pending: vTotal - vCompleted
         });
     });
 
@@ -1516,16 +1532,29 @@ function renderOverviewPage() {
     });
 
     const statusInfo = [
-        { key: 'red', label: 'Yet to start', color: getColorHex('red') },
-        { key: 'yellow', label: 'In progress', color: getColorHex('yellow') },
-        { key: 'blue', label: 'Patch work', color: getColorHex('blue') },
         { key: 'green', label: 'Completed', color: getColorHex('green') },
-        { key: 'none', label: 'Not started', color: '#ccc' }
+        { key: 'yellow', label: 'In Progress', color: getColorHex('yellow') },
+        { key: 'blue', label: 'Patch Work', color: getColorHex('blue') },
+        { key: 'red', label: 'Yet to Start', color: getColorHex('red') },
+        { key: 'none', label: 'Not Started', color: '#ccc' }
     ];
     const pieData = statusInfo.filter(info => statusCounts[info.key] > 0);
     const hasPieData = totalCells > 0 && pieData.length > 0;
 
-    if (window.overviewPieChart) { window.overviewPieChart.destroy(); window.overviewPieChart = null; }
+    // Build legend HTML with counts and percentages
+    const pieLegendHtml = pieData.map(i => {
+        const count = statusCounts[i.key];
+        const pctVal = totalCells ? ((count / totalCells) * 100).toFixed(1) : '0.0';
+        return `<div class="overview-legend-item" data-status="${i.key}" style="cursor:pointer;">
+            <span class="overview-legend-dot" style="background:${i.color};"></span>
+            <span class="overview-legend-label">${i.label}</span>
+            <span class="overview-legend-count">${count}</span>
+            <span class="overview-legend-pct">${pctVal}%</span>
+        </div>`;
+    }).join('');
+
+    if (window.overviewPieChart && typeof window.overviewPieChart.destroy === 'function') { window.overviewPieChart.destroy(); }
+    window.overviewPieChart = null;
     const pieCtx = document.getElementById('overviewPieChart');
     const pieEmpty = document.getElementById('overviewPieEmpty');
     if (pieCtx) {
@@ -1533,16 +1562,17 @@ function renderOverviewPage() {
             pieCtx.style.display = '';
             if (pieEmpty) pieEmpty.style.display = 'none';
             window.overviewPieChart = new Chart(pieCtx, {
-                type: 'pie',
+                type: 'doughnut',
                 data: {
                     labels: pieData.map(i => i.label),
-                    datasets: [{ data: pieData.map(i => statusCounts[i.key]), backgroundColor: pieData.map(i => i.color), borderWidth: 2, borderColor: '#fff' }]
+                    datasets: [{ data: pieData.map(i => statusCounts[i.key]), backgroundColor: pieData.map(i => i.color), borderWidth: 2, borderColor: '#fff', hoverOffset: 8 }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
+                    cutout: '55%',
                     plugins: {
-                        legend: { position: 'bottom', labels: { padding: 16, usePointStyle: true } },
+                        legend: { display: false },
                         tooltip: {
                             callbacks: {
                                 label: ctx => {
@@ -1551,16 +1581,54 @@ function renderOverviewPage() {
                                 }
                             }
                         }
+                    },
+                    onClick: (e, elements) => {
+                        if (elements.length > 0) {
+                            const idx = elements[0].index;
+                            const statusKey = pieData[idx].key;
+                            // Navigate to ventures dashboard for visual filtering
+                            if (typeof renderVentureDashboard === 'function') renderVentureDashboard();
+                        }
+                    },
+                    onHover: (e, elements) => {
+                        e.native.target.style.cursor = elements.length > 0 ? 'pointer' : 'default';
                     }
                 }
             });
+            // Insert custom legend below the canvas
+            const wrap = pieCtx.parentElement;
+            let legendEl = wrap.querySelector('.overview-pie-legend');
+            if (!legendEl) {
+                legendEl = document.createElement('div');
+                legendEl.className = 'overview-pie-legend';
+                wrap.appendChild(legendEl);
+            }
+            legendEl.innerHTML = pieLegendHtml;
+            // Click legend item to go to dashboard
+            legendEl.querySelectorAll('.overview-legend-item').forEach(item => {
+                item.addEventListener('click', () => {
+                    if (typeof renderVentureDashboard === 'function') renderVentureDashboard();
+                });
+            });
+            // Show donut center overlay with total cells
+            const donutCenter = document.getElementById('overviewDonutCenter');
+            if (donutCenter) {
+                donutCenter.innerHTML = `<div class="odc-value">${totalCells.toLocaleString()}</div><div class="odc-label">Total Cells</div>`;
+                donutCenter.classList.add('show');
+            }
         } else {
             pieCtx.style.display = 'none';
             if (pieEmpty) pieEmpty.style.display = '';
+            const wrap = pieCtx.parentElement;
+            const legendEl = wrap.querySelector('.overview-pie-legend');
+            if (legendEl) legendEl.innerHTML = '';
+            const donutCenter = document.getElementById('overviewDonutCenter');
+            if (donutCenter) donutCenter.classList.remove('show');
         }
     }
 
-    if (window.overviewBarChart) { window.overviewBarChart.destroy(); window.overviewBarChart = null; }
+    if (window.overviewBarChart && typeof window.overviewBarChart.destroy === 'function') { window.overviewBarChart.destroy(); }
+    window.overviewBarChart = null;
     const barCtx = document.getElementById('overviewBarChart');
     const barEmpty = document.getElementById('overviewBarEmpty');
     if (barCtx) {
@@ -1577,7 +1645,33 @@ function renderOverviewPage() {
                     responsive: true,
                     maintainAspectRatio: false,
                     scales: { y: { beginAtZero: true, max: 100, ticks: { callback: v => v + '%' } } },
-                    plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => `${ctx.parsed.y}% completed` } } }
+                    plugins: { legend: { display: false }, tooltip: { 
+                        callbacks: { 
+                            label: ctx => {
+                                const v = ventureProgress[ctx.dataIndex];
+                                return [
+                                    `Completion: ${v.pct}%`,
+                                    `Completed: ${v.completed} / ${v.total}`,
+                                    `Pending: ${v.pending}`
+                                ];
+                            }
+                        }
+                    } },
+                    onClick: (e, elements) => {
+                        if (elements.length > 0) {
+                            const v = ventureProgress[elements[0].index];
+                            if (v && v.id) {
+                                const venture = venturesList.find(vent => vent.id === v.id);
+                                if (venture && typeof openVenture === 'function') {
+                                    openVenture(venture);
+                                    navigateTo(buildTrackerRoute());
+                                }
+                            }
+                        }
+                    },
+                    onHover: (e, elements) => {
+                        e.native.target.style.cursor = elements.length > 0 ? 'pointer' : 'default';
+                    }
                 }
             });
         } else {
@@ -1596,11 +1690,31 @@ function renderOverviewPage() {
         ventureProgress.forEach(v => {
             const row = document.createElement('div');
             row.className = 'overview-vrow';
-            row.innerHTML = `<span class="ov-name">${escapeHtml(v.name)}</span><div class="ov-bar"><div class="ov-bar-fill" style="width:${v.pct}%"></div></div><span class="ov-pct">${v.pct}%</span>`;
+            row.style.cursor = 'pointer';
+            row.innerHTML = `
+                <div class="ov-row-header">
+                    <span class="ov-name">${escapeHtml(v.name)}</span>
+                    <span class="ov-pct">${v.pct}%</span>
+                </div>
+                <div class="ov-bar"><div class="ov-bar-fill" style="width:${v.pct}%"></div></div>
+                <div class="ov-row-stats">
+                    <span class="ov-stat">Total: <strong>${v.total}</strong></span>
+                    <span class="ov-stat ov-stat-green">Completed: <strong>${v.completed}</strong></span>
+                    <span class="ov-stat ov-stat-red">Pending: <strong>${v.pending}</strong></span>
+                </div>
+            `;
+            row.addEventListener('click', () => {
+                const venture = venturesList.find(vent => vent.id === v.id);
+                if (venture && typeof openVenture === 'function') {
+                    openVenture(venture);
+                    navigateTo(buildTrackerRoute());
+                }
+            });
             list.appendChild(row);
         });
     }
     vList.appendChild(list);
+    _overviewRendering = false;
 }
 
 let homePayrollData = { employees: [], categories: [] };
