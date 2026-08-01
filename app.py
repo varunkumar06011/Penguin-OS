@@ -1948,6 +1948,43 @@ def api_attendance_get():
         return _attendance_table_error(e)
 
 
+@app.route('/api/attendance/history')
+@requires_role('supervisor', 'manager', 'admin')
+def api_attendance_history():
+    """Fetch all attendance records for a specific employee across all months."""
+    if not supabase:
+        return jsonify([])
+    user = session.get('user')
+    if isinstance(user, str):
+        user = {'role': 'admin'}
+    if not isinstance(user, dict):
+        return jsonify({'error': 'Invalid session'}), 403
+
+    employee_name = request.args.get('employee_name', '').strip()
+    venture_id = request.args.get('venture_id', '').strip()
+    if not employee_name:
+        return jsonify({'error': 'employee_name is required'}), 400
+
+    allowed_ventures = _allowed_ventures(user)
+    try:
+        query = supabase.table('attendance').select('*').ilike('employee_name', employee_name)
+        if venture_id and venture_id != '__all__':
+            if venture_id not in allowed_ventures:
+                return jsonify({'error': 'Forbidden'}), 403
+            query = query.eq('venture_id', venture_id)
+        else:
+            if not allowed_ventures:
+                return jsonify([])
+            venture_list = list(allowed_ventures)
+            venture_list.append('__all__')
+            query = query.in_('venture_id', venture_list)
+        res = query.order('month', desc=True).execute()
+        return jsonify(res.data or [])
+    except Exception as e:
+        logger.error(f'Error fetching attendance history: {e}')
+        return _attendance_table_error(e)
+
+
 @app.route('/api/attendance', methods=['POST'])
 @requires_role('supervisor', 'manager', 'admin')
 def api_attendance_post():
@@ -2190,6 +2227,578 @@ def api_stock_vendor_report():
         q = q.eq('vendor_id', vendor_id)
     res = q.execute()
     return jsonify(res.data or [])
+
+
+# ============================================================
+# Inventory Purchase + Daily Inventory Modules (migration 021)
+# ============================================================
+
+def _compute_daily_purchase(org_id, venture_id, material_name, category_type, entry_date):
+    """SUM of inventory_purchases.qty matching received_date=entry_date + material + type.
+    Single source of truth — the daily register's purchase column is derived, not manual."""
+    if not supabase:
+        return 0
+    q = supabase.table('inventory_purchases').select('qty').eq('org_id', org_id)
+    q = q.eq('material_name', material_name).eq('received_date', entry_date)
+    if category_type:
+        q = q.eq('category_type', category_type)
+    else:
+        q = q.is_('category_type', 'null')
+    res = q.execute()
+    return sum(float(r.get('qty') or 0) for r in (res.data or []))
+
+
+def _ensure_material_master(org_id, name, unit=None):
+    """Auto-create material master row if new (case-insensitive dedup). Returns None."""
+    if not supabase or not name:
+        return
+    existing = supabase.table('inventory_materials').select('id,name').eq('org_id', org_id).execute()
+    for r in (existing.data or []):
+        if (r.get('name') or '').strip().lower() == name.strip().lower():
+            return  # already exists
+    try:
+        supabase.table('inventory_materials').insert({
+            'org_id': org_id, 'name': name.strip(), 'unit': unit
+        }).execute()
+    except Exception:
+        # race condition — another request created it; ignore
+        pass
+
+
+def _auto_create_daily_entry(org_id, material_name, category_type, entry_date, user_email=''):
+    """Auto-create or update a daily_inventory row so purchases appear in the register.
+    If a row already exists for this date+material+type, leave it (purchase is recomputed live).
+    If not, create one with usage_qty=0 so the stock received shows up."""
+    if not supabase or not material_name or not entry_date:
+        return
+    # Check if a daily entry already exists for this date + material + type
+    existing = supabase.table('daily_inventory').select('id').eq('org_id', org_id)
+    existing = existing.eq('material_name', material_name).eq('entry_date', entry_date)
+    if category_type:
+        existing = existing.eq('category_type', category_type)
+    else:
+        existing = existing.is_('category_type', 'null')
+    existing = existing.execute()
+    if existing.data and len(existing.data) > 0:
+        return  # Row already exists — purchase will be recomputed live on GET
+    # Compute opening from previous day's closing
+    prev_q = supabase.table('daily_inventory').select('balance').eq('org_id', org_id)
+    prev_q = prev_q.eq('material_name', material_name)
+    if category_type:
+        prev_q = prev_q.eq('category_type', category_type)
+    else:
+        prev_q = prev_q.is_('category_type', 'null')
+    prev_q = prev_q.lt('entry_date', entry_date).order('entry_date', desc=True).limit(1).execute()
+    opening = float(prev_q.data[0]['balance'] or 0) if prev_q.data else 0
+    # Compute purchase from inventory_purchases
+    purchase = _compute_daily_purchase(org_id, None, material_name, category_type, entry_date)
+    new_row = {
+        'id': str(__import__('uuid').uuid4()),
+        'org_id': org_id,
+        'entry_date': entry_date,
+        'material_name': material_name,
+        'category_type': category_type,
+        'opening': opening,
+        'usage_qty': 0,
+        'created_by': user_email,
+    }
+    try:
+        supabase.table('daily_inventory').upsert(new_row, on_conflict='id').execute()
+        logger.info(f'Auto-created daily entry for {material_name} on {entry_date} (purchase={purchase})')
+    except Exception as e:
+        logger.warning(f'Auto-create daily entry failed (non-fatal): {e}')
+
+
+def _ensure_vendor(org_id, name):
+    """Auto-create vendor if new (case-insensitive, org-scoped). Returns vendor_id."""
+    if not supabase or not name:
+        return None
+    existing = supabase.table('vendors').select('id,data').or_(f'org_id.eq.{org_id},org_id.is.null').execute()
+    for r in (existing.data or []):
+        if ((r.get('data') or {}).get('name') or '').strip().lower() == name.strip().lower():
+            return r['id']
+    vid = str(__import__('uuid').uuid4())
+    supabase.table('vendors').upsert({'id': vid, 'data': {'id': vid, 'name': name}, 'name': name, 'org_id': org_id}, on_conflict='id').execute()
+    return vid
+
+
+# ---------- Day Book routes ----------
+
+@app.route('/api/day-book-entries')
+@requires_role_or_override('supervisor')
+def api_day_book_entries_list():
+    if not supabase:
+        return jsonify([]), 500
+    org_id = session['user'].get('org_id')
+    q = supabase.table('inventory_purchases').select('*').eq('org_id', org_id)
+    venture_id = request.args.get('venture_id')
+    if venture_id and venture_id != '__all__':
+        allowed = _allowed_ventures(session['user'])
+        if venture_id not in allowed:
+            return jsonify({'error': 'Forbidden'}), 403
+        q = q.eq('venture_id', venture_id)
+    for f in ('vendor_id', 'material_name', 'category', 'category_type'):
+        v = request.args.get(f)
+        if v and v != 'all':
+            q = q.eq(f, v)
+    is_gst = request.args.get('is_gst')
+    if is_gst == 'true':
+        q = q.eq('is_gst', True)
+    elif is_gst == 'false':
+        q = q.eq('is_gst', False)
+    frm, to = request.args.get('from'), request.args.get('to')
+    if frm:
+        q = q.gte('invoice_date', frm)
+    if to:
+        q = q.lte('invoice_date', to)
+    res = q.order('invoice_date', desc=True).execute()
+    return jsonify(res.data or [])
+
+
+@app.route('/api/day-book', methods=['POST'])
+@requires_role_or_override('supervisor')
+def api_day_book_upsert():
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    body = request.get_json() or {}
+    org_id = session['user'].get('org_id')
+    user_email = (session.get('user') or {}).get('email', '')
+    try:
+        qty = float(body.get('qty') or 0)
+        rate = float(body.get('rate') or 0)
+    except (ValueError, TypeError):
+        return jsonify({'error': 'qty and rate must be numbers'}), 400
+    if body.get('is_gst'):
+        if not (body.get('invoice_no') or '').strip():
+            return jsonify({'error': 'Invoice number is required when GST is enabled'}), 400
+    venture_id = body.get('venture_id')
+    if venture_id:
+        allowed = _allowed_ventures(session['user'])
+        if venture_id not in allowed:
+            return jsonify({'error': 'Forbidden venture'}), 403
+    # duplicate-purchase soft check (vendor + invoice_no + invoice_date)
+    if not body.get('force') and body.get('invoice_no') and body.get('vendor_id'):
+        dup = supabase.table('inventory_purchases').select('id').eq('org_id', org_id)\
+            .eq('vendor_id', body['vendor_id']).eq('invoice_no', body['invoice_no'])
+        if body.get('invoice_date'):
+            dup = dup.eq('invoice_date', body['invoice_date'])
+        dup = dup.execute()
+        if dup.data and not any(r['id'] == body.get('id') for r in dup.data):
+            return jsonify({'error': 'duplicate', 'message': 'A purchase with this invoice number already exists for this vendor. Continue anyway?'}), 409
+    if not body.get('id'):
+        body['id'] = str(__import__('uuid').uuid4())
+    body['org_id'] = org_id
+    body['qty'] = qty
+    body['rate'] = rate
+    body['amount'] = qty * rate
+    body['created_by'] = user_email
+    # auto-create material master entry if new
+    mname = (body.get('material_name') or '').strip()
+    if mname:
+        _ensure_material_master(org_id, mname, body.get('unit'))
+    # auto-create vendor if new name typed (org-scoped, case-insensitive)
+    vname = (body.get('vendor_name') or '').strip()
+    if vname and not body.get('vendor_id'):
+        body['vendor_id'] = _ensure_vendor(org_id, vname)
+    # audit log: capture old data if editing
+    old_data = None
+    if body.get('id'):
+        try:
+            old = supabase.table('inventory_purchases').select('*').eq('id', body['id']).eq('org_id', org_id).execute()
+            if old.data:
+                old_data = old.data[0]
+        except Exception:
+            pass
+    supabase.table('inventory_purchases').upsert(body, on_conflict='id').execute()
+    try:
+        supabase.table('audit_log').insert({
+            'org_id': org_id, 'user_email': user_email,
+            'action': 'day_book_upsert', 'target_id': body['id'],
+            'old_data': old_data, 'new_data': body
+        }).execute()
+    except Exception as audit_err:
+        logger.warning(f'Audit log insert failed (non-fatal): {audit_err}')
+    # Auto-create daily inventory entry so purchase appears in the register
+    received_date = body.get('received_date')
+    category_type = body.get('category_type')
+    if mname and received_date:
+        _auto_create_daily_entry(org_id, mname, category_type, received_date, user_email)
+    return jsonify({'success': True})
+
+
+@app.route('/api/day-book/<pid>', methods=['DELETE'])
+@requires_role_or_override('supervisor')
+def api_day_book_delete(pid):
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    org_id = session['user'].get('org_id')
+    user_email = (session.get('user') or {}).get('email', '')
+    try:
+        old = supabase.table('inventory_purchases').select('*').eq('id', pid).eq('org_id', org_id).execute()
+        old_data = old.data[0] if old.data else None
+    except Exception:
+        old_data = None
+    supabase.table('inventory_purchases').delete().eq('id', pid).eq('org_id', org_id).execute()
+    try:
+        supabase.table('audit_log').insert({
+            'org_id': org_id, 'user_email': user_email,
+            'action': 'day_book_delete', 'target_id': pid,
+            'old_data': old_data, 'new_data': None
+        }).execute()
+    except Exception as audit_err:
+        logger.warning(f'Audit log insert failed (non-fatal): {audit_err}')
+    return jsonify({'success': True})
+
+
+@app.route('/api/day-book/payments')
+@requires_role_or_override('supervisor')
+def api_day_book_payments():
+    if not supabase:
+        return jsonify([]), 500
+    org_id = session['user'].get('org_id')
+    q = supabase.table('inventory_purchase_payments').select('*').eq('org_id', org_id)
+    vendor_id = request.args.get('vendor_id')
+    if vendor_id:
+        q = q.eq('vendor_id', vendor_id)
+    res = q.order('payment_date', desc=True).execute()
+    return jsonify(res.data or [])
+
+
+@app.route('/api/day-book/payment', methods=['POST'])
+@requires_role_or_override('supervisor')
+def api_day_book_payment_post():
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    body = request.get_json() or {}
+    try:
+        body['amount'] = float(body.get('amount') or 0)
+        if body['amount'] <= 0:
+            return jsonify({'error': 'Payment amount must be > 0'}), 400
+    except (ValueError, TypeError):
+        return jsonify({'error': 'amount must be a number'}), 400
+    body['org_id'] = session['user'].get('org_id')
+    body['created_by'] = (session.get('user') or {}).get('email', '')
+    if not body.get('id'):
+        body['id'] = str(__import__('uuid').uuid4())
+    supabase.table('inventory_purchase_payments').upsert(body, on_conflict='id').execute()
+    return jsonify({'success': True})
+
+
+@app.route('/api/day-book/payment/<pid>', methods=['DELETE'])
+@requires_role_or_override('supervisor')
+def api_day_book_payment_delete(pid):
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    org_id = session['user'].get('org_id')
+    supabase.table('inventory_purchase_payments').delete().eq('id', pid).eq('org_id', org_id).execute()
+    return jsonify({'success': True})
+
+
+@app.route('/api/day-book/vendor-outstanding')
+@requires_role('admin')
+def api_day_book_vendor_outstanding():
+    """Admin only: per-vendor outstanding = total purchased - total paid."""
+    if not supabase:
+        return jsonify([]), 500
+    org_id = session['user'].get('org_id')
+    purchases = supabase.table('inventory_purchases').select('vendor_id,vendor_name,amount').eq('org_id', org_id).execute()
+    payments = supabase.table('inventory_purchase_payments').select('vendor_id,vendor_name,amount').eq('org_id', org_id).execute()
+    agg = {}
+    for r in (purchases.data or []):
+        vid = r.get('vendor_id') or ('name:' + (r.get('vendor_name') or ''))
+        a = agg.setdefault(vid, {'vendor_id': vid, 'vendor_name': r.get('vendor_name') or '', 'total_purchased': 0, 'total_paid': 0})
+        a['total_purchased'] += float(r.get('amount') or 0)
+        if not a['vendor_name']:
+            a['vendor_name'] = r.get('vendor_name') or ''
+    for r in (payments.data or []):
+        vid = r.get('vendor_id') or ('name:' + (r.get('vendor_name') or ''))
+        a = agg.setdefault(vid, {'vendor_id': vid, 'vendor_name': r.get('vendor_name') or '', 'total_purchased': 0, 'total_paid': 0})
+        a['total_paid'] += float(r.get('amount') or 0)
+        if not a['vendor_name']:
+            a['vendor_name'] = r.get('vendor_name') or ''
+    out = []
+    for a in agg.values():
+        a['outstanding'] = round(a['total_purchased'] - a['total_paid'], 2)
+        out.append(a)
+    out.sort(key=lambda x: x['vendor_name'].lower())
+    return jsonify(out)
+
+
+@app.route('/api/day-book/vendor/<vendor_id>')
+@requires_role_or_override('supervisor')
+def api_day_book_vendor_detail(vendor_id):
+    """Per-vendor detail: full purchase history + payment history + summary (pending bills)."""
+    if not supabase:
+        return jsonify({}), 500
+    org_id = session['user'].get('org_id')
+    purchases = supabase.table('inventory_purchases').select('*').eq('org_id', org_id).eq('vendor_id', vendor_id).order('invoice_date', desc=True).execute()
+    payments = supabase.table('inventory_purchase_payments').select('*').eq('org_id', org_id).eq('vendor_id', vendor_id).order('payment_date', desc=True).execute()
+    total_purchased = sum(float(r.get('amount') or 0) for r in (purchases.data or []))
+    total_paid = sum(float(r.get('amount') or 0) for r in (payments.data or []))
+    return jsonify({
+        'purchases': purchases.data or [],
+        'payments': payments.data or [],
+        'summary': {
+            'total_purchased': round(total_purchased, 2),
+            'total_paid': round(total_paid, 2),
+            'outstanding': round(total_purchased - total_paid, 2),
+        }
+    })
+
+
+# ---------- Vendor Directory (enriched) ----------
+
+@app.route('/api/vendor-directory')
+@requires_role_or_override('supervisor')
+def api_vendor_directory():
+    """Enriched vendor list with materials, categories, totals, outstanding from Day Book."""
+    if not supabase:
+        return jsonify([]), 500
+    org_id = session['user'].get('org_id')
+    # Get all vendors
+    vres = supabase.table('vendors').select('id,data,name,org_id').or_(f'org_id.eq.{org_id},org_id.is.null').execute()
+    vendors = vres.data or []
+    # Get all purchases for this org
+    pres = supabase.table('inventory_purchases').select('vendor_id,vendor_name,material_name,category,amount').eq('org_id', org_id).execute()
+    purchases = pres.data or []
+    # Get all payments for this org
+    payres = supabase.table('inventory_purchase_payments').select('vendor_id,amount').eq('org_id', org_id).execute()
+    payments = payres.data or []
+    # Build aggregates
+    purchase_map = {}  # vendor_id -> {total, materials, categories}
+    for p in purchases:
+        vid = p.get('vendor_id')
+        if not vid:
+            continue
+        if vid not in purchase_map:
+            purchase_map[vid] = {'total_purchased': 0, 'materials': set(), 'categories': set()}
+        purchase_map[vid]['total_purchased'] += float(p.get('amount') or 0)
+        if p.get('material_name'):
+            purchase_map[vid]['materials'].add(p['material_name'])
+        if p.get('category'):
+            purchase_map[vid]['categories'].add(p['category'])
+    payment_map = {}
+    for p in payments:
+        vid = p.get('vendor_id')
+        if not vid:
+            continue
+        payment_map[vid] = payment_map.get(vid, 0) + float(p.get('amount') or 0)
+    # Build result
+    result = []
+    for v in vendors:
+        vd = v.get('data') or {}
+        vid = v.get('id') or vd.get('id')
+        name = vd.get('name') or v.get('name') or ''
+        if not name:
+            continue
+        pm = purchase_map.get(vid, {})
+        total_purchased = pm.get('total_purchased', 0)
+        total_paid = payment_map.get(vid, 0)
+        result.append({
+            'id': vid,
+            'name': name,
+            'phone': vd.get('phone') or '',
+            'gstin': vd.get('gstin') or '',
+            'type': vd.get('type') or '',
+            'materials': sorted(list(pm.get('materials', set()))),
+            'categories': sorted(list(pm.get('categories', set()))),
+            'total_purchased': round(total_purchased, 2),
+            'total_paid': round(total_paid, 2),
+            'outstanding': round(total_purchased - total_paid, 2),
+        })
+    # Sort by name
+    result.sort(key=lambda r: r['name'].lower())
+    return jsonify(result)
+
+@app.route('/api/inventory-materials')
+@requires_role_or_override('supervisor')
+def api_inventory_materials():
+    if not supabase:
+        return jsonify([]), 500
+    org_id = session['user'].get('org_id')
+    res = supabase.table('inventory_materials').select('*').eq('org_id', org_id).order('name').execute()
+    return jsonify(res.data or [])
+
+
+@app.route('/api/inventory-material', methods=['POST'])
+@requires_role_or_override('supervisor')
+def api_inventory_material_post():
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    body = request.get_json() or {}
+    org_id = session['user'].get('org_id')
+    name = (body.get('name') or '').strip()
+    if not name:
+        return jsonify({'error': 'Name required'}), 400
+    existing = supabase.table('inventory_materials').select('id,name').eq('org_id', org_id).execute()
+    for r in (existing.data or []):
+        if (r.get('name') or '').strip().lower() == name.lower():
+            return jsonify({'success': True, 'id': r['id'], 'reused': True})
+    if not body.get('id'):
+        body['id'] = str(__import__('uuid').uuid4())
+    body['org_id'] = org_id
+    try:
+        supabase.table('inventory_materials').upsert(body, on_conflict='id').execute()
+    except Exception as e:
+        logger.error(f'inventory_material upsert failed (name={name}): {e}')
+        existing = supabase.table('inventory_materials').select('id,name').eq('org_id', org_id).execute()
+        for r in (existing.data or []):
+            if (r.get('name') or '').strip().lower() == name.lower():
+                return jsonify({'success': True, 'id': r['id'], 'reused': True})
+        raise
+    return jsonify({'success': True, 'id': body['id']})
+
+
+@app.route('/api/inventory-categories')
+@requires_role_or_override('supervisor')
+def api_inventory_categories():
+    if not supabase:
+        return jsonify([]), 500
+    org_id = session['user'].get('org_id')
+    res = supabase.table('inventory_categories').select('*').eq('org_id', org_id).order('name').execute()
+    rows = res.data or []
+    cats = [r for r in rows if r.get('parent_id') is None]
+    for c in cats:
+        c['types'] = [r for r in rows if r.get('parent_id') == c['id']]
+    return jsonify(cats)
+
+
+@app.route('/api/inventory-category', methods=['POST'])
+@requires_role_or_override('supervisor')
+def api_inventory_category_post():
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    body = request.get_json() or {}
+    org_id = session['user'].get('org_id')
+    body['org_id'] = org_id
+    name = (body.get('name') or '').strip()
+    if not name:
+        return jsonify({'error': 'Name required'}), 400
+    parent_id = body.get('parent_id')
+    if not body.get('id'):
+        existing = supabase.table('inventory_categories').select('id,name,parent_id').eq('org_id', org_id).execute()
+        for r in (existing.data or []):
+            if (r.get('name') or '').strip().lower() == name.lower() and r.get('parent_id') == parent_id:
+                body['id'] = r['id']
+                return jsonify({'success': True, 'id': r['id'], 'reused': True})
+        body['id'] = str(__import__('uuid').uuid4())
+    try:
+        supabase.table('inventory_categories').upsert(body, on_conflict='id').execute()
+    except Exception as e:
+        logger.error(f'inventory_category upsert failed (name={name}, parent={parent_id}): {e}')
+        existing = supabase.table('inventory_categories').select('id,name,parent_id').eq('org_id', org_id).execute()
+        for r in (existing.data or []):
+            if (r.get('name') or '').strip().lower() == name.lower() and r.get('parent_id') == parent_id:
+                body['id'] = r['id']
+                supabase.table('inventory_categories').upsert(body, on_conflict='id').execute()
+                return jsonify({'success': True, 'id': r['id'], 'reused': True})
+        raise
+    return jsonify({'success': True, 'id': body['id']})
+
+
+# ---------- Daily Inventory routes ----------
+
+@app.route('/api/daily-inventory')
+@requires_role_or_override('supervisor')
+def api_daily_inventory_list():
+    if not supabase:
+        return jsonify([]), 500
+    org_id = session['user'].get('org_id')
+    q = supabase.table('daily_inventory').select('*').eq('org_id', org_id)
+    for f in ('material_name', 'category', 'category_type'):
+        v = request.args.get(f)
+        if v and v != 'all':
+            q = q.eq(f, v)
+    frm, to = request.args.get('from'), request.args.get('to')
+    if frm:
+        q = q.gte('entry_date', frm)
+    if to:
+        q = q.lte('entry_date', to)
+    res = q.order('entry_date', desc=False).order('material_name').execute()
+    rows = res.data or []
+    # Recompute purchase live from inventory_purchases (single source of truth)
+    for r in rows:
+        r['purchase'] = _compute_daily_purchase(org_id, None, r.get('material_name'), r.get('category_type'), r.get('entry_date'))
+        r['total'] = float(r.get('opening') or 0) + r['purchase']
+        r['balance'] = r['total'] - float(r.get('usage_qty') or 0)
+    return jsonify(rows)
+
+
+@app.route('/api/daily-inventory', methods=['POST'])
+@requires_role_or_override('supervisor')
+def api_daily_inventory_upsert():
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    body = request.get_json() or {}
+    org_id = session['user'].get('org_id')
+    try:
+        usage_qty = float(body.get('usage_qty') or 0)
+    except (ValueError, TypeError):
+        return jsonify({'error': 'usage_qty must be a number'}), 400
+    venture_id = body.get('venture_id')
+    if venture_id:
+        allowed = _allowed_ventures(session['user'])
+        if venture_id not in allowed:
+            return jsonify({'error': 'Forbidden venture'}), 403
+    body['org_id'] = org_id
+    if not body.get('id'):
+        body['id'] = str(__import__('uuid').uuid4())
+    # opening: auto-carry from previous date's balance (type-scoped, NULL-safe)
+    raw_opening = body.get('opening')
+    if raw_opening not in (None, '', 'null'):
+        try:
+            opening = float(raw_opening)
+        except (ValueError, TypeError):
+            return jsonify({'error': 'opening must be a number'}), 400
+    else:
+        prev_q = supabase.table('daily_inventory').select('balance').eq('org_id', org_id)
+        category_type = body.get('category_type')
+        prev_q = prev_q.eq('material_name', body.get('material_name'))
+        if category_type:
+            prev_q = prev_q.eq('category_type', category_type)
+        else:
+            prev_q = prev_q.is_('category_type', 'null')
+        prev_q = prev_q.lt('entry_date', body.get('entry_date')).order('entry_date', desc=True).limit(1).execute()
+        opening = float(prev_q.data[0]['balance'] or 0) if prev_q.data else 0
+    # purchase: auto-compute from inventory_purchases (single source of truth)
+    purchase = _compute_daily_purchase(org_id, venture_id, body.get('material_name'), body.get('category_type'), body.get('entry_date'))
+    total = opening + purchase
+    balance = total - usage_qty
+    # negative balance guard
+    if balance < 0:
+        return jsonify({'error': f'Usage ({usage_qty}) exceeds available stock ({total}). Closing balance cannot be negative.'}), 400
+    body['opening'] = opening
+    body['purchase'] = purchase
+    body['usage_qty'] = usage_qty
+    body['total'] = total
+    body['balance'] = balance
+    body['created_by'] = (session.get('user') or {}).get('email', '')
+    supabase.table('daily_inventory').upsert(body, on_conflict='id').execute()
+    return jsonify({'success': True, 'opening': opening, 'purchase': purchase, 'total': total, 'balance': balance})
+
+
+@app.route('/api/daily-inventory/<did>', methods=['DELETE'])
+@requires_role_or_override('supervisor')
+def api_daily_inventory_delete(did):
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    org_id = session['user'].get('org_id')
+    # server-side lock: only latest date per group can be deleted
+    row = supabase.table('daily_inventory').select('material_name,category_type,entry_date').eq('id', did).eq('org_id', org_id).execute()
+    if not row.data:
+        return jsonify({'error': 'Not found'}), 404
+    r = row.data[0]
+    newer = supabase.table('daily_inventory').select('id').eq('org_id', org_id)
+    newer = newer.eq('material_name', r['material_name'])
+    if r.get('category_type'):
+        newer = newer.eq('category_type', r['category_type'])
+    else:
+        newer = newer.is_('category_type', 'null')
+    newer = newer.gt('entry_date', r['entry_date']).limit(1).execute()
+    if newer.data:
+        return jsonify({'error': 'Cannot delete a past row — later entries depend on its balance. Delete the latest entry first.'}), 409
+    supabase.table('daily_inventory').delete().eq('id', did).eq('org_id', org_id).execute()
+    return jsonify({'success': True})
 
 
 # ========================

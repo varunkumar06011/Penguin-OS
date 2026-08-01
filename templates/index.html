@@ -10,7 +10,7 @@
     <link rel="icon" href="/static/images/favicon.jpg" type="image/jpeg">
     <link rel="stylesheet" href="/static/css/fonts.css?v=15">
     <link rel="stylesheet" href="/static/css/theme.css?v=15">
-    <link rel="stylesheet" href="/static/css/style.css?v=45">
+    <link rel="stylesheet" href="/static/css/style.css?v=51">
     <style>
         /* Fallback: ensure sidebar is always dark and readable */
         #app #appSidebar.app-sidebar {
@@ -318,6 +318,28 @@
             <div id="contractorCardsGrid" class="po-cards-grid"></div>
         </div>
 
+        <!-- Day Book Panel -->
+        <div id="dayBookPanel" style="display:none;">
+            <div class="invoice-panel-header">
+                <button id="backFromDayBook" class="back-btn">&larr; Back to Ventures</button>
+                <h2 class="invoice-panel-title">Day Book</h2>
+                <button id="addDayBookBtn" class="btn-primary">+ Add Entry</button>
+            </div>
+            <div id="dayBookFilters" class="pending-filter-bar"></div>
+            <div id="dayBookSummary" class="po-outstanding-banner"></div>
+            <div id="dayBookContent"></div>
+        </div>
+
+        <!-- Vendor Directory Panel -->
+        <div id="vendorDirPanel" style="display:none;">
+            <div class="invoice-panel-header">
+                <button id="backFromVendorDir" class="back-btn">&larr; Back to Ventures</button>
+                <h2 class="invoice-panel-title">Vendor Directory</h2>
+            </div>
+            <div id="vendorDirFilters" class="pending-filter-bar"></div>
+            <div id="vendorDirContent"></div>
+        </div>
+
         <!-- Design Generator Panel -->
         <div id="designGeneratorPanel" style="display:none;">
             <div class="invoice-panel-header">
@@ -392,25 +414,6 @@
                 <div class="dg-history-section">
                     <h3>Recent Designs</h3>
                     <div id="dgHistoryList" class="dg-history-list"></div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Stock Purchases Panel -->
-        <div id="stockPurchasesPanel" style="display:none;">
-            <div class="invoice-panel-header">
-                <button id="backFromStockPurchases" class="back-btn">&larr; Back to Ventures</button>
-                <h2 class="invoice-panel-title">Stock Purchases</h2>
-            </div>
-            <div id="stockPurchasesContent">
-                <div class="sp-category-bar" id="spCategoryBar"></div>
-                <div class="sp-materials-grid" id="spMaterialsGrid"></div>
-                <div id="spSupplierDrawer" class="sp-supplier-drawer" style="display:none;">
-                    <div class="sp-drawer-header">
-                        <h3 id="spDrawerTitle">Suppliers</h3>
-                        <button id="spCloseDrawer" class="sp-close-detail">&times;</button>
-                    </div>
-                    <div id="spSuppliersList" class="sp-suppliers-list"></div>
                 </div>
             </div>
         </div>
@@ -1444,14 +1447,17 @@
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-    <script src="/static/js/app.js?v=33"></script>
+    <script src="/static/js/app.js?v=37"></script>
     <script src="/static/js/cells.js?v=34"></script>
-    <script src="/static/js/invoices.js?v=18"></script>
-    <script src="/static/js/payroll.js?v=25"></script>
+    <script src="/static/js/invoices.js?v=20"></script>
+    <script src="/static/js/payroll.js?v=27"></script>
     <script src="/static/js/inventory.js?v=19"></script>
-    <script src="/static/js/reports.js?v=24"></script>
-    <script src="/static/js/features.js?v=32"></script>
+    <script src="/static/js/reports.js?v=25"></script>
+    <script src="/static/js/features.js?v=37"></script>
     <script src="/static/js/contractor_payments.js?v=3"></script>
+    <script src="/static/js/inventory_purchase.js?v=14"></script>
+    <script src="/static/js/inventory_register.js?v=15"></script>
+    <script src="/static/js/vendor_directory.js?v=2"></script>
     <script src="/static/js/theme-ui.js?v=10"></script>
     <script>
         (function() {

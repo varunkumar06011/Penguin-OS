@@ -8548,3 +8548,432 @@ video {
     background: var(--accent-primary, #1a1a1a);
     color: #fff;
 }
+
+/* Day Book + Daily Register */
+.ip-gst-toggle { display:flex; align-items:center; gap:8px; }
+.ip-gst-fields { display:none; }
+.ip-gst-fields.show { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.di-balance-cell { font-weight:600; }
+.di-total-cell { background:#f4f6f8; }
+.di-purchase-auto { font-style:italic; color:#666; font-size:0.8em; }
+.di-locked-row { opacity:0.7; }
+
+/* ============================================================
+   Day Book & Register — Responsive + UI Consistency
+   ============================================================ */
+
+/* Day Book panel uses the same filter bar as other modules */
+#dayBookPanel .pending-filter-bar,
+#inventoryPanel .pending-filter-bar {
+    padding: 12px 16px;
+    background: var(--card-bg, #fff);
+    border-radius: var(--card-radius, 8px);
+    box-shadow: var(--elevation-1, 0 1px 3px rgba(0,0,0,0.08));
+    margin-bottom: 12px;
+}
+
+/* Fix sticky header overlap — these panels have no bulk bar, so top should be 0 */
+#dayBookPanel .tracker-table thead th,
+#inventoryPanel .tracker-table thead th,
+#payrollPanel .tracker-table thead th,
+#poPanel .tracker-table thead th,
+#invoicesPanel .tracker-table thead th,
+#reportsPanel .tracker-table thead th,
+#expenditurePanel .tracker-table thead th,
+#instantReportsPanel .tracker-table thead th,
+#inventoryAuditPanel .tracker-table thead th,
+#contractorPaymentsPanel .tracker-table thead th {
+    position: relative;
+    top: 0;
+    z-index: 1;
+}
+
+/* Table containers — allow horizontal scroll without height constraint */
+#dayBookContent > div,
+#inventoryPanelContent > div > div > div {
+    max-height: none !important;
+}
+
+/* Modal forms — responsive grid */
+#ipFormModal > div,
+#diFormModal > div {
+    box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+}
+
+#ipFormModal > div > div[style*="grid"],
+#diFormModal > div > div[style*="grid"] {
+    gap: 10px;
+}
+
+/* Mobile: stack form fields */
+@media (max-width: 600px) {
+    #ipFormModal > div,
+    #diFormModal > div {
+        width: 95% !important;
+        padding: 16px !important;
+    }
+
+    #ipFormModal > div > div[style*="grid"],
+    #diFormModal > div > div[style*="grid"] {
+        grid-template-columns: 1fr !important;
+    }
+
+    /* Mobile card view for purchase table */
+    #dayBookPanel .tracker-table thead {
+        display: none;
+    }
+    #dayBookPanel .tracker-table,
+    #dayBookPanel .tracker-table tbody,
+    #dayBookPanel .tracker-table tr,
+    #dayBookPanel .tracker-table td {
+        display: block;
+        width: 100%;
+    }
+    #dayBookPanel .tracker-table tr {
+        background: #fff;
+        border: 1px solid #e8ecf0;
+        border-radius: 10px;
+        margin-bottom: 12px;
+        padding: 8px;
+    }
+    #dayBookPanel .tracker-table td {
+        border: none;
+        text-align: left;
+        padding: 6px 8px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+    }
+    #dayBookPanel .tracker-table td::before {
+        content: attr(data-label);
+        font-weight: 600;
+        color: #888;
+        font-size: 0.8rem;
+        flex-shrink: 0;
+    }
+    #dayBookPanel .tracker-table td:first-child {
+        font-weight: 700;
+        font-size: 0.9rem;
+        border-bottom: 1px solid #f0f2f5;
+        padding-bottom: 8px;
+        margin-bottom: 4px;
+    }
+    #dayBookPanel .tracker-table td:first-child::before {
+        content: '';
+    }
+
+    /* Mobile card view for daily register table */
+    #inventoryPanel .tracker-table thead {
+        display: none;
+    }
+    #inventoryPanel .tracker-table,
+    #inventoryPanel .tracker-table tbody,
+    #inventoryPanel .tracker-table tr,
+    #inventoryPanel .tracker-table td {
+        display: block;
+        width: 100%;
+    }
+    #inventoryPanel .tracker-table tr {
+        background: #fff;
+        border: 1px solid #e8ecf0;
+        border-radius: 10px;
+        margin-bottom: 12px;
+        padding: 8px;
+    }
+    #inventoryPanel .tracker-table td {
+        border: none;
+        text-align: left;
+        padding: 6px 8px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+    }
+    #inventoryPanel .tracker-table td::before {
+        content: attr(data-label);
+        font-weight: 600;
+        color: #888;
+        font-size: 0.8rem;
+        flex-shrink: 0;
+    }
+    #inventoryPanel .tracker-table td:first-child {
+        font-weight: 700;
+        font-size: 0.9rem;
+        border-bottom: 1px solid #f0f2f5;
+        padding-bottom: 8px;
+        margin-bottom: 4px;
+    }
+    #inventoryPanel .tracker-table td:first-child::before {
+        content: '';
+    }
+
+    /* Filter bar: stack on mobile */
+    #dayBookPanel .pending-filter-bar,
+    #inventoryPanel .pending-filter-bar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    #dayBookPanel .pending-filter-group,
+    #inventoryPanel .pending-filter-group {
+        width: 100%;
+    }
+    #dayBookPanel .pending-filter-group button,
+    #inventoryPanel .pending-filter-group button {
+        width: 100%;
+    }
+}
+
+/* Tablet: adjust grid spacing */
+@media (max-width: 900px) and (min-width: 601px) {
+    #ipFormModal > div > div[style*="grid"],
+    #diFormModal > div > div[style*="grid"] {
+        gap: 8px;
+    }
+}
+
+/* Vendor Directory panel — responsive */
+#vendorDirPanel .pending-filter-bar {
+    padding: 12px 16px;
+    background: var(--card-bg, #fff);
+    border-radius: var(--card-radius, 8px);
+    box-shadow: var(--elevation-1, 0 1px 3px rgba(0,0,0,0.08));
+    margin-bottom: 12px;
+}
+
+/* Vendor table sticky header fix */
+#vendorDirPanel .tracker-table thead th {
+    position: relative;
+    top: 0;
+    z-index: 1;
+}
+
+@media (max-width: 600px) {
+    /* Mobile card view for vendor table */
+    #vendorDirPanel .tracker-table thead {
+        display: none;
+    }
+    #vendorDirPanel .tracker-table,
+    #vendorDirPanel .tracker-table tbody,
+    #vendorDirPanel .tracker-table tr,
+    #vendorDirPanel .tracker-table td {
+        display: block;
+        width: 100%;
+    }
+    #vendorDirPanel .tracker-table tr {
+        background: #fff;
+        border: 1px solid #e8ecf0;
+        border-radius: 10px;
+        margin-bottom: 12px;
+        padding: 8px;
+    }
+    #vendorDirPanel .tracker-table td {
+        border: none;
+        text-align: left;
+        padding: 6px 8px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+    }
+    #vendorDirPanel .tracker-table td::before {
+        content: attr(data-label);
+        font-weight: 600;
+        color: #888;
+        font-size: 0.8rem;
+        flex-shrink: 0;
+    }
+    #vendorDirPanel .tracker-table td:first-child {
+        font-weight: 700;
+        font-size: 0.9rem;
+        border-bottom: 1px solid #f0f2f5;
+        padding-bottom: 8px;
+        margin-bottom: 4px;
+    }
+    #vendorDirPanel .tracker-table td:first-child::before {
+        content: '';
+    }
+
+    /* Vendor filter bar: stack on mobile */
+    #vendorDirPanel .pending-filter-bar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    #vendorDirPanel .pending-filter-group {
+        width: 100%;
+    }
+}
+
+/* Date picker styling — match app design language */
+
+/* Inline pencil edit icons for daily register */
+.di-pencil {
+    cursor: pointer;
+    opacity: 0.3;
+    font-size: 0.8rem;
+    transition: opacity 0.2s;
+    display: inline-block;
+    margin-left: 4px;
+}
+.di-pencil:hover {
+    opacity: 1;
+    color: var(--accent-primary, #1a1a1a);
+}
+.di-cell:hover .di-pencil {
+    opacity: 0.6;
+}
+.di-inline-input {
+    font-family: var(--font-body, inherit);
+    outline: none;
+}
+@media (max-width: 600px) {
+    .di-pencil {
+        font-size: 0.9rem;
+        opacity: 0.5;
+    }
+}
+
+/* Date picker styling — match app design language */
+.pending-filter-group input[type="date"] {
+    padding: 8px 12px;
+    border: 1.5px solid #e0e4e8;
+    border-radius: 8px;
+    font-family: var(--font-body, inherit);
+    font-size: 0.9rem;
+    color: #333;
+    min-width: 140px;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    background: #fff;
+}
+
+.pending-filter-group input[type="date"]:focus {
+    outline: none;
+    border-color: var(--accent-primary, #1a1a1a);
+    box-shadow: 0 0 0 3px rgba(244,117,33,0.08);
+}
+
+.pending-filter-group input[type="date"]::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    opacity: 0.5;
+    transition: opacity 0.2s;
+}
+
+.pending-filter-group input[type="date"]::-webkit-calendar-picker-indicator:hover {
+    opacity: 1;
+}
+
+.pending-filter-group input[type="date"]::-moz-calendar-picker-indicator {
+    cursor: pointer;
+    opacity: 0.5;
+    transition: opacity 0.2s;
+}
+
+.pending-filter-group input[type="date"]::-moz-calendar-picker-indicator:hover {
+    opacity: 1;
+}
+
+@media (max-width: 600px) {
+    .pending-filter-group input[type="date"] {
+        min-width: 100%;
+        font-size: 0.85rem;
+        padding: 6px 10px;
+    }
+
+    /* Modal forms: single column on mobile */
+    #ipFormModal > div,
+    #diFormModal > div,
+    #vdDetailModal > div,
+    #ipVendorModal > div,
+    #ipPaymentModal > div {
+        width: 95% !important;
+        padding: 16px !important;
+    }
+
+    #ipFormModal > div > div[style*="grid"],
+    #diFormModal > div > div[style*="grid"] {
+        grid-template-columns: 1fr !important;
+    }
+
+    /* Modal form inputs: full width */
+    #ipFormModal input[type="text"],
+    #ipFormModal input[type="number"],
+    #ipFormModal input[type="date"],
+    #ipFormModal select,
+    #diFormModal input[type="text"],
+    #diFormModal input[type="number"],
+    #diFormModal input[type="date"],
+    #diFormModal select {
+        width: 100% !important;
+        font-size: 0.9rem;
+        padding: 8px 10px;
+    }
+
+    /* Proof upload area responsive */
+    #ipProofUploadArea {
+        padding: 12px !important;
+    }
+
+    #ipProofPreview {
+        max-height: 150px !important;
+    }
+
+    /* Vendor detail modal summary cards stack on mobile */
+    #vdDetailModal > div > div > div[style*="display:flex;gap:16px"] {
+        flex-direction: column !important;
+    }
+
+    /* Panel headers: wrap and center on mobile */
+    .invoice-panel-header {
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 12px !important;
+    }
+
+    .invoice-panel-title {
+        font-size: 1.1rem !important;
+        flex: 1;
+        text-align: center;
+    }
+
+    /* Filter bars: stack vertically on mobile */
+    .pending-filter-bar {
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 8px !important;
+        padding: 12px !important;
+    }
+
+    .pending-filter-group {
+        min-width: 100% !important;
+        flex: 1 1 auto !important;
+    }
+
+    .pending-filter-group select,
+    .pending-filter-group input {
+        width: 100% !important;
+        min-width: 100% !important;
+        font-size: 0.85rem;
+        padding: 6px 10px;
+    }
+
+    .pending-filter-group button {
+        width: 100% !important;
+    }
+
+    /* Tables: reduce font size on mobile card view */
+    .tracker-table td {
+        font-size: 0.85rem;
+    }
+
+    /* PO outstanding banner: stack on mobile */
+    .po-outstanding-banner {
+        flex-direction: column !important;
+        gap: 8px !important;
+    }
+
+    .po-fin-row {
+        flex-direction: row !important;
+        justify-content: space-between !important;
+        width: 100% !important;
+    }
+}

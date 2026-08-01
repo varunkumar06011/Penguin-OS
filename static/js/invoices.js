@@ -406,8 +406,14 @@ var _oib = document.getElementById('openInvoicesBtn'); if (_oib) _oib.addEventLi
 document.getElementById('backFromInvoices').addEventListener('click', closeInvoicesPanel);
 
 // Inventory event wiring
-var _oib2 = document.getElementById('openInventoryBtn'); if (_oib2) _oib2.addEventListener('click', () => openInventoryPanel());
-document.getElementById('backFromInventory').addEventListener('click', () => closeInventoryPanel());
+var _oib2 = document.getElementById('openInventoryBtn'); if (_oib2) _oib2.addEventListener('click', () => {
+    if (typeof openInventoryRegisterPanel === 'function') openInventoryRegisterPanel();
+    else openInventoryPanel();
+});
+document.getElementById('backFromInventory').addEventListener('click', () => {
+    if (typeof closeInventoryRegisterPanel === 'function') closeInventoryRegisterPanel();
+    else closeInventoryPanel();
+});
 
 // Reports panel event wiring
 var _orb = document.getElementById('openReportsBtn'); if (_orb) _orb.addEventListener('click', () => openReportsPanel());
@@ -423,6 +429,8 @@ document.getElementById('backFromExpenditure').addEventListener('click', () => c
 var _cpb = document.getElementById('openContractorPaymentsBtn'); if (_cpb) _cpb.addEventListener('click', () => openContractorPaymentsPanel());
 var _cpbBack = document.getElementById('backFromContractorPayments'); if (_cpbBack) _cpbBack.addEventListener('click', () => closeContractorPaymentsPanel());
 var _cpbAdd = document.getElementById('addContractBtn'); if (_cpbAdd) _cpbAdd.addEventListener('click', () => openContractForm());
+var _bipBack = document.getElementById('backFromDayBook'); if (_bipBack) _bipBack.addEventListener('click', () => { if (typeof closeDayBookPanel === 'function') closeDayBookPanel(); });
+var _vdbBack = document.getElementById('backFromVendorDir'); if (_vdbBack) _vdbBack.addEventListener('click', () => { if (typeof closeVendorDirPanel === 'function') closeVendorDirPanel(); });
 
 document.getElementById('addInvoiceBtn').addEventListener('click', () => openInvoiceForm(null));
 document.getElementById('closeInvoiceForm').addEventListener('click', closeInvoiceForm);

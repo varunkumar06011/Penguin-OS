@@ -74,6 +74,7 @@ const SIDEBAR_CONFIG = {
                 items: [
                     { id: 'sidebarDashboard', icon: '\u{1F3D7}\uFE0F', label: 'Dashboard', action: 'tracker' },
                     { id: 'openInventoryBtn', icon: '\u{1F4E6}', label: 'Inventory' },
+                    { id: 'openDayBookBtn', icon: '\u{1F9FE}', label: 'Day Book' },
                 ]
             },
             {
@@ -128,6 +129,7 @@ const SIDEBAR_CONFIG = {
                 items: [
                     { id: 'sidebarDashboard', icon: '\u{1F3D7}\uFE0F', label: 'Dashboard', action: 'tracker' },
                     { id: 'openInventoryBtn', icon: '\u{1F4E6}', label: 'Inventory' },
+                    { id: 'openDayBookBtn', icon: '\u{1F9FE}', label: 'Day Book' },
                 ]
             },
             {
@@ -155,7 +157,6 @@ const SIDEBAR_CONFIG = {
                     { id: 'openRERABtn', icon: '\u{1F4CA}', label: 'RERA QPR', href: '/rera' },
                     { id: 'openLenderReportBtn', icon: '\u{1F3E2}', label: 'Lender Report' },
                     { id: 'openDesignGeneratorBtn', icon: '\u{1F3A8}', label: 'Design Generator' },
-                    { id: 'openStockPurchasesBtn', icon: '\u{1F6D2}', label: 'Stock Purchases'},
                 ]
             },
             {
@@ -182,7 +183,7 @@ const SIDEBAR_CONFIG = {
                 items: [
                     { id: 'sidebarDashboard', icon: '\u{1F3D7}\uFE0F', label: 'Dashboard', action: 'tracker' },
                     { id: 'openInventoryBtn', icon: '\u{1F4E6}', label: 'Inventory' },
-                    { id: 'openStockPurchasesBtn', icon: '\u{1F6D2}', label: 'Stock Purchases' },
+                    { id: 'openDayBookBtn', icon: '\u{1F9FE}', label: 'Day Book' },
                 ]
             },
             {
@@ -593,13 +594,14 @@ function parseHash(hash) {
     if (parts[0] === 'pos') return { route: 'pos' };
     if (parts[0] === 'payroll') return { route: 'payroll' };
     if (parts[0] === 'inventory') return { route: 'inventory' };
+    if (parts[0] === 'day-book') return { route: 'day-book' };
+    if (parts[0] === 'vendors') return { route: 'vendors' };
     if (parts[0] === 'expenditure') return { route: 'expenditure' };
     if (parts[0] === 'contractor-payments') return { route: 'contractor-payments' };
     if (parts[0] === 'reports') return { route: 'reports' };
     if (parts[0] === 'instant-reports') return { route: 'instant-reports' };
     if (parts[0] === 'inventory-audit') return { route: 'inventory-audit' };
     if (parts[0] === 'design-generator') return { route: 'design-generator' };
-    if (parts[0] === 'stock-purchases') return { route: 'stock-purchases' };
     if (parts[0] === 'venture' && parts[1]) {
         return { route: 'tracker', ventureId: parts[1], block: parts[2], floor: parts[3], view: parts[4] };
     }
@@ -645,7 +647,12 @@ async function applyHashRoute() {
     } else if (route.route === 'attendance') {
         openAttendancePanel();
     } else if (route.route === 'inventory') {
-        openInventoryPanel();
+        if (typeof openInventoryRegisterPanel === 'function') openInventoryRegisterPanel();
+        else openInventoryPanel();
+    } else if (route.route === 'day-book') {
+        if (typeof openDayBookPanel === 'function') openDayBookPanel();
+    } else if (route.route === 'vendors') {
+        if (typeof openVendorDirPanel === 'function') openVendorDirPanel();
     } else if (route.route === 'expenditure') {
         openExpenditurePanel();
     } else if (route.route === 'contractor-payments') {
@@ -658,8 +665,6 @@ async function applyHashRoute() {
         openInventoryAuditPanel();
     } else if (route.route === 'design-generator') {
         openDesignGeneratorPanel();
-    } else if (route.route === 'stock-purchases') {
-        openStockPurchasesPanel();
     }
     restorePanelState(route.route);
 }
@@ -1135,12 +1140,6 @@ function renderSidebar() {
                 });
                 el._dgBound = true;
             }
-            if (item.id === 'openStockPurchasesBtn' && !el._spBound) {
-                el.addEventListener('click', () => {
-                    if (typeof openStockPurchasesPanel === 'function') openStockPurchasesPanel();
-                });
-                el._spBound = true;
-            }
             itemsWrap.appendChild(el);
         });
 
@@ -1163,15 +1162,15 @@ function renderSidebar() {
     const NAV_PANEL_HANDLERS = {
         'openInvoicesBtn': () => { if (typeof openInvoicesPanel === 'function') openInvoicesPanel(); },
         'openAttendanceBtn': () => { if (typeof openAttendancePanel === 'function') openAttendancePanel(); },
-        'openVendorsBtn': () => { const m = document.getElementById('vendorDirModal'); if (m) m.classList.add('show'); },
-        'openInventoryBtn': () => { if (typeof openInventoryPanel === 'function') openInventoryPanel(); },
+        'openVendorsBtn': () => { if (typeof openVendorDirPanel === 'function') openVendorDirPanel(); else { const m = document.getElementById('vendorDirModal'); if (m) m.classList.add('show'); } },
+        'openInventoryBtn': () => { if (typeof openInventoryRegisterPanel === 'function') openInventoryRegisterPanel(); else if (typeof openInventoryPanel === 'function') openInventoryPanel(); },
+        'openDayBookBtn': () => { if (typeof openDayBookPanel === 'function') openDayBookPanel(); },
         'openPOBtn': () => { if (typeof openPOPanel === 'function') openPOPanel(); },
         'openReportsBtn': () => { if (typeof openReportsPanel === 'function') openReportsPanel(); },
         'openExpenditureBtn': () => { if (typeof openExpenditurePanel === 'function') openExpenditurePanel(); },
         'openInstantReportsBtn': () => { if (typeof openInstantReportsPanel === 'function') openInstantReportsPanel(); },
         'openInventoryAuditBtn': () => { if (typeof openInventoryAuditPanel === 'function') openInventoryAuditPanel(); },
         'openDesignGeneratorBtn': () => { if (typeof openDesignGeneratorPanel === 'function') openDesignGeneratorPanel(); },
-        'openStockPurchasesBtn': () => { if (typeof openStockPurchasesPanel === 'function') openStockPurchasesPanel(); },
         'openLenderReportBtn': () => { openLenderReportModal(); },
         'openContractorPaymentsBtn': () => { if (typeof openContractorPaymentsPanel === 'function') openContractorPaymentsPanel(); },
     };

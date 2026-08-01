@@ -8,6 +8,7 @@ let attendanceData = [];
 let selectedAttendanceVenture = null;  // null = "All Ventures", object = specific venture
 let attendancePanelMode = false;
 let attendanceEditingRowId = null;
+let attendanceDateView = null; // null = month summary mode, 'YYYY-MM-DD' = single date view
 
 // Backward-compat alias for any legacy callers
 function openPayrollPanel() { return openAttendancePanel(); }
@@ -161,6 +162,16 @@ async function renderAttendanceView() {
     rangeGroup.innerHTML = `<label style="font-size:0.8rem;font-weight:600;color:#555;">From</label><input type="date" id="attendanceDateFrom" value="${currentMonth}-01" style="padding:6px 8px;border:1px solid #ccc;border-radius:6px;font-size:0.85rem;"><label style="font-size:0.8rem;font-weight:600;color:#555;">To</label><input type="date" id="attendanceDateTo" value="${currentMonth}-${String(totalDays).padStart(2,'0')}" style="padding:6px 8px;border:1px solid #ccc;border-radius:6px;font-size:0.85rem;">`;
     headerBar.appendChild(rangeGroup);
 
+    // Single Date View
+    const dateViewGroup = document.createElement('div');
+    dateViewGroup.className = 'pending-filter-group';
+    dateViewGroup.style.flexDirection = 'row';
+    dateViewGroup.style.alignItems = 'flex-end';
+    dateViewGroup.style.gap = '4px';
+    const todayStr = new Date().toISOString().split('T')[0];
+    dateViewGroup.innerHTML = `<label style="font-size:0.8rem;font-weight:600;color:#555;">View Date</label><input type="date" id="attendanceSingleDate" value="${attendanceDateView || todayStr}" style="padding:6px 8px;border:1px solid #ccc;border-radius:6px;font-size:0.85rem;max-width:140px;"><button id="attendanceDateViewBtn" class="btn-secondary" style="padding:6px 10px;font-size:0.8rem;white-space:nowrap;">${attendanceDateView ? 'Show Month' : 'View Date'}</button>`;
+    headerBar.appendChild(dateViewGroup);
+
     // Add employee button (disabled in "All Ventures" mode - requires specific venture)
     const addGroup = document.createElement('div');
     addGroup.className = 'pending-filter-group';
@@ -187,83 +198,46 @@ async function renderAttendanceView() {
     container.appendChild(summaryBar);
     updateAttendanceSummary();
 
-    // Employee table
-    const tableWrapper = document.createElement('div');
-    tableWrapper.className = 'grid-container';
-    const table = document.createElement('table');
-    table.className = 'tracker-table pending-table';
-
-    const thead = document.createElement('thead');
-    // Show "Venture" column only in "All Ventures" mode
-    const showVentureCol = allVentures;
-    if (showVentureCol) {
-        thead.innerHTML = '<tr><th>S.No</th><th>Venture</th><th>Name</th><th>Role</th><th>Base Salary (&#8377;)</th><th>Present Days</th><th>Absent Days</th><th>Outstanding (&#8377;)</th><th>Actions</th></tr>';
+    if (attendanceDateView) {
+        renderSingleDateTable(container, attendanceDateView, allVentures, ventureNameLookup);
     } else {
-        thead.innerHTML = '<tr><th>S.No</th><th>Name</th><th>Role</th><th>Base Salary (&#8377;)</th><th>Present Days</th><th>Absent Days</th><th>Outstanding (&#8377;)</th><th>Actions</th></tr>';
+        renderMonthSummaryTable(container, attendanceData, allVentures, ventureNameLookup, currentMonth);
     }
-    table.appendChild(thead);
-
-    const tbody = document.createElement('tbody');
-    const colspan = showVentureCol ? 9 : 8;
-    if (!attendanceData.length) {
-        const emptyRow = document.createElement('tr');
-        const emptyMsg = allVentures
-            ? 'No attendance records found for any venture in this month.'
-            : 'No employees added yet. Click "+ Add Employee" to get started.';
-        emptyRow.innerHTML = `<td colspan="${colspan}" style="text-align:center;color:#999;padding:24px;">${emptyMsg}</td>`;
-        tbody.appendChild(emptyRow);
-    } else {
-        attendanceData.forEach((emp, idx) => {
-            const outstanding = calcOutstanding(emp.base_salary, parseInt(emp.absent_days) || 0, currentMonth);
-            const vName = emp.venture_id === '__all__' ? 'All Ventures' : escapeHtml(ventureNameLookup[emp.venture_id] || emp.venture_id || '');
-            const ventureCell = showVentureCol ? `<td data-label="Venture">${vName}</td>` : '';
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td data-label="S.No">${idx + 1}</td>
-                ${ventureCell}
-                <td data-label="Name">${escapeHtml(emp.employee_name)}</td>
-                <td data-label="Role">${escapeHtml(emp.role || '')}</td>
-                <td data-label="Base Salary">${(parseFloat(emp.base_salary) || 0).toLocaleString('en-IN', {maximumFractionDigits:0})}</td>
-                <td data-label="Present Days">
-                    <div style="display:flex;align-items:center;gap:4px;">
-                        <button class="att-quick-btn att-present-minus" data-rowid="${emp.id}" style="width:24px;height:24px;border:1px solid #ccc;border-radius:4px;background:#f5f5f5;cursor:pointer;font-size:14px;line-height:1;padding:0;" title="Decrease present">&minus;</button>
-                        <span class="att-present-val" style="min-width:24px;text-align:center;font-weight:600;">${parseInt(emp.present_days) || 0}</span>
-                        <button class="att-quick-btn att-present-plus" data-rowid="${emp.id}" style="width:24px;height:24px;border:1px solid #27ae60;border-radius:4px;background:#27ae60;color:#fff;cursor:pointer;font-size:14px;line-height:1;padding:0;" title="Mark present today">+</button>
-                    </div>
-                </td>
-                <td data-label="Absent Days">
-                    <div style="display:flex;align-items:center;gap:4px;">
-                        <button class="att-quick-btn att-absent-minus" data-rowid="${emp.id}" style="width:24px;height:24px;border:1px solid #ccc;border-radius:4px;background:#f5f5f5;cursor:pointer;font-size:14px;line-height:1;padding:0;" title="Decrease absent">&minus;</button>
-                        <span class="att-absent-val" style="min-width:24px;text-align:center;font-weight:600;">${parseInt(emp.absent_days) || 0}</span>
-                        <button class="att-quick-btn att-absent-plus" data-rowid="${emp.id}" style="width:24px;height:24px;border:1px solid #e74c3c;border-radius:4px;background:#e74c3c;color:#fff;cursor:pointer;font-size:14px;line-height:1;padding:0;" title="Mark absent today">+</button>
-                    </div>
-                </td>
-                <td data-label="Outstanding">${outstanding.toLocaleString('en-IN', {maximumFractionDigits:0})}</td>
-                <td data-label="Actions" style="text-align:center;">
-                    <div class="payroll-actions">
-                        <button class="btn-text att-mark-btn" data-rowid="${emp.id}" title="Daily Marking">Mark</button>
-                        <button class="btn-text att-edit-btn" data-rowid="${emp.id}" title="Edit">&#9998;</button>
-                        <button class="btn-text att-del-btn" data-rowid="${emp.id}" style="color:#c0392b;" title="Delete">Delete</button>
-                    </div>
-                </td>
-            `;
-            tbody.appendChild(tr);
-        });
-    }
-    table.appendChild(tbody);
-    tableWrapper.appendChild(table);
-    container.appendChild(tableWrapper);
 
     // Wire events
     const monthSelect = container.querySelector('#attendanceMonthSelect');
     if (monthSelect) {
-        monthSelect.addEventListener('change', () => renderAttendanceView());
+        monthSelect.addEventListener('change', () => { attendanceDateView = null; renderAttendanceView(); });
     }
 
     const dateFrom = container.querySelector('#attendanceDateFrom');
     const dateTo = container.querySelector('#attendanceDateTo');
     if (dateFrom) dateFrom.addEventListener('change', () => { updateAttendanceSummary(); updateTableDateRange(); });
     if (dateTo) dateTo.addEventListener('change', () => { updateAttendanceSummary(); updateTableDateRange(); });
+
+    // Single date view toggle
+    const singleDateInput = container.querySelector('#attendanceSingleDate');
+    const dateViewBtn = container.querySelector('#attendanceDateViewBtn');
+    if (dateViewBtn) {
+        dateViewBtn.addEventListener('click', () => {
+            if (attendanceDateView) {
+                attendanceDateView = null;
+            } else {
+                if (singleDateInput && singleDateInput.value) {
+                    attendanceDateView = singleDateInput.value;
+                }
+            }
+            renderAttendanceView();
+        });
+    }
+    if (singleDateInput) {
+        singleDateInput.addEventListener('change', () => {
+            if (attendanceDateView && singleDateInput.value) {
+                attendanceDateView = singleDateInput.value;
+                renderAttendanceView();
+            }
+        });
+    }
 
     if (isPanel) {
         const ventureSelect = container.querySelector('#attendanceVentureSelect');
@@ -288,41 +262,104 @@ async function renderAttendanceView() {
     }
 
     container.querySelector('#attendanceExportCSV').addEventListener('click', exportAttendanceCSV);
+}
 
+// ========================
+// Month Summary Table (existing view, extracted)
+// ========================
+function renderMonthSummaryTable(container, data, allVentures, ventureNameLookup, currentMonth) {
+    const tableWrapper = document.createElement('div');
+    tableWrapper.className = 'grid-container';
+    const table = document.createElement('table');
+    table.className = 'tracker-table pending-table';
+
+    const thead = document.createElement('thead');
+    const showVentureCol = allVentures;
+    if (showVentureCol) {
+        thead.innerHTML = '<tr><th>S.No</th><th>Venture</th><th>Name</th><th>Role</th><th>Base Salary (&#8377;)</th><th>Present Days</th><th>Absent Days</th><th>Outstanding (&#8377;)</th><th>Actions</th></tr>';
+    } else {
+        thead.innerHTML = '<tr><th>S.No</th><th>Name</th><th>Role</th><th>Base Salary (&#8377;)</th><th>Present Days</th><th>Absent Days</th><th>Outstanding (&#8377;)</th><th>Actions</th></tr>';
+    }
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    const colspan = showVentureCol ? 9 : 8;
+    if (!data.length) {
+        const emptyRow = document.createElement('tr');
+        const emptyMsg = allVentures
+            ? 'No attendance records found for any venture in this month.'
+            : 'No employees added yet. Click "+ Add Employee" to get started.';
+        emptyRow.innerHTML = `<td colspan="${colspan}" style="text-align:center;color:#999;padding:24px;">${emptyMsg}</td>`;
+        tbody.appendChild(emptyRow);
+    } else {
+        data.forEach((emp, idx) => {
+            const outstanding = calcOutstanding(emp.base_salary, parseInt(emp.absent_days) || 0, currentMonth);
+            const vName = emp.venture_id === '__all__' ? 'All Ventures' : escapeHtml(ventureNameLookup[emp.venture_id] || emp.venture_id || '');
+            const ventureCell = showVentureCol ? `<td data-label="Venture">${vName}</td>` : '';
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td data-label="S.No">${idx + 1}</td>
+                ${ventureCell}
+                <td data-label="Name">${escapeHtml(emp.employee_name)}</td>
+                <td data-label="Role">${escapeHtml(emp.role || '')}</td>
+                <td data-label="Base Salary">${(parseFloat(emp.base_salary) || 0).toLocaleString('en-IN', {maximumFractionDigits:0})}</td>
+                <td data-label="Present Days">
+                    <div style="display:flex;align-items:center;gap:4px;">
+                        <button class="att-quick-btn att-present-minus" data-rowid="${emp.id}" style="width:24px;height:24px;border:1px solid #ccc;border-radius:4px;background:#f5f5f5;cursor:pointer;font-size:14px;line-height:1;padding:0;" title="Decrease present">&minus;</button>
+                        <span class="att-present-val" style="min-width:24px;text-align:center;font-weight:600;">${parseInt(emp.present_days) || 0}</span>
+                        <button class="att-quick-btn att-present-plus" data-rowid="${emp.id}" style="width:24px;height:24px;border:1px solid #27ae60;border-radius:4px;background:#27ae60;color:#fff;cursor:pointer;font-size:14px;line-height:1;padding:0;" title="Mark present today">+</button>
+                    </div>
+                </td>
+                <td data-label="Absent Days">
+                    <div style="display:flex;align-items:center;gap:4px;">
+                        <button class="att-quick-btn att-absent-minus" data-rowid="${emp.id}" style="width:24px;height:24px;border:1px solid #ccc;border-radius:4px;background:#f5f5f5;cursor:pointer;font-size:14px;line-height:1;padding:0;" title="Decrease absent">&minus;</button>
+                        <span class="att-absent-val" style="min-width:24px;text-align:center;font-weight:600;">${parseInt(emp.absent_days) || 0}</span>
+                        <button class="att-quick-btn att-absent-plus" data-rowid="${emp.id}" style="width:24px;height:24px;border:1px solid #e74c3c;border-radius:4px;background:#e74c3c;color:#fff;cursor:pointer;font-size:14px;line-height:1;padding:0;" title="Mark absent today">+</button>
+                        <button class="btn-text att-history-btn" data-rowid="${emp.id}" data-empname="${escapeHtml(emp.employee_name)}" data-ventureid="${escapeHtml(emp.venture_id || '')}" title="View absent days history" style="font-size:0.7rem;padding:2px 6px;color:#e67e22;">History</button>
+                    </div>
+                </td>
+                <td data-label="Outstanding">${outstanding.toLocaleString('en-IN', {maximumFractionDigits:0})}</td>
+                <td data-label="Actions" style="text-align:center;">
+                    <div class="payroll-actions">
+                        <button class="btn-text att-mark-btn" data-rowid="${emp.id}" title="Daily Marking">Mark</button>
+                        <button class="btn-text att-edit-btn" data-rowid="${emp.id}" title="Edit">&#9998;</button>
+                        <button class="btn-text att-del-btn" data-rowid="${emp.id}" style="color:#c0392b;" title="Delete">Delete</button>
+                    </div>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+    table.appendChild(tbody);
+    tableWrapper.appendChild(table);
+    container.appendChild(tableWrapper);
+
+    // Wire month-summary buttons
     container.querySelectorAll('.att-edit-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             const emp = attendanceData.find(e => e.id === btn.dataset.rowid);
-            if (emp) {
-                attendanceEditingRowId = emp.id;
-                openAttendanceEmpModal(emp);
-            }
+            if (emp) { attendanceEditingRowId = emp.id; openAttendanceEmpModal(emp); }
         });
     });
-
     container.querySelectorAll('.att-del-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             const emp = attendanceData.find(e => e.id === btn.dataset.rowid);
             if (!emp) return;
             showConfirm('Delete Employee', `Delete '${emp.employee_name}' from attendance?`, async () => {
-                try {
-                    await deleteAttendanceRow(emp.id);
-                    showToast('Employee deleted');
-                    renderAttendanceView();
-                } catch (err) {
-                    showToast('Failed to delete: ' + (err.message || err), true);
-                }
+                try { await deleteAttendanceRow(emp.id); showToast('Employee deleted'); renderAttendanceView(); }
+                catch (err) { showToast('Failed to delete: ' + (err.message || err), true); }
             }, null, 'Delete');
         });
     });
-
     container.querySelectorAll('.att-mark-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             const emp = attendanceData.find(e => e.id === btn.dataset.rowid);
             if (emp) openDailyMarkingModal(emp);
         });
     });
-
-    // Quick +/- buttons for present/absent days
+    container.querySelectorAll('.att-history-btn').forEach(btn => {
+        btn.addEventListener('click', () => { openAbsentHistoryModal(btn.dataset.empname, btn.dataset.ventureid); });
+    });
     container.querySelectorAll('.att-present-plus, .att-present-minus, .att-absent-plus, .att-absent-minus').forEach(btn => {
         btn.addEventListener('click', async () => {
             const emp = attendanceData.find(e => e.id === btn.dataset.rowid);
@@ -332,27 +369,19 @@ async function renderAttendanceView() {
             let present = parseInt(emp.present_days) || 0;
             let absent = parseInt(emp.absent_days) || 0;
             const marking = { ...(emp.daily_marking || {}) };
-
-            // Find next unmarked day for '+' buttons, or last marked day for '-' buttons
             if (btn.classList.contains('att-present-plus')) {
                 const day = _findNextUnmarkedDay(marking, totalDays);
-                if (day) { marking[day] = 'present'; present++; }
-                else { showToast('All days already marked', true); return; }
+                if (day) { marking[day] = 'present'; present++; } else { showToast('All days already marked', true); return; }
             } else if (btn.classList.contains('att-absent-plus')) {
                 const day = _findNextUnmarkedDay(marking, totalDays);
-                if (day) { marking[day] = 'absent'; absent++; }
-                else { showToast('All days already marked', true); return; }
+                if (day) { marking[day] = 'absent'; absent++; } else { showToast('All days already marked', true); return; }
             } else if (btn.classList.contains('att-present-minus')) {
                 const day = _findLastMarkedDay(marking, 'present', totalDays);
-                if (day) { delete marking[day]; present--; }
-                else { return; }
+                if (day) { delete marking[day]; present--; } else { return; }
             } else if (btn.classList.contains('att-absent-minus')) {
                 const day = _findLastMarkedDay(marking, 'absent', totalDays);
-                if (day) { delete marking[day]; absent--; }
-                else { return; }
+                if (day) { delete marking[day]; absent--; } else { return; }
             }
-
-            // Update the displayed values immediately (no full re-render)
             const row = btn.closest('tr');
             if (row) {
                 const pVal = row.querySelector('.att-present-val');
@@ -362,37 +391,160 @@ async function renderAttendanceView() {
                 if (aVal) aVal.textContent = absent;
                 if (oVal) oVal.textContent = calcOutstanding(emp.base_salary, absent, month).toLocaleString('en-IN', {maximumFractionDigits:0});
             }
+            emp.present_days = present; emp.absent_days = absent; emp.daily_marking = marking;
+            updateAttendanceSummary();
+            saveAttendanceRow({ id: emp.id, venture_id: emp.venture_id, employee_name: emp.employee_name, role: emp.role || '', base_salary: emp.base_salary, month: month, present_days: present, absent_days: absent, daily_marking: marking }).catch(err => {
+                showToast('Failed to save: ' + (err.message || err), true);
+                if (row) { const pVal = row.querySelector('.att-present-val'); const aVal = row.querySelector('.att-absent-val'); if (pVal) pVal.textContent = parseInt(emp.present_days) || 0; if (aVal) aVal.textContent = parseInt(emp.absent_days) || 0; }
+                updateAttendanceSummary();
+            });
+        });
+    });
+}
 
-            // Update in-memory data immediately
+// ========================
+// Single Date View Table
+// ========================
+function renderSingleDateTable(container, dateStr, allVentures, ventureNameLookup) {
+    // Parse the date for display
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const dateObj = new Date(y, m - 1, d);
+    const dateLabel = dateObj.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+    // Info banner
+    const banner = document.createElement('div');
+    banner.style.cssText = 'background:#e8f4fd;border:1px solid #b8daff;border-radius:8px;padding:10px 16px;margin-bottom:12px;font-size:0.9rem;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;';
+    let presentCount = 0, absentCount = 0, notMarkedCount = 0;
+    attendanceData.forEach(emp => {
+        const status = (emp.daily_marking || {})[dateStr] || '';
+        if (status === 'present') presentCount++;
+        else if (status === 'absent') absentCount++;
+        else notMarkedCount++;
+    });
+    banner.innerHTML = `<div><strong>Attendance for ${dateLabel}</strong></div><div style="display:flex;gap:16px;font-size:0.85rem;"><span style="color:#27ae60;">Present: ${presentCount}</span><span style="color:#e74c3c;">Absent: ${absentCount}</span><span style="color:#999;">Not Marked: ${notMarkedCount}</span></div>`;
+    container.appendChild(banner);
+
+    const tableWrapper = document.createElement('div');
+    tableWrapper.className = 'grid-container';
+    const table = document.createElement('table');
+    table.className = 'tracker-table pending-table';
+
+    const thead = document.createElement('thead');
+    const showVentureCol = allVentures;
+    if (showVentureCol) {
+        thead.innerHTML = '<tr><th>S.No</th><th>Venture</th><th>Name</th><th>Role</th><th>Status</th><th>Actions</th></tr>';
+    } else {
+        thead.innerHTML = '<tr><th>S.No</th><th>Name</th><th>Role</th><th>Status</th><th>Actions</th></tr>';
+    }
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    const colspan = showVentureCol ? 6 : 5;
+
+    if (!attendanceData.length) {
+        const emptyRow = document.createElement('tr');
+        emptyRow.innerHTML = `<td colspan="${colspan}" style="text-align:center;color:#999;padding:24px;">No employees found for this date.</td>`;
+        tbody.appendChild(emptyRow);
+    } else {
+        attendanceData.forEach((emp, idx) => {
+            const marking = emp.daily_marking || {};
+            const status = marking[dateStr] || '';
+            const vName = emp.venture_id === '__all__' ? 'All Ventures' : escapeHtml(ventureNameLookup[emp.venture_id] || emp.venture_id || '');
+            const ventureCell = showVentureCol ? `<td data-label="Venture">${vName}</td>` : '';
+
+            let statusBadge;
+            if (status === 'present') {
+                statusBadge = '<span style="background:#d4edda;color:#155724;padding:4px 12px;border-radius:12px;font-size:0.8rem;font-weight:600;">Present</span>';
+            } else if (status === 'absent') {
+                statusBadge = '<span style="background:#f8d7da;color:#721c24;padding:4px 12px;border-radius:12px;font-size:0.8rem;font-weight:600;">Absent</span>';
+            } else {
+                statusBadge = '<span style="background:#e9ecef;color:#6c757d;padding:4px 12px;border-radius:12px;font-size:0.8rem;font-weight:600;">Not Marked</span>';
+            }
+
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td data-label="S.No">${idx + 1}</td>
+                ${ventureCell}
+                <td data-label="Name">${escapeHtml(emp.employee_name)}</td>
+                <td data-label="Role">${escapeHtml(emp.role || '')}</td>
+                <td data-label="Status" class="att-date-status">${statusBadge}</td>
+                <td data-label="Actions">
+                    <div style="display:flex;gap:4px;">
+                        <button class="att-date-mark att-date-present" data-rowid="${emp.id}" data-date="${dateStr}" style="padding:4px 10px;border:1px solid #27ae60;border-radius:6px;background:#27ae60;color:#fff;cursor:pointer;font-size:0.75rem;">Present</button>
+                        <button class="att-date-mark att-date-absent" data-rowid="${emp.id}" data-date="${dateStr}" style="padding:4px 10px;border:1px solid #e74c3c;border-radius:6px;background:#e74c3c;color:#fff;cursor:pointer;font-size:0.75rem;">Absent</button>
+                        <button class="att-date-mark att-date-clear" data-rowid="${emp.id}" data-date="${dateStr}" style="padding:4px 10px;border:1px solid #ccc;border-radius:6px;background:#f5f5f5;color:#666;cursor:pointer;font-size:0.75rem;">Clear</button>
+                    </div>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+    table.appendChild(tbody);
+    tableWrapper.appendChild(table);
+    container.appendChild(tableWrapper);
+
+    // Wire mark buttons
+    container.querySelectorAll('.att-date-mark').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const emp = attendanceData.find(e => e.id === btn.dataset.rowid);
+            if (!emp) return;
+            const date = btn.dataset.date;
+            const marking = { ...(emp.daily_marking || {}) };
+            let present = parseInt(emp.present_days) || 0;
+            let absent = parseInt(emp.absent_days) || 0;
+            const oldStatus = marking[date] || '';
+
+            // Remove old status count
+            if (oldStatus === 'present') present--;
+            if (oldStatus === 'absent') absent--;
+
+            // Set new status
+            if (btn.classList.contains('att-date-present')) {
+                marking[date] = 'present'; present++;
+            } else if (btn.classList.contains('att-date-absent')) {
+                marking[date] = 'absent'; absent++;
+            } else {
+                delete marking[date];
+            }
+
+            // Update UI immediately
+            const statusCell = btn.closest('tr').querySelector('.att-date-status');
+            const newStatus = marking[date] || '';
+            if (newStatus === 'present') {
+                statusCell.innerHTML = '<span style="background:#d4edda;color:#155724;padding:4px 12px;border-radius:12px;font-size:0.8rem;font-weight:600;">Present</span>';
+            } else if (newStatus === 'absent') {
+                statusCell.innerHTML = '<span style="background:#f8d7da;color:#721c24;padding:4px 12px;border-radius:12px;font-size:0.8rem;font-weight:600;">Absent</span>';
+            } else {
+                statusCell.innerHTML = '<span style="background:#e9ecef;color:#6c757d;padding:4px 12px;border-radius:12px;font-size:0.8rem;font-weight:600;">Not Marked</span>';
+            }
+
+            // Update in-memory data
             emp.present_days = present;
             emp.absent_days = absent;
             emp.daily_marking = marking;
 
-            // Update summary bar without re-rendering
-            updateAttendanceSummary();
-
-            // Save to backend in background (no re-render on success)
-            saveAttendanceRow({
-                id: emp.id,
-                venture_id: emp.venture_id,
-                employee_name: emp.employee_name,
-                role: emp.role || '',
-                base_salary: emp.base_salary,
-                month: month,
-                present_days: present,
-                absent_days: absent,
-                daily_marking: marking,
-            }).catch(err => {
+            // Save to backend
+            const month = attendanceMonthKey();
+            try {
+                await saveAttendanceRow({
+                    id: emp.id, venture_id: emp.venture_id, employee_name: emp.employee_name,
+                    role: emp.role || '', base_salary: emp.base_salary, month: month,
+                    present_days: present, absent_days: absent, daily_marking: marking,
+                });
+                showToast('Saved');
+                // Update banner counts
+                presentCount = 0; absentCount = 0; notMarkedCount = 0;
+                attendanceData.forEach(e => {
+                    const s = (e.daily_marking || {})[date] || '';
+                    if (s === 'present') presentCount++;
+                    else if (s === 'absent') absentCount++;
+                    else notMarkedCount++;
+                });
+                const bannerCounts = banner.querySelector('div:last-child');
+                if (bannerCounts) bannerCounts.innerHTML = `<span style="color:#27ae60;">Present: ${presentCount}</span><span style="color:#e74c3c;">Absent: ${absentCount}</span><span style="color:#999;">Not Marked: ${notMarkedCount}</span>`;
+            } catch (err) {
                 showToast('Failed to save: ' + (err.message || err), true);
-                // Revert UI on failure
-                if (row) {
-                    const pVal = row.querySelector('.att-present-val');
-                    const aVal = row.querySelector('.att-absent-val');
-                    if (pVal) pVal.textContent = parseInt(emp.present_days) || 0;
-                    if (aVal) aVal.textContent = parseInt(emp.absent_days) || 0;
-                }
-                updateAttendanceSummary();
-            });
+            }
         });
     });
 }
@@ -699,6 +851,101 @@ function openDailyMarkingModal(emp) {
             showToast('Failed to save marking: ' + (err.message || err), true);
         }
     });
+}
+
+// ========================
+// Absent Days History Modal
+// ========================
+async function openAbsentHistoryModal(employeeName, ventureId) {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay show';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center;';
+
+    const modal = document.createElement('div');
+    modal.className = 'modal-content';
+    modal.style.cssText = 'background:#fff;border-radius:12px;padding:24px;max-width:550px;width:92%;max-height:85vh;overflow-y:auto;';
+
+    modal.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+            <h3 style="margin:0;font-size:1.1rem;">Absent Days History — ${escapeHtml(employeeName)}</h3>
+            <button class="btn-secondary" style="padding:4px 12px;font-size:0.8rem;" id="attHistClose">Close</button>
+        </div>
+        <div id="attHistBody" style="padding:24px;color:#999;text-align:center;">Loading...</div>
+    `;
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    const close = () => overlay.remove();
+    modal.querySelector('#attHistClose').addEventListener('click', close);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+    try {
+        const url = `/api/attendance/history?employee_name=${encodeURIComponent(employeeName)}&venture_id=${encodeURIComponent(ventureId || '__all__')}`;
+        const records = await apiGet(url);
+        const body = modal.querySelector('#attHistBody');
+
+        if (!records || records.length === 0) {
+            body.innerHTML = '<div style="color:#999;padding:16px;text-align:center;">No attendance records found for this employee.</div>';
+            return;
+        }
+
+        // Extract absent days from daily_marking for each month record
+        let totalAbsent = 0;
+        const monthData = records.map(rec => {
+            const marking = rec.daily_marking || {};
+            const absentDates = Object.entries(marking)
+                .filter(([date, status]) => status === 'absent')
+                .map(([date]) => date)
+                .sort();
+            totalAbsent += absentDates.length;
+            return {
+                month: rec.month,
+                venture_id: rec.venture_id,
+                absentDates,
+                presentDays: parseInt(rec.present_days) || 0,
+                absentDays: parseInt(rec.absent_days) || 0,
+                baseSalary: parseFloat(rec.base_salary) || 0,
+            };
+        }).filter(m => m.absentDates.length > 0);
+
+        if (monthData.length === 0) {
+            body.innerHTML = '<div style="color:#999;padding:16px;text-align:center;">No absent days recorded for this employee.</div>';
+            return;
+        }
+
+        let html = `<div style="background:#fef5e7;padding:10px 16px;border-radius:8px;margin-bottom:16px;font-size:0.9rem;">
+            <strong>Total Absent Days (all months):</strong> <span style="color:#e74c3c;font-weight:700;">${totalAbsent}</span>
+        </div>`;
+
+        monthData.forEach(m => {
+            const [y, mo] = m.month.split('-');
+            const monthName = new Date(y, parseInt(mo) - 1, 1).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+            const outstanding = calcOutstanding(m.baseSalary, m.absentDays, m.month);
+
+            html += `<div style="margin-bottom:16px;border:1px solid #eee;border-radius:8px;overflow:hidden;">`;
+            html += `<div style="background:#f8f9fb;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+                <strong style="font-size:0.95rem;">${monthName}</strong>
+                <div style="display:flex;gap:12px;font-size:0.8rem;">
+                    <span style="color:#27ae60;">Present: ${m.presentDays}</span>
+                    <span style="color:#e74c3c;">Absent: ${m.absentDays}</span>
+                    <span style="color:#e67e22;">Outstanding: &#8377;${outstanding.toLocaleString('en-IN', {maximumFractionDigits:0})}</span>
+                </div>
+            </div>`;
+            html += `<div style="padding:10px 14px;">`;
+            html += `<div style="display:flex;flex-wrap:wrap;gap:6px;">`;
+            m.absentDates.forEach(dateStr => {
+                const [yy, mm, dd] = dateStr.split('-');
+                const dayLabel = new Date(parseInt(yy), parseInt(mm) - 1, parseInt(dd)).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
+                html += `<span style="background:#fce4e4;color:#c0392b;padding:4px 10px;border-radius:6px;font-size:0.8rem;font-weight:600;">${dayLabel}</span>`;
+            });
+            html += `</div></div></div>`;
+        });
+
+        body.innerHTML = html;
+    } catch (err) {
+        const body = modal.querySelector('#attHistBody');
+        if (body) body.innerHTML = `<div style="color:#c0392b;padding:16px;text-align:center;">Failed to load history: ${escapeHtml(err.message || String(err))}</div>`;
+    }
 }
 
 // ========================

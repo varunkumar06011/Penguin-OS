@@ -2221,7 +2221,8 @@ async function createVentureFromWizard() {
 function hideAllMainPanels() {
     ['venturesDashboard', 'overviewPage', 'invoicesPanel', 'poPanel', 'reportsPanel', 'payrollPanel', 'inventoryPanel',
      'instantReportsPanel', 'inventoryAuditPanel',
-     'expenditurePanel', 'designGeneratorPanel', 'stockPurchasesPanel', 'contractorPaymentsPanel', 'trackerView'].forEach(id => {
+     'expenditurePanel', 'designGeneratorPanel', 'contractorPaymentsPanel',
+     'dayBookPanel', 'vendorDirPanel', 'trackerView'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.display = 'none';
     });
@@ -2291,14 +2292,45 @@ function closeDesignGeneratorPanel() {
     navigateTo('#/ventures');
 }
 
-function openStockPurchasesPanel() {
+function openDayBookPanel() {
     hideAllMainPanels();
-    document.getElementById('stockPurchasesPanel').style.display = '';
-    renderStockPurchases();
-    navigateTo('#/stock-purchases');
+    var panel = document.getElementById('dayBookPanel');
+    if (panel) panel.style.display = '';
+    renderDayBookView();
+    navigateTo('#/day-book');
 }
 
-function closeStockPurchasesPanel() {
+function closeDayBookPanel() {
+    renderVentureDashboard();
+    navigateTo('#/ventures');
+}
+
+function openVendorDirPanel() {
+    hideAllMainPanels();
+    var panel = document.getElementById('vendorDirPanel');
+    if (panel) panel.style.display = '';
+    if (typeof renderVendorDirectoryView === 'function') renderVendorDirectoryView();
+    navigateTo('#/vendors');
+}
+
+function closeVendorDirPanel() {
+    renderVentureDashboard();
+    navigateTo('#/ventures');
+}
+
+function openInventoryRegisterPanel() {
+    hideAllMainPanels();
+    var panel = document.getElementById('inventoryPanel');
+    if (panel) panel.style.display = '';
+    if (venturesList.length > 0 && typeof selectedInventoryVenture !== 'undefined' && !selectedInventoryVenture) {
+        selectedInventoryVenture = venturesList[0];
+    }
+    renderInventoryRegisterView();
+    navigateTo('#/inventory');
+}
+
+function closeInventoryRegisterPanel() {
+    if (typeof selectedInventoryVenture !== 'undefined') selectedInventoryVenture = null;
     renderVentureDashboard();
     navigateTo('#/ventures');
 }
