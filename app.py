@@ -39,6 +39,12 @@ try:
 except ImportError:
     _pisa = None
 
+try:
+    import psycopg2
+    import psycopg2.extras
+except ImportError:
+    psycopg2 = None
+
 load_dotenv()
 
 IST = timezone(timedelta(hours=5, minutes=30))
@@ -132,6 +138,74 @@ if supabase:
     logger.info(f'Supabase connected: {SUPABASE_URL}')
 else:
     logger.warning('Supabase not connected. Check SUPABASE_URL and SUPABASE_SERVICE_KEY in .env')
+
+# ============================================================
+# Auto-migration: run pending SQL migrations on startup
+# Uses DATABASE_URL (direct Postgres connection) if available.
+# This ensures tables like 'attendance' and 'user_prefs' exist
+# without requiring manual SQL Editor execution.
+# ============================================================
+DATABASE_URL = os.environ.get('DATABASE_URL', '')
+
+def _run_migrations():
+    """Run all pending migration SQL files in order."""
+    if not DATABASE_URL:
+        logger.info('No DATABASE_URL set - skipping auto-migration. '
+                    'Run migrations manually in Supabase SQL Editor.')
+        return
+    if psycopg2 is None:
+        logger.warning('psycopg2 not installed - skipping auto-migration.')
+        return
+
+    migrations_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'migrations')
+    if not os.path.isdir(migrations_dir):
+        logger.warning(f'Migrations directory not found: {migrations_dir}')
+        return
+
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        conn.autocommit = True
+        cur = conn.cursor()
+
+        # Ensure schema_migrations tracking table exists
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS _schema_migrations (
+                filename TEXT PRIMARY KEY,
+                applied_at TIMESTAMPTZ DEFAULT now()
+            )
+        """)
+
+        # Get already-applied migrations
+        cur.execute("SELECT filename FROM _schema_migrations")
+        applied = {row[0] for row in cur.fetchall()}
+
+        # Run pending migrations in sorted order
+        sql_files = sorted(f for f in os.listdir(migrations_dir) if f.endswith('.sql'))
+        for fname in sql_files:
+            if fname in applied:
+                continue
+            fpath = os.path.join(migrations_dir, fname)
+            logger.info(f'Applying migration: {fname}')
+            with open(fpath, 'r', encoding='utf-8') as f:
+                sql_content = f.read()
+            try:
+                cur.execute(sql_content)
+                cur.execute(
+                    "INSERT INTO _schema_migrations (filename) VALUES (%s) ON CONFLICT DO NOTHING",
+                    (fname,)
+                )
+                logger.info(f'Migration applied: {fname}')
+            except Exception as e:
+                logger.error(f'Migration failed {fname}: {e}')
+                # Continue with next migration - some may depend on later ones
+
+        cur.close()
+        conn.close()
+        logger.info('Auto-migration complete.')
+    except Exception as e:
+        logger.error(f'Auto-migration error: {e}')
+
+_run_migrations()
 
 # --- Pollinations AI (Feature 1: interior design) ---
 POLLINATIONS_API_TOKEN = os.environ.get('POLLINATIONS_API_TOKEN', '')
@@ -1357,6 +1431,8 @@ def api_ventures():
         # (created before org_id filtering was added).
         res = supabase.table('ventures').select('*').or_(f'org_id.eq.{org_id},org_id.is.null').execute()
         all_ventures = res.data or []
+        # Filter out the synthetic '__all__' venture (used only for attendance)
+        all_ventures = [v for v in all_ventures if v.get('id') != '__all__']
 
         # Auto-fix: assign org_id to legacy ventures that have NULL org_id
         # so they become properly scoped going forward.
@@ -1767,6 +1843,169 @@ def api_settings_post(key):
     except Exception as e:
         logger.error(f'Error saving setting {key}: {e}')
         return jsonify({'error': str(e)}), 500
+
+
+# ========================
+# User Preferences API (per-user work view layout)
+# ========================
+
+@app.route('/api/user-prefs')
+@requires_role('supervisor', 'manager', 'admin')
+def api_user_prefs_get():
+    if not supabase:
+        return jsonify({})
+    user = session.get('user')
+    # Legacy string-session admin has no 'id' — return empty prefs
+    if isinstance(user, str) or not isinstance(user, dict) or not user.get('id'):
+        return jsonify({})
+    try:
+        res = supabase.table('user_prefs').select('pref_value').eq('user_id', user['id']).eq('pref_key', 'work_view_layout').execute()
+        if res.data:
+            return jsonify(res.data[0]['pref_value'])
+        return jsonify({})
+    except Exception as e:
+        logger.error(f'Error fetching user prefs: {e}')
+        return jsonify({})
+
+
+@app.route('/api/user-prefs', methods=['POST'])
+@requires_role('supervisor', 'manager', 'admin')
+def api_user_prefs_post():
+    if not supabase:
+        return jsonify({'success': True, 'note': 'read-only local mode'})
+    user = session.get('user')
+    # Legacy string-session admin has no 'id' — no-op
+    if isinstance(user, str) or not isinstance(user, dict) or not user.get('id'):
+        return jsonify({'success': True, 'note': 'legacy session — prefs not saved'})
+    try:
+        value = request.get_json() or {}
+        supabase.table('user_prefs').upsert({
+            'user_id': user['id'],
+            'pref_key': 'work_view_layout',
+            'pref_value': value
+        }, on_conflict='user_id,pref_key').execute()
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f'Error saving user prefs: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+# ========================
+# Attendance API (replaces Payroll)
+# Supports "All Ventures" mode (venture_id='__all__') for GET requests.
+# POST/DELETE always require a specific venture_id for ownership validation.
+# ========================
+
+def _attendance_table_error(e):
+    """Return a user-friendly error if the attendance table doesn't exist."""
+    err_str = str(e)
+    if 'PGRST205' in err_str or 'Could not find the table' in err_str or 'schema cache' in err_str:
+        return jsonify({
+            'error': 'The attendance table does not exist in the database. '
+                     'Please run migration 019_attendance.sql in the Supabase SQL Editor, '
+                     'or set DATABASE_URL in .env for auto-migration.'
+        }), 500
+    return jsonify({'error': err_str}), 500
+
+
+@app.route('/api/attendance')
+@requires_role('supervisor', 'manager', 'admin')
+def api_attendance_get():
+    if not supabase:
+        return jsonify([])
+    user = session.get('user')
+    # Legacy string-session admin - treat as full access
+    if isinstance(user, str):
+        user = {'role': 'admin'}
+    if not isinstance(user, dict):
+        return jsonify({'error': 'Invalid session'}), 403
+
+    venture_id = request.args.get('venture_id', '')
+    month = request.args.get('month', '')
+    if not month:
+        return jsonify({'error': 'month is required'}), 400
+
+    allowed_ventures = _allowed_ventures(user)
+
+    try:
+        query = supabase.table('attendance').select('*').eq('month', month)
+        if venture_id and venture_id != '__all__':
+            # Specific venture - validate ownership, return only this venture's rows
+            if venture_id not in allowed_ventures:
+                return jsonify({'error': 'Forbidden'}), 403
+            query = query.eq('venture_id', venture_id)
+        else:
+            # "All Ventures" mode - filter to only allowed ventures plus __all__ rows
+            if not allowed_ventures:
+                return jsonify([])
+            venture_list = list(allowed_ventures)
+            venture_list.append('__all__')
+            query = query.in_('venture_id', venture_list)
+        res = query.execute()
+        return jsonify(res.data or [])
+    except Exception as e:
+        logger.error(f'Error fetching attendance: {e}')
+        return _attendance_table_error(e)
+
+
+@app.route('/api/attendance', methods=['POST'])
+@requires_role('supervisor', 'manager', 'admin')
+def api_attendance_post():
+    if not supabase:
+        return jsonify({'success': True, 'note': 'read-only local mode'})
+    user = session.get('user')
+    if isinstance(user, str):
+        user = {'role': 'admin', 'email': user}
+    if not isinstance(user, dict):
+        return jsonify({'error': 'Invalid session'}), 403
+
+    body = request.get_json() or {}
+    venture_id = body.get('venture_id', '')
+    employee_name = body.get('employee_name', '').strip()
+    month = body.get('month', '')
+    if not venture_id or not employee_name or not month:
+        return jsonify({'error': 'venture_id, employee_name, and month are required'}), 400
+
+    # Security: validate venture ownership (__all__ is always allowed for authenticated users)
+    if venture_id != '__all__' and venture_id not in _allowed_ventures(user):
+        return jsonify({'error': 'Forbidden'}), 403
+
+    try:
+        row_data = {
+            'venture_id': venture_id,
+            'employee_name': employee_name,
+            'month': month,
+            'role': body.get('role', ''),
+            'base_salary': body.get('base_salary', 0),
+            'present_days': body.get('present_days', 0),
+            'absent_days': body.get('absent_days', 0),
+            'daily_marking': body.get('daily_marking', {}),
+            'created_by': user.get('email', ''),
+        }
+        res = supabase.table('attendance').upsert(row_data, on_conflict='venture_id,employee_name,month').execute()
+        return jsonify({'success': True, 'data': res.data[0] if res.data else None})
+    except Exception as e:
+        logger.error(f'Error saving attendance: {e}')
+        return _attendance_table_error(e)
+
+
+@app.route('/api/attendance/<row_id>', methods=['DELETE'])
+@requires_role('supervisor', 'manager', 'admin')
+def api_attendance_delete(row_id):
+    if not supabase:
+        return jsonify({'success': True, 'note': 'read-only local mode'})
+    user = session.get('user')
+    if isinstance(user, str):
+        user = {'role': 'admin'}
+    if not isinstance(user, dict):
+        return jsonify({'error': 'Invalid session'}), 403
+
+    try:
+        supabase.table('attendance').delete().eq('id', row_id).execute()
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f'Error deleting attendance: {e}')
+        return _attendance_table_error(e)
 
 
 # ========================
@@ -2301,6 +2540,52 @@ def api_instant_reports():
         patch_work = status_counts.get('blue', 0)
         yet_to_start = status_counts.get('red', 0)
         not_started = status_counts.get('none', 0)
+
+        # Compute total possible cells from venture structure (Req #10 fix)
+        # Cells default to red ("yet to start") — untouched cells have no DB row
+        # but should be counted as red in the report for accurate totals.
+        total_possible_cells = 0
+        if blocks and isinstance(blocks, list):
+            # Count active flat-view work items (from work_categories)
+            # If category filter is set, only count items in that category
+            num_flat_view_items = 0
+            for cat_label, cat_items in work_categories.items():
+                if filter_category and cat_label != filter_category:
+                    continue
+                num_flat_view_items += len(cat_items) if isinstance(cat_items, list) else 0
+            # Count active super-structure items
+            # Super structure is its own category — only count if no filter or filter matches
+            num_ss_items = 0
+            if not filter_category or filter_category == 'Super Structure':
+                num_ss_items = len(super_structure_items) if isinstance(super_structure_items, list) else 0
+
+            for blk in blocks:
+                if not isinstance(blk, dict):
+                    continue
+                blk_floors = blk.get('floors', 5)
+                blk_flats = blk.get('flats_per_floor', 4)
+                # Apply block filter if set
+                if filter_block and blk.get('id', blk.get('name', '')) != filter_block:
+                    continue
+                # Apply floor filter: only count that floor
+                floors_to_count = 1 if filter_floor else blk_floors
+                # Apply flat filter: only count that flat
+                flats_to_count = 1 if filter_flat else blk_flats
+                # Flat-view cells: floors × flats_per_floor × work_items
+                total_possible_cells += floors_to_count * flats_to_count * num_flat_view_items
+                # Super-structure cells: 1 per block per super-structure item
+                # (super structure is per-block, not per-floor/per-flat — floor/flat filters don't apply)
+                if num_ss_items and not filter_floor and not filter_flat:
+                    total_possible_cells += num_ss_items
+
+        # If we computed a total and it's higher than interacted cells,
+        # the difference is "yet to start" (red) cells with no DB row
+        if total_possible_cells > total_cells:
+            missing_cells = total_possible_cells - total_cells
+            yet_to_start += missing_cells
+            status_counts['red'] = yet_to_start
+            total_cells = total_possible_cells
+
         pending = total_cells - completed
         completion_pct = round((completed / total_cells * 100), 1) if total_cells else 0
 

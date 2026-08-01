@@ -7,6 +7,7 @@ var contractorContracts = [];
 var contractorDetailContract = null;
 var contractorPayments = [];
 var contractorEditingContractId = null;
+var cpSearchQuery = '';
 
 // --- Helpers ---
 
@@ -51,6 +52,9 @@ function openContractorPaymentsPanel() {
     hideAllMainPanels();
     var panel = document.getElementById('contractorPaymentsPanel');
     if (panel) panel.style.display = '';
+    cpSearchQuery = '';
+    var si = document.getElementById('cpSearchInput');
+    if (si) si.value = '';
     loadContractorContracts();
     navigateTo('#/contractor-payments');
 }
@@ -59,6 +63,17 @@ function closeContractorPaymentsPanel() {
     renderVentureDashboard();
     navigateTo('#/ventures');
 }
+
+// Wire up search input
+document.addEventListener('DOMContentLoaded', function() {
+    var si = document.getElementById('cpSearchInput');
+    if (si) {
+        si.addEventListener('input', function() {
+            cpSearchQuery = this.value.trim();
+            renderContractorCards();
+        });
+    }
+});
 
 // --- Data loading ---
 
@@ -100,12 +115,23 @@ function renderContractorSummary() {
 function renderContractorCards() {
     var grid = document.getElementById('contractorCardsGrid');
     if (!grid) return;
-    if (!contractorContracts.length) {
-        grid.innerHTML = '<div class="att-empty" style="padding:32px 0;text-align:center;">No contracts yet. Click "+ New Contract" to get started.</div>';
+    // Filter by search query (name or work description, case-insensitive)
+    var filtered = contractorContracts;
+    if (cpSearchQuery) {
+        var q = cpSearchQuery.toLowerCase();
+        filtered = contractorContracts.filter(function(c) {
+            return (c.person_name || '').toLowerCase().indexOf(q) !== -1 ||
+                   (c.work_description || '').toLowerCase().indexOf(q) !== -1;
+        });
+    }
+    if (!filtered.length) {
+        grid.innerHTML = contractorContracts.length
+            ? '<div class="att-empty" style="padding:32px 0;text-align:center;">No contracts match your search.</div>'
+            : '<div class="att-empty" style="padding:32px 0;text-align:center;">No contracts yet. Click "+ New Contract" to get started.</div>';
         return;
     }
     var html = '';
-    contractorContracts.forEach(function(c) {
+    filtered.forEach(function(c) {
         var statusLabel = c.status === 'active' ? 'Active' : c.status === 'completed' ? 'Completed' : 'Cancelled';
         html +=
             '<div class="po-card cp-contract-card" data-contract-id="' + escapeHtml(c.id) + '">' +

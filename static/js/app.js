@@ -73,18 +73,27 @@ const SIDEBAR_CONFIG = {
                 title: 'Construction',
                 items: [
                     { id: 'sidebarDashboard', icon: '\u{1F3D7}\uFE0F', label: 'Dashboard', action: 'tracker' },
-                    { id: 'openExpenditureBtn', icon: '\u{1F4B8}', label: 'Expenditure' },
                     { id: 'openInventoryBtn', icon: '\u{1F4E6}', label: 'Inventory' },
                 ]
             },
             {
                 title: 'Financials',
                 items: [
-                    { id: 'openInvoicesBtn', icon: '\u{1F4C4}', label: 'Invoices' },
-                    { id: 'openPOBtn', icon: '\u{1F4DD}', label: 'Purchase Orders' },
-                    { id: 'openPayrollBtn', icon: '\u{1F4B0}', label: 'Payroll' },
+                    { id: 'openAttendanceBtn', icon: '\u{1F465}', label: 'Attendance' },
                     { id: 'openVendorsBtn', icon: '\u{1F465}', label: 'Vendors' },
                     { id: 'openContractorPaymentsBtn', icon: '\u{1F527}', label: 'Payments' },
+                ]
+            },
+            {
+                title: 'Reports',
+                items: [
+                    { id: 'openInstantReportsBtn', icon: '\u26A0\uFE0F', label: 'Instant Reports' },
+                ]
+            },
+            {
+                title: 'RWA',
+                items: [
+                    { id: 'openRWABtn', icon: '\u{1F3D8}\uFE0F', label: 'RWA Overview', href: '/rwa-admin' },
                 ]
             },
             {
@@ -92,20 +101,6 @@ const SIDEBAR_CONFIG = {
                 items: [
                     { id: 'openRERABtn', icon: '\u{1F4CA}', label: 'RERA QPR', href: '/rera' },
                     { id: 'openLenderReportBtn', icon: '\u{1F3E2}', label: 'Lender Report' },
-                    { id: 'openInstantReportsBtn', icon: '\u26A0\uFE0F', label: 'Instant Reports' },
-                    { id: 'openInventoryAuditBtn', icon: '\u{1F50D}', label: 'Inventory Audit' },
-                ]
-            },
-            {
-                title: 'Labor',
-                items: [
-                    { id: 'openLaborPayrollBtn', icon: '\u{1F477}', label: 'Labor Payroll', action: 'payroll' },
-                ]
-            },
-            {
-                title: 'RWA',
-                items: [
-                    { id: 'openRWABtn', icon: '\u{1F3D8}\uFE0F', label: 'RWA Overview', href: '/rwa-admin' },
                 ]
             },
             {
@@ -132,17 +127,26 @@ const SIDEBAR_CONFIG = {
                 title: 'Construction',
                 items: [
                     { id: 'sidebarDashboard', icon: '\u{1F3D7}\uFE0F', label: 'Dashboard', action: 'tracker' },
-                    { id: 'openExpenditureBtn', icon: '\u{1F4B8}', label: 'Expenditure' },
                     { id: 'openInventoryBtn', icon: '\u{1F4E6}', label: 'Inventory' },
                 ]
             },
             {
                 title: 'Financials',
                 items: [
-                    { id: 'openInvoicesBtn', icon: '\u{1F4C4}', label: 'Invoices' },
-                    { id: 'openPOBtn', icon: '\u{1F4DD}', label: 'Purchase Orders' },
-                    { id: 'openPayrollBtn', icon: '\u{1F4B0}', label: 'Payroll' },
+                    { id: 'openAttendanceBtn', icon: '\u{1F465}', label: 'Attendance' },
                     { id: 'openVendorsBtn', icon: '\u{1F465}', label: 'Vendors' },
+                ]
+            },
+            {
+                title: 'Reports',
+                items: [
+                    { id: 'openInstantReportsBtn', icon: '\u26A0\uFE0F', label: 'Instant Reports' },
+                ]
+            },
+            {
+                title: 'RWA',
+                items: [
+                    { id: 'openRWABtn', icon: '\u{1F3D8}\uFE0F', label: 'RWA Overview', href: '/rwa-admin' },
                 ]
             },
             {
@@ -150,15 +154,8 @@ const SIDEBAR_CONFIG = {
                 items: [
                     { id: 'openRERABtn', icon: '\u{1F4CA}', label: 'RERA QPR', href: '/rera' },
                     { id: 'openLenderReportBtn', icon: '\u{1F3E2}', label: 'Lender Report' },
-                    { id: 'openInstantReportsBtn', icon: '\u26A0\uFE0F', label: 'Instant Reports' },
                     { id: 'openDesignGeneratorBtn', icon: '\u{1F3A8}', label: 'Design Generator' },
                     { id: 'openStockPurchasesBtn', icon: '\u{1F6D2}', label: 'Stock Purchases'},
-                ]
-            },
-            {
-                title: 'RWA',
-                items: [
-                    { id: 'openRWABtn', icon: '\u{1F3D8}\uFE0F', label: 'RWA Overview', href: '/rwa-admin' },
                 ]
             },
             {
@@ -184,9 +181,14 @@ const SIDEBAR_CONFIG = {
                 title: 'Construction',
                 items: [
                     { id: 'sidebarDashboard', icon: '\u{1F3D7}\uFE0F', label: 'Dashboard', action: 'tracker' },
-                    { id: 'openExpenditureBtn', icon: '\u{1F4B8}', label: 'Expenditure' },
                     { id: 'openInventoryBtn', icon: '\u{1F4E6}', label: 'Inventory' },
                     { id: 'openStockPurchasesBtn', icon: '\u{1F6D2}', label: 'Stock Purchases' },
+                ]
+            },
+            {
+                title: 'Labor',
+                items: [
+                    { id: 'openAttendanceBtn', icon: '\u{1F465}', label: 'Attendance' },
                 ]
             },
             {
@@ -479,7 +481,7 @@ function buildPanelState() {
             to: getElValue('poFilterTo')
         },
         payroll: {
-            selectedVentureId: selectedPayrollVenture ? selectedPayrollVenture.id : null
+            selectedVentureId: selectedAttendanceVenture ? selectedAttendanceVenture.id : null
         },
         inventory: {
             selectedVentureId: selectedInventoryVenture ? selectedInventoryVenture.id : null,
@@ -537,7 +539,7 @@ function restorePanelState(panel) {
         setElValue('poFilterTo', p.to);
     } else if (panel === 'payroll') {
         if (p.selectedVentureId) {
-            selectedPayrollVenture = venturesList.find(v => v.id === p.selectedVentureId) || null;
+            selectedAttendanceVenture = venturesList.find(v => v.id === p.selectedVentureId) || null;
         }
     } else if (panel === 'inventory') {
         if (p.selectedVentureId) {
@@ -640,6 +642,8 @@ async function applyHashRoute() {
         openPOPanel();
     } else if (route.route === 'payroll') {
         openPayrollPanel();
+    } else if (route.route === 'attendance') {
+        openAttendancePanel();
     } else if (route.route === 'inventory') {
         openInventoryPanel();
     } else if (route.route === 'expenditure') {
@@ -761,6 +765,17 @@ function getWorkCategoryDisplayName(cat) {
 }
 
 function sortWorkCategoryNames(names) {
+    // Check userPrefs.workCategoryOrder first (per-user drag-reorder)
+    if (userPrefs && userPrefs.workCategoryOrder && userPrefs.workCategoryOrder.length > 0) {
+        const userOrder = userPrefs.workCategoryOrder;
+        const remaining = names.filter(n => !userOrder.includes(n));
+        const sorted = [];
+        userOrder.forEach(key => {
+            if (names.includes(key)) sorted.push(key);
+        });
+        return sorted.concat(remaining);
+    }
+    // Fall back to default hardcoded order
     const order = ['CIVIL WORK', 'ELECTRICAL & PLUMBING WORK', 'PAINTING', 'POP CEILING', 'FLOORING', 'CORRIDORS', 'ELEVATION WORK'];
     const remaining = names.filter(n => !order.includes(n));
     const sorted = [];
@@ -973,9 +988,46 @@ function showToast(message, isError = false) {
 // ========================
 // Init
 // ========================
+// ========================
+// User Preferences (per-user work view layout)
+// ========================
+let userPrefs = { workCategoryOrder: [], workItemOrder: {} };
+let _userPrefsSaveTimer = null;
+
+async function loadUserPrefs() {
+    try {
+        const data = await apiGet('/api/user-prefs');
+        if (data && typeof data === 'object') {
+            userPrefs = {
+                workCategoryOrder: data.workCategoryOrder || [],
+                workItemOrder: data.workItemOrder || {}
+            };
+        }
+    } catch (e) {
+        // Non-critical — defaults will be used
+        console.warn('Could not load user prefs:', e);
+    }
+}
+
+async function saveUserPrefs() {
+    try {
+        await apiPost('/api/user-prefs', userPrefs);
+    } catch (e) {
+        console.warn('Could not save user prefs:', e);
+    }
+}
+
+function saveUserPrefsDebounced() {
+    if (_userPrefsSaveTimer) clearTimeout(_userPrefsSaveTimer);
+    _userPrefsSaveTimer = setTimeout(saveUserPrefs, 500);
+}
+
 async function init() {
     const ok = await checkSession();
     if (!ok) return;
+
+    // Load user preferences (per-user work view layout)
+    await loadUserPrefs().catch(() => {});
 
     // Load only ventures on init — everything else lazy-loads when its panel opens.
     // A failed fetch must never be treated as "no data exists".
@@ -1033,7 +1085,7 @@ function renderSidebar() {
 
     config.sections.forEach((section, sIdx) => {
         const sectionEl = document.createElement('div');
-        sectionEl.className = 'sidebar-accordion-section' + (sIdx === 0 ? ' expanded' : '');
+        sectionEl.className = 'sidebar-accordion-section expanded';
 
         const header = document.createElement('button');
         header.className = 'sidebar-accordion-header';
@@ -1110,8 +1162,7 @@ function renderSidebar() {
     // Event delegation for panel-opening nav items
     const NAV_PANEL_HANDLERS = {
         'openInvoicesBtn': () => { if (typeof openInvoicesPanel === 'function') openInvoicesPanel(); },
-        'openPayrollBtn': () => { if (typeof openPayrollPanel === 'function') openPayrollPanel(); },
-        'openLaborPayrollBtn': () => { if (typeof openPayrollPanel === 'function') openPayrollPanel(); },
+        'openAttendanceBtn': () => { if (typeof openAttendancePanel === 'function') openAttendancePanel(); },
         'openVendorsBtn': () => { const m = document.getElementById('vendorDirModal'); if (m) m.classList.add('show'); },
         'openInventoryBtn': () => { if (typeof openInventoryPanel === 'function') openInventoryPanel(); },
         'openPOBtn': () => { if (typeof openPOPanel === 'function') openPOPanel(); },
@@ -1184,7 +1235,7 @@ function patchCellsInDOM(changedKeys) {
         if (!changedSet.has(ck)) return;
         const cellData = cellsCache[ck];
         const color = cellData?.color || null;
-        btn.className = 'cell-btn ' + (color || 'empty');
+        btn.className = 'cell-btn ' + (color || 'red');
         const existingIndicator = btn.querySelector('.remarks-image-indicator');
         if (existingIndicator) existingIndicator.remove();
         const imgCount = (cellData?.remarkImages || []).length;
@@ -1504,3 +1555,23 @@ function generateLenderReport() {
     }
 })();
 window.addEventListener('online', triggerImmediateSync);
+
+// Prevent mouse wheel from changing number inputs (avoids accidental negative values)
+document.addEventListener('wheel', function(e) {
+    if (document.activeElement && document.activeElement.type === 'number') {
+        e.preventDefault();
+        document.activeElement.blur();
+    }
+}, { passive: false });
+
+// Clamp negative values to 0 for all number inputs
+document.addEventListener('input', function(e) {
+    if (e.target.type === 'number') {
+        if (e.target.value < 0) e.target.value = 0;
+    }
+});
+document.addEventListener('change', function(e) {
+    if (e.target.type === 'number') {
+        if (e.target.value < 0) e.target.value = 0;
+    }
+});

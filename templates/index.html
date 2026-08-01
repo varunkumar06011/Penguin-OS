@@ -265,7 +265,7 @@
         <div id="payrollPanel" style="display:none;">
             <div class="invoice-panel-header">
                 <button id="backFromPayroll" class="back-btn">&larr; Back to Ventures</button>
-                <h2 class="invoice-panel-title">Payroll</h2>
+                <h2 class="invoice-panel-title">Attendance</h2>
             </div>
             <div id="payrollPanelContent"></div>
         </div>
@@ -311,6 +311,7 @@
             <div class="invoice-panel-header">
                 <button id="backFromContractorPayments" class="back-btn">&larr; Back to Ventures</button>
                 <h2 class="invoice-panel-title">Contractor Payments</h2>
+                <input id="cpSearchInput" type="text" placeholder="Search by name or work description..." style="flex:1;max-width:300px;padding:8px 12px;border:1px solid #ccc;border-radius:6px;font-size:0.9rem;">
                 <button id="addContractBtn" class="btn-primary">+ New Contract</button>
             </div>
             <div id="contractorSummaryBar" class="po-outstanding-banner"></div>
@@ -459,7 +460,7 @@
                         <button class="bulk-color-btn" data-color="yellow" title="In progress"></button>
                         <button class="bulk-color-btn" data-color="blue" title="Patch work"></button>
                         <button class="bulk-color-btn" data-color="green" title="Completed"></button>
-                        <button class="bulk-color-btn empty" data-color="" title="No status">&#10005;</button>
+                        <button class="bulk-color-btn red" data-color="red" title="Yet to start">&#10005;</button>
                     </div>
                     <button id="bulkCancelBtn" class="btn-bulk-cancel">Cancel</button>
                 </div>
@@ -493,7 +494,6 @@
             <h3 id="popupTitle">Flat 101 - Brick work</h3>
             <p>Current status: <span id="popupCurrentStatus">None</span></p>
             <div class="color-picker">
-                <button class="color-btn empty" data-color="">No Status</button>
                 <button class="color-btn red" data-color="red">Yet to start</button>
                 <button class="color-btn yellow" data-color="yellow">In progress</button>
                 <button class="color-btn blue" data-color="blue">Patch work</button>
@@ -515,7 +515,7 @@
             </div>
 
             <div class="popup-actions">
-                <button id="clearStatusBtn" class="btn-text">Clear</button>
+                <button id="clearStatusBtn" class="btn-text">Reset to Yet to Start</button>
                 <button id="cancelStatusBtn" class="btn-secondary">Cancel</button>
             </div>
         </div>
@@ -1444,10 +1444,10 @@
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-    <script src="/static/js/app.js?v=31"></script>
-    <script src="/static/js/cells.js?v=33"></script>
+    <script src="/static/js/app.js?v=33"></script>
+    <script src="/static/js/cells.js?v=34"></script>
     <script src="/static/js/invoices.js?v=18"></script>
-    <script src="/static/js/payroll.js?v=17"></script>
+    <script src="/static/js/payroll.js?v=25"></script>
     <script src="/static/js/inventory.js?v=19"></script>
     <script src="/static/js/reports.js?v=24"></script>
     <script src="/static/js/features.js?v=32"></script>

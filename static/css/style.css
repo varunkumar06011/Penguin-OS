@@ -831,6 +831,29 @@ body {
     box-shadow: var(--elevation-1);
 }
 
+/* Drag-to-reorder visual feedback */
+.work-view-section[draggable="true"] {
+    cursor: grab;
+}
+.work-view-section[draggable="true"]:active {
+    cursor: grabbing;
+}
+.work-view-section .section-header {
+    user-select: none;
+}
+.category-chip[draggable="true"] {
+    cursor: grab;
+}
+.category-chip[draggable="true"]:active {
+    cursor: grabbing;
+}
+.mobile-reorder-btns button {
+    transition: background 0.15s;
+}
+.mobile-reorder-btns button:not(:disabled):hover {
+    background: #e8e8e8;
+}
+
 .section-header {
     background: var(--sidebar-bg);
     color: #fff;
@@ -2913,6 +2936,23 @@ body {
 .dot.empty-dot {
     background: #f0f2f5;
     border: 2px dashed #ccc;
+}
+
+/* Pending view responsive — laptop (768-1024px) */
+@media (max-width: 1024px) {
+    #payrollPanel .pending-filter-bar {
+        gap: 10px;
+        padding: 12px 16px;
+    }
+    #payrollPanel .pending-filter-group {
+        min-width: 120px;
+        flex: 1 1 auto;
+    }
+    #payrollPanel .pending-filter-group select,
+    #payrollPanel .pending-filter-group input {
+        font-size: 0.85rem;
+        padding: 6px 10px;
+    }
 }
 
 /* Pending view responsive */
@@ -8024,11 +8064,16 @@ video {
         border: 1px solid #ddd;
     }
     .ir-print-content .ir-chart-wrap {
-        height: 220px;
+        height: auto;
+        min-height: 180px;
+        text-align: center;
+        padding: 8px 0;
     }
     .ir-print-content .ir-print-chart-img {
         max-width: 100%;
+        max-height: 250px;
         height: auto;
+        display: inline-block;
     }
     .ir-print-content .ir-section {
         break-inside: avoid;

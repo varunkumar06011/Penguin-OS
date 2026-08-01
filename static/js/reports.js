@@ -120,6 +120,7 @@ function regenerateReports() {
 // ========================
 
 let _irPieChart = null;
+let _irBarChart = null;
 let _irLastData = null;
 let _irLastFilters = null;
 
@@ -524,8 +525,9 @@ function renderInstantReportOutput(container, data) {
 }
 
 function renderInstantReportCharts(data) {
-    // Destroy existing chart
+    // Destroy existing charts
     if (_irPieChart) { _irPieChart.destroy(); _irPieChart = null; }
+    if (_irBarChart) { _irBarChart.destroy(); _irBarChart = null; }
 
     const pieCanvas = document.getElementById('irPieChart');
     const barCanvas = document.getElementById('irBarChart');
@@ -566,7 +568,7 @@ function renderInstantReportCharts(data) {
     // Bar chart: category-wise completion
     const cats = data.category_summary || [];
     if (cats.length > 0) {
-        new Chart(barCanvas, {
+        _irBarChart = new Chart(barCanvas, {
             type: 'bar',
             data: {
                 labels: cats.map(c => c.category),
@@ -646,8 +648,52 @@ function printInstantReport() {
     const contentClone = output.cloneNode(true);
     contentClone.className = 'ir-print-content';
 
-    // Remove sections that should not appear in PDF — keep only Category-wise Summary and Work Item-wise Breakdown
+    // Convert chart canvases to static images for reliable PDF printing.
+    // Use Chart.js's toBase64Image() which correctly captures the chart bitmap,
+    // rather than canvas.toDataURL() which can fail on cloned/resized canvases.
+    const chartImages = {};
+    if (_irPieChart && typeof _irPieChart.toBase64Image === 'function') {
+        try { chartImages['irPieChart'] = _irPieChart.toBase64Image('image/png', 1); } catch (e) { console.warn('Pie chart capture failed:', e); }
+    }
+    if (_irBarChart && typeof _irBarChart.toBase64Image === 'function') {
+        try { chartImages['irBarChart'] = _irBarChart.toBase64Image('image/png', 1); } catch (e) { console.warn('Bar chart capture failed:', e); }
+    }
+
+    // Replace each canvas in the clone with a static <img> of the captured chart
+    contentClone.querySelectorAll('canvas').forEach(cv => {
+        const imgSrc = chartImages[cv.id];
+        if (imgSrc) {
+            const img = document.createElement('img');
+            img.src = imgSrc;
+            img.className = 'ir-print-chart-img';
+            img.style.cssText = 'max-width:100%;height:auto;display:block;margin:0 auto;';
+            cv.replaceWith(img);
+        } else {
+            // Fallback: try toDataURL on the original canvas
+            const origCanvas = document.getElementById(cv.id);
+            if (origCanvas) {
+                try {
+                    const img = document.createElement('img');
+                    img.src = origCanvas.toDataURL('image/png');
+                    img.className = 'ir-print-chart-img';
+                    img.style.cssText = 'max-width:100%;height:auto;display:block;margin:0 auto;';
+                    cv.replaceWith(img);
+                } catch (e) {
+                    console.warn('Canvas fallback failed for', cv.id, e);
+                    // Last resort: remove the empty canvas to avoid blank box
+                    cv.remove();
+                }
+            } else {
+                cv.remove();
+            }
+        }
+    });
+
+    // Keep: .ir-cards-row (progress cards), .ir-charts-row (pie + bar charts), .ir-section (Category-wise + Work Item-wise)
     const sectionsToKeep = new Set();
+    // Keep chart and card rows
+    contentClone.querySelectorAll('.ir-cards-row, .ir-charts-row').forEach(el => sectionsToKeep.add(el));
+    // Keep Category-wise and Work Item-wise sections
     const allSections = contentClone.querySelectorAll('.ir-section');
     allSections.forEach(sec => {
         const title = sec.querySelector('.ir-section-title');
@@ -668,13 +714,17 @@ function printInstantReport() {
     // Append to body (hidden on screen, visible only in print)
     document.body.appendChild(printDiv);
 
-    // Trigger print
-    window.print();
-
-    // Clean up after print
-    setTimeout(() => {
+    // Clean up after print dialog closes (use afterprint event + timeout fallback)
+    const cleanup = () => {
         printDiv.remove();
-    }, 1000);
+        window.removeEventListener('afterprint', cleanup);
+    };
+    window.addEventListener('afterprint', cleanup);
+    // Fallback cleanup in case afterprint doesn't fire
+    setTimeout(cleanup, 5000);
+
+    // Trigger print (small delay to ensure images are rendered)
+    setTimeout(() => window.print(), 100);
 }
 
 function exportInstantReportExcel() {

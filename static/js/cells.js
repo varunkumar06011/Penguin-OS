@@ -224,7 +224,7 @@ async function updateCellColor(cellId, color, workItem, flat) {
     cellsCache[ck] = data;
     const cellBtn = document.querySelector(`[data-cell-id="${ck}"]`);
     if (cellBtn) {
-        cellBtn.className = 'cell-btn ' + (color || 'empty');
+        cellBtn.className = 'cell-btn ' + (color || 'red');
     }
     showToast('Status updated');
 
@@ -293,7 +293,8 @@ async function loadVenturesFromLS() {
     try {
         const saved = await apiGet('/api/ventures');
         if (Array.isArray(saved) && saved.length > 0) {
-            venturesList = saved;
+            // Filter out the synthetic '__all__' venture used only for attendance
+            venturesList = saved.filter(v => v.id !== '__all__');
         } else if (Array.isArray(saved)) {
             // Only seed on a confirmed empty list, never on a network error.
             venturesList = createDefaultVentures();
@@ -395,6 +396,8 @@ async function renderWorkView() {
         return;
     }
 
+    let chipBar = null; // declared in outer scope so enableCategoryDragReorder can access it
+
 
     const flatsPerFloor = currentBlockObj ? (currentBlockObj.flats_per_floor || FLATS_PER_FLOOR) : FLATS_PER_FLOOR;
     const flatNumbers = [];
@@ -413,7 +416,7 @@ async function renderWorkView() {
 
     // Category chip bar (non-edit mode only)
     if (!editMode && categoryNames.length > 1) {
-        const chipBar = document.createElement('div');
+        chipBar = document.createElement('div');
         chipBar.className = 'category-chip-bar';
         chipBar.style.cssText = 'display:flex;gap:8px;padding:8px 24px;flex-wrap:wrap;background:#fff;border-bottom:1px solid #e0e4e8;';
 
@@ -474,15 +477,19 @@ async function renderWorkView() {
         });
     }
 
-    Object.entries(workCategories).forEach(([cat, items]) => {
+    // Use sorted category names (respects userPrefs order) for both preloading and rendering
+    const sortedNames = sortWorkCategoryNames(Object.keys(workCategories));
+    sortedNames.forEach(cat => {
+        const items = workCategories[cat] || [];
         const catFlats = CATEGORY_FLATS[cat] || flatNumbers;
         queueKeys(cat, items, catFlats);
     });
     await ensureCellsInCache(requiredKeys);
 
-    // Render all category sections
+    // Render all category sections in sorted order (respects userPrefs drag-reorder)
     let sectionCount = 0;
-    Object.entries(workCategories).forEach(([category, items]) => {
+    sortedNames.forEach(category => {
+        const items = workCategories[category] || [];
         const catFlats = CATEGORY_FLATS[category] || flatNumbers;
         try {
             const sectionEl = createSectionTable(category, items, catFlats);
@@ -524,12 +531,167 @@ async function renderWorkView() {
         });
     }
 
+    // Enable drag-to-reorder for category sections (non-edit mode only, per-user)
+    if (!editMode && sectionCount > 1) {
+        enableCategoryDragReorder(container, chipBar);
+    }
+
     if (window.updateTrackerStickyOffset) window.updateTrackerStickyOffset();
+}
+
+// ========================
+// Drag-to-reorder for Work View categories (per-user, persists)
+// ========================
+function enableCategoryDragReorder(container, chipBar) {
+    let draggedSection = null;
+    let draggedChip = null;
+    let sectionDragActive = false;
+    let chipDragActive = false;
+
+    // --- Section drag (category sections) ---
+    container.querySelectorAll('.work-view-section').forEach(section => {
+        section.draggable = true;
+        section.addEventListener('dragstart', (e) => {
+            draggedSection = section;
+            sectionDragActive = true;
+            section.style.opacity = '0.5';
+            e.dataTransfer.effectAllowed = 'move';
+        });
+        section.addEventListener('dragend', () => {
+            if (draggedSection) draggedSection.style.opacity = '';
+            draggedSection = null;
+            // Save after a short delay to ensure DOM is settled
+            if (sectionDragActive) {
+                sectionDragActive = false;
+                const newOrder = Array.from(container.querySelectorAll('.work-view-section'))
+                    .map(s => s.dataset.category)
+                    .filter(Boolean);
+                if (newOrder.length > 0 && JSON.stringify(newOrder) !== JSON.stringify(userPrefs.workCategoryOrder)) {
+                    userPrefs.workCategoryOrder = newOrder;
+                    if (typeof saveUserPrefsDebounced === 'function') saveUserPrefsDebounced();
+                    if (chipBar) reorderChipBar(chipBar, newOrder);
+                }
+            }
+        });
+        section.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            if (draggedSection && section !== draggedSection) {
+                const rect = section.getBoundingClientRect();
+                const midpoint = rect.top + rect.height / 2;
+                if (e.clientY < midpoint) {
+                    container.insertBefore(draggedSection, section);
+                } else {
+                    container.insertBefore(draggedSection, section.nextSibling);
+                }
+            }
+        });
+    });
+
+    // --- Chip bar drag (category filter chips) ---
+    if (chipBar) {
+        chipBar.querySelectorAll('.category-chip').forEach(chip => {
+            if (chip.dataset.category === '__all__') return; // Don't make "All" draggable
+            chip.draggable = true;
+            chip.addEventListener('dragstart', (e) => {
+                draggedChip = chip;
+                chipDragActive = true;
+                chip.style.opacity = '0.5';
+                e.dataTransfer.effectAllowed = 'move';
+            });
+            chip.addEventListener('dragend', () => {
+                if (draggedChip) draggedChip.style.opacity = '';
+                draggedChip = null;
+                if (chipDragActive) {
+                    chipDragActive = false;
+                    const newOrder = Array.from(chipBar.querySelectorAll('.category-chip'))
+                        .map(c => c.dataset.category)
+                        .filter(c => c && c !== '__all__');
+                    if (newOrder.length > 0 && JSON.stringify(newOrder) !== JSON.stringify(userPrefs.workCategoryOrder)) {
+                        userPrefs.workCategoryOrder = newOrder;
+                        if (typeof saveUserPrefsDebounced === 'function') saveUserPrefsDebounced();
+                        reorderSections(container, newOrder);
+                    }
+                }
+            });
+            chip.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                if (draggedChip && chip !== draggedChip && chip.dataset.category !== '__all__') {
+                    const allChip = chipBar.querySelector('.category-chip[data-category="__all__"]');
+                    const refNode = chip === allChip ? chip.nextSibling : chip;
+                    if (refNode) {
+                        chipBar.insertBefore(draggedChip, refNode);
+                    } else {
+                        chipBar.appendChild(draggedChip);
+                    }
+                }
+            });
+        });
+    }
+}
+
+function reorderChipBar(chipBar, newOrder) {
+    const allChip = chipBar.querySelector('.category-chip[data-category="__all__"]');
+    const chips = {};
+    chipBar.querySelectorAll('.category-chip').forEach(c => {
+        if (c.dataset.category && c.dataset.category !== '__all__') {
+            chips[c.dataset.category] = c;
+        }
+    });
+    // Remove all non-All chips
+    Object.values(chips).forEach(c => c.remove());
+    // Re-append in new order after All chip
+    let refNode = allChip ? allChip.nextSibling : chipBar.firstChild;
+    newOrder.forEach(cat => {
+        if (chips[cat]) {
+            chipBar.insertBefore(chips[cat], refNode);
+        }
+    });
+}
+
+function reorderSections(container, newOrder) {
+    const sections = {};
+    container.querySelectorAll('.work-view-section').forEach(s => {
+        if (s.dataset.category) sections[s.dataset.category] = s;
+    });
+    // Re-append in new order
+    newOrder.forEach(cat => {
+        if (sections[cat]) {
+            container.appendChild(sections[cat]);
+        }
+    });
 }
 
 // ========================
 // Mobile Work View
 // ========================
+
+// Mobile category reorder via up/down arrow buttons (per-user, saves to userPrefs)
+function mobileReorderCategory(category, direction, visibleCategories, container, workCategories, flatNumbers, flat) {
+    const currentIdx = visibleCategories.indexOf(category);
+    if (currentIdx < 0) return;
+    const newIdx = currentIdx + direction;
+    if (newIdx < 0 || newIdx >= visibleCategories.length) return;
+
+    // Swap in the visible categories array
+    const swapped = [...visibleCategories];
+    [swapped[currentIdx], swapped[newIdx]] = [swapped[newIdx], swapped[currentIdx]];
+
+    // Update userPrefs with the new full order (including non-visible categories at the end)
+    const allCats = Object.keys(workCategories);
+    const nonVisible = allCats.filter(c => !swapped.includes(c));
+    const newOrder = [...swapped, ...nonVisible];
+
+    if (typeof userPrefs !== 'undefined') {
+        userPrefs.workCategoryOrder = newOrder;
+        if (typeof saveUserPrefsDebounced === 'function') saveUserPrefsDebounced();
+    }
+
+    // Re-render the mobile flat content with the new order
+    renderMobileFlatContent(container, workCategories, flatNumbers, flat);
+}
+
 async function renderWorkViewMobile(container) {
     const flatsPerFloor = currentBlockObj ? (currentBlockObj.flats_per_floor || FLATS_PER_FLOOR) : FLATS_PER_FLOOR;
     const flatNumbers = [];
@@ -697,19 +859,23 @@ function renderMobileFlatContent(container, workCategories, flatNumbers, flat) {
 
     const categoryNames = Object.keys(workCategories);
     const sortedCategoryNames = sortWorkCategoryNames(categoryNames);
-    let hasContent = false;
-
-    sortedCategoryNames.forEach(category => {
+    // Filter to only categories that have content for this flat
+    const visibleCategories = sortedCategoryNames.filter(category => {
         const items = workCategories[category];
         const catFlats = CATEGORY_FLATS[category] || flatNumbers;
-        if (!catFlats.includes(flat)) return;
-        if (items.length === 0) return;
+        return catFlats.includes(flat) && items && items.length > 0;
+    });
+    let hasContent = false;
+
+    visibleCategories.forEach((category, catIdx) => {
+        const items = workCategories[category];
         hasContent = true;
 
         const section = document.createElement('div');
         section.className = 'mobile-category-section';
+        section.dataset.category = category;
 
-        // Category header with progress summary
+        // Category header with progress summary + up/down reorder buttons
         let doneCount = 0;
         items.forEach(itemObj => {
             const cellId = cellKeyById(currentBlock, currentFloor, flat, itemObj.id);
@@ -721,6 +887,40 @@ function renderMobileFlatContent(container, workCategories, flatNumbers, flat) {
         const header = document.createElement('div');
         header.className = 'mobile-category-header';
         header.innerHTML = `<span class="mobile-cat-name">${getWorkCategoryDisplayName(category)}</span><span class="mobile-cat-progress">${doneCount}/${items.length} (${progressPct}%)</span>`;
+
+        // Up/down reorder buttons for mobile (per-user, saves to userPrefs)
+        if (visibleCategories.length > 1) {
+            const reorderBtns = document.createElement('div');
+            reorderBtns.className = 'mobile-reorder-btns';
+            reorderBtns.style.cssText = 'display:flex;gap:4px;margin-left:auto;';
+
+            const upBtn = document.createElement('button');
+            upBtn.className = 'mobile-reorder-up';
+            upBtn.innerHTML = '&#9650;';
+            upBtn.style.cssText = 'background:none;border:1px solid #ccc;border-radius:4px;padding:2px 8px;font-size:0.7rem;cursor:pointer;color:#555;';
+            upBtn.disabled = catIdx === 0;
+            upBtn.style.opacity = catIdx === 0 ? '0.3' : '1';
+            upBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                mobileReorderCategory(category, -1, visibleCategories, container, workCategories, flatNumbers, flat);
+            });
+
+            const downBtn = document.createElement('button');
+            downBtn.className = 'mobile-reorder-down';
+            downBtn.innerHTML = '&#9660;';
+            downBtn.style.cssText = 'background:none;border:1px solid #ccc;border-radius:4px;padding:2px 8px;font-size:0.7rem;cursor:pointer;color:#555;';
+            downBtn.disabled = catIdx === visibleCategories.length - 1;
+            downBtn.style.opacity = catIdx === visibleCategories.length - 1 ? '0.3' : '1';
+            downBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                mobileReorderCategory(category, 1, visibleCategories, container, workCategories, flatNumbers, flat);
+            });
+
+            reorderBtns.appendChild(upBtn);
+            reorderBtns.appendChild(downBtn);
+            header.appendChild(reorderBtns);
+        }
+
         section.appendChild(header);
 
         // Progress bar
@@ -735,7 +935,7 @@ function renderMobileFlatContent(container, workCategories, flatNumbers, flat) {
         items.forEach((itemObj, wi) => {
             const cellId = cellKeyById(currentBlock, currentFloor, flat, itemObj.id);
             const cellData = cellsCache[cacheKey(cellId)];
-            const color = cellData?.color || null;
+            const color = cellData?.color || 'red';
 
             const row = document.createElement('div');
             row.className = 'mobile-work-row';
@@ -767,7 +967,7 @@ function renderMobileFlatContent(container, workCategories, flatNumbers, flat) {
             statusArea.className = 'mobile-status-area';
 
             const btn = document.createElement('button');
-            btn.className = 'cell-btn mobile-cell-btn ' + (color || 'empty');
+            btn.className = 'cell-btn mobile-cell-btn ' + (color || 'red');
             btn.title = `${flat} - ${itemObj.label}`;
             btn.dataset.cellId = cacheKey(cellId);
 
@@ -972,7 +1172,7 @@ function createSectionTable(category, items, flats) {
             wrapper.className = 'cell-wrapper';
 
             const btn = document.createElement('button');
-            btn.className = 'cell-btn ' + (color || 'empty');
+            btn.className = 'cell-btn ' + (color || 'red');
             btn.title = `${flat} - ${itemObj.label}`;
             btn.dataset.cellId = cacheKey(cellId);
             if (editMode) btn.disabled = true;
@@ -1107,7 +1307,7 @@ function openStatusPopup(cellId, workItem, flat, currentColor) {
     selectedWorkItem = workItem;
     selectedFlat = flat;
     els.popupTitle.textContent = `${flat} - ${workItem}`;
-    els.popupCurrentStatus.textContent = currentColor ? COLOR_LABELS[currentColor] : 'None';
+    els.popupCurrentStatus.textContent = COLOR_LABELS[currentColor || 'red'];
     els.statusPopup.classList.add('show');
     loadCellUsageInPopup(cellId, workItem, flat);
 }
@@ -1346,10 +1546,11 @@ document.querySelectorAll('.color-btn').forEach(btn => {
 
 els.clearStatusBtn.addEventListener('click', async () => {
     if (!selectedCellId) return;
+    // "Clear" now resets to red ("Yet to start") — the default state for all cells
     if (selectedCellId.startsWith('superstructure_')) {
-        await updateSuperStructureStatus(selectedCellId, null, selectedWorkItem);
+        await updateSuperStructureStatus(selectedCellId, 'red', selectedWorkItem);
     } else {
-        await updateCellColor(selectedCellId, null, selectedWorkItem, selectedFlat);
+        await updateCellColor(selectedCellId, 'red', selectedWorkItem, selectedFlat);
     }
     closeStatusPopup();
 });
@@ -1442,7 +1643,7 @@ document.querySelectorAll('.bulk-color-btn').forEach(btn => {
                 cellsCache[ck] = data;
                 // Update DOM instantly
                 const cellBtn = document.querySelector(`[data-cell-id="${ck}"]`);
-                if (cellBtn) cellBtn.className = 'cell-btn ' + (color || 'empty');
+                if (cellBtn) cellBtn.className = 'cell-btn ' + (color || 'red');
                 batch.push({ id: ck, data });
             });
 
@@ -1756,8 +1957,8 @@ function renderSuperStructure() {
         wrapper.className = 'cell-wrapper';
 
         const btn = document.createElement('button');
-        btn.className = 'cell-btn ' + (activeStatus || 'empty');
-        btn.title = `${itemObj.label} — ${activeStatus ? COLOR_LABELS[activeStatus] : 'No status'}`;
+        btn.className = 'cell-btn ' + (activeStatus || 'red');
+        btn.title = `${itemObj.label} — ${COLOR_LABELS[activeStatus || 'red']}`;
         if (editMode) btn.disabled = true;
 
         const imgCount = (cellData?.remarkImages || []).length;
@@ -2451,14 +2652,14 @@ async function renderPendingView(targetContainer) {
             flatWorkItems.forEach(item => {
                 const cellId = cellKeyById(currentBlock, floor, flat, item.id);
                 const cellData = cellsCache[cacheKey(cellId)];
-                const color = cellData?.color || null;
+                const color = cellData?.color || 'red';
                 if (color !== 'green') {
                     rows.push({
                         floor: floors === 1 ? 'Ground' : `${floorLabels[floor - 1] || floor + 'th'}`,
                         flat: flat,
                         workItem: item.label,
                         status: color,
-                        statusLabel: color ? COLOR_LABELS[color] : 'Not started',
+                        statusLabel: COLOR_LABELS[color],
                         category: 'Work View',
                         cellId: cellId
                     });
@@ -2469,14 +2670,14 @@ async function renderPendingView(targetContainer) {
                 items.forEach(itemObj => {
                     const cellId = cellKeyById(currentBlock, floor, flat, itemObj.id);
                     const cellData = cellsCache[cacheKey(cellId)];
-                    const color = cellData?.color || null;
+                    const color = cellData?.color || 'red';
                     if (color !== 'green') {
                         rows.push({
                             floor: floors === 1 ? 'Ground' : `${floorLabels[floor - 1] || floor + 'th'}`,
                             flat: flat,
                             workItem: itemObj.label,
                             status: color,
-                            statusLabel: color ? COLOR_LABELS[color] : 'Not started',
+                            statusLabel: COLOR_LABELS[color],
                             category: category,
                             cellId: cellId
                         });
