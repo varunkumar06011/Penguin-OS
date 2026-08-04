@@ -1,11 +1,3 @@
--- ============================================================
--- Migration 021: Inventory Purchase + Inventory daily register
--- Idempotent — safe to re-run.
--- ============================================================
-
--- -----------------------------------------------------------
--- 1. inventory_materials: material master (auto-save/dedup)
--- -----------------------------------------------------------
 CREATE TABLE IF NOT EXISTS inventory_materials (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     org_id      UUID NOT NULL DEFAULT '11111111-1111-1111-1111-111111111111',
