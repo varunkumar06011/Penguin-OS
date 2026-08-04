@@ -1283,7 +1283,11 @@ def api_cells():
                 break
             offset += page_size
         # Defensive sort: most recent updated_at wins if duplicates still exist pre-migration
-        sorted_rows = sorted(all_rows, key=lambda r: (r.get('data') or {}).get('updated_at', ''), reverse=True)
+        # Skip sort when single-page to reduce latency
+        if len(all_rows) > 1:
+            sorted_rows = sorted(all_rows, key=lambda r: (r.get('data') or {}).get('updated_at', ''), reverse=True)
+        else:
+            sorted_rows = all_rows
         data = {}
         for row in sorted_rows:
             merged = {**(row.get('data') or {})}
@@ -1407,14 +1411,17 @@ def api_ventures():
         all_ventures = [v for v in all_ventures if v.get('id') != '__all__']
 
         # Auto-fix: assign org_id to legacy ventures that have NULL org_id
-        # so they become properly scoped going forward.
+        # (done in background to avoid blocking the read response)
         null_org_ventures = [v for v in all_ventures if not v.get('org_id')]
         if null_org_ventures:
-            for v in null_org_ventures:
-                try:
-                    supabase.table('ventures').update({'org_id': org_id}).eq('id', v['id']).execute()
-                except Exception:
-                    pass  # non-fatal — will retry on next fetch
+            import threading
+            def _fix_org_ids():
+                for v in null_org_ventures:
+                    try:
+                        supabase.table('ventures').update({'org_id': org_id}).eq('id', v['id']).execute()
+                    except Exception:
+                        pass
+            threading.Thread(target=_fix_org_ids, daemon=True).start()
 
         def _venture_data(row):
             d = row.get('data')

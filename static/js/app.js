@@ -1047,16 +1047,13 @@ async function init() {
     const ok = await checkSession();
     if (!ok) return;
 
-    // Load user preferences (per-user work view layout)
-    await loadUserPrefs().catch(() => {});
-
-    // Load only ventures on init — everything else lazy-loads when its panel opens.
-    // A failed fetch must never be treated as "no data exists".
-    try {
-        await loadVentures().catch(err => {
+    // Load user preferences and ventures in parallel to cut init latency
+    await Promise.all([
+        loadUserPrefs().catch(() => {}),
+        loadVentures().catch(err => {
             console.error('Ventures load failed on init:', err);
-        });
-    } catch (e) {}
+        })
+    ]);
 
     // loadVenturesFromLS already seeds defaults on a confirmed empty list.
     // Do not fall back to defaults here, because a failed fetch and an empty
@@ -1240,7 +1237,7 @@ let pollInterval = null;
 
 function startPolling() {
     if (pollInterval) clearInterval(pollInterval);
-    pollInterval = setInterval(pollData, 10000);
+    pollInterval = setInterval(pollData, 15000);
 }
 
 function patchCellsInDOM(changedKeys) {
@@ -1359,133 +1356,154 @@ async function pollData() {
     // Skip polling while user is actively editing (any modal open)
     if (document.querySelector('.modal.show')) return;
 
-    let changed = false;
-
-    // Categories — only fetch if invoices panel is visible and categories were loaded
     const invoicesVisible = document.getElementById('invoicesPanel')?.style.display !== 'none';
+    const dashboardVisible = document.getElementById('venturesDashboard')?.style.display !== 'none';
+    const poVisible = document.getElementById('poPanel')?.style.display !== 'none';
+    const dirModal = document.getElementById('vendorDirModal');
+    const dirModalOpen = dirModal && dirModal.classList.contains('show') && _vendorsLoaded;
+
+    // Build a list of parallel fetch tasks based on what's visible
+    const tasks = [];
+
+    // Ventures — always poll
+    tasks.push({ key: 'ventures', fn: () => apiGet('/api/ventures') });
+
+    // Categories — only if invoices panel visible and loaded
     if (invoicesVisible && _categoriesLoaded) {
-        try {
-            const fresh = await apiGet('/api/settings/invoice_categories');
-            if (fresh && JSON.stringify(fresh) !== JSON.stringify(allCategories)) {
-                allCategories = fresh;
-                changed = true;
-                renderInvoiceCards();
-            }
-        } catch (e) {}
+        tasks.push({ key: 'categories', fn: () => apiGet('/api/settings/invoice_categories') });
     }
 
-    // Ventures — always poll in the background so all users stay synchronized
-    // regardless of which panel is currently open.
-    const dashboardVisible = document.getElementById('venturesDashboard')?.style.display !== 'none';
-    try {
-        const fresh = await apiGet('/api/ventures');
-        if (fresh && JSON.stringify(fresh) !== JSON.stringify(venturesList)) {
+    // Invoices — only if visible, loaded, and user has access
+    if (invoicesVisible && _invoicesLoaded && currentUserPermissions.viewInvoices) {
+        tasks.push({ key: 'invoices', fn: () => apiGet('/api/invoices') });
+    }
+
+    // POs — only if visible, loaded, and user has access
+    if (poVisible && _posLoaded && currentUserPermissions.viewPOs) {
+        tasks.push({ key: 'pos', fn: () => apiGet('/api/pos') });
+    }
+
+    // Vendors — only if vendor directory modal is open
+    if (dirModalOpen) {
+        tasks.push({ key: 'vendors', fn: () => apiGet('/api/vendors') });
+    }
+
+    // Cells — only if tracker or overview visible and no pending saves
+    const tracker = document.getElementById('trackerView');
+    const trackerVisible = tracker && tracker.style.display !== 'none';
+    const overviewVisible = document.getElementById('overviewPage')?.style.display !== 'none';
+    const skipCells = pendingSaves.size > 0 || inFlightSaves > 0;
+    if ((trackerVisible || overviewVisible) && !skipCells) {
+        let cellsUrl = '/api/cells';
+        if (currentVenture && currentVenture.id) {
+            cellsUrl += '?venture_id=' + encodeURIComponent(currentVenture.id);
+        }
+        tasks.push({ key: 'cells', fn: () => apiGet(cellsUrl) });
+    }
+
+    // Fire all fetches in parallel
+    const results = await Promise.allSettled(tasks.map(t => t.fn()));
+    const data = {};
+    tasks.forEach((t, i) => { data[t.key] = results[i]; });
+
+    let changed = false;
+
+    // Process ventures
+    if (data.ventures && data.ventures.status === 'fulfilled' && data.ventures.value) {
+        const fresh = data.ventures.value;
+        if (JSON.stringify(fresh) !== JSON.stringify(venturesList)) {
             venturesList = fresh;
             refreshCurrentVentureFromList();
             changed = true;
             if (dashboardVisible) renderVentureDashboard();
         }
-    } catch (e) {}
-
-    // Invoices — only fetch if invoices panel is visible, loaded, and user has access
-    if (invoicesVisible && _invoicesLoaded && currentUserPermissions.viewInvoices) {
-        try {
-            const fresh = await apiGet('/api/invoices') || [];
-            const diff = diffByIds(allInvoices, fresh);
-            if (diff.added.length > 0 || diff.modified.length > 0 || diff.removed.length > 0) {
-                allInvoices = fresh;
-                changed = true;
-                if (diff.hasStructuralChange) {
-                    renderInvoiceCards();
-                } else {
-                    patchInvoiceCardsInPlace(diff.modified);
-                }
-            }
-        } catch (e) {}
     }
 
-    // POs — only fetch if PO panel is visible, loaded, and user has access
-    const poVisible = document.getElementById('poPanel')?.style.display !== 'none';
-    if (poVisible && _posLoaded && currentUserPermissions.viewPOs) {
-        try {
-            const fresh = await apiGet('/api/pos') || [];
-            const diff = diffByIds(allPOs, fresh);
-            if (diff.added.length > 0 || diff.modified.length > 0 || diff.removed.length > 0) {
-                allPOs = fresh;
-                changed = true;
-                if (diff.hasStructuralChange) {
-                    renderPOCards();
-                } else {
-                    patchPOCardsInPlace(diff.modified);
-                }
-            }
-        } catch (e) {}
-    }
-
-    // Vendors — only fetch if vendor directory modal is open and vendors were loaded
-    const dirModal = document.getElementById('vendorDirModal');
-    if (dirModal && dirModal.classList.contains('show') && _vendorsLoaded) {
-        try {
-            const fresh = await apiGet('/api/vendors') || [];
-            if (JSON.stringify(fresh) !== JSON.stringify(allVendors)) {
-                allVendors = fresh;
-                changed = true;
-                renderVendorDirList();
-            }
-        } catch (e) {}
-    }
-
-    // Cells — skip if saves are pending (debounced) or in-flight (API call in progress)
-    // to avoid overwriting optimistic state with stale data from Supabase.
-    if (pendingSaves.size > 0 || inFlightSaves > 0) return;
-
-    const tracker = document.getElementById('trackerView');
-    const trackerVisible = tracker && tracker.style.display !== 'none';
-    const overviewVisible = document.getElementById('overviewPage')?.style.display !== 'none';
-    if (!trackerVisible && !overviewVisible) return;
-
-    try {
-        let cellsUrl = '/api/cells';
-        if (currentVenture && currentVenture.id) {
-            cellsUrl += '?venture_id=' + encodeURIComponent(currentVenture.id);
+    // Process categories
+    if (data.categories && data.categories.status === 'fulfilled' && data.categories.value) {
+        const fresh = data.categories.value;
+        if (JSON.stringify(fresh) !== JSON.stringify(allCategories)) {
+            allCategories = fresh;
+            changed = true;
+            renderInvoiceCards();
         }
-        const fresh = await apiGet(cellsUrl);
-        if (fresh) {
-            let cellsChanged = false;
-            const changedKeys = [];
-            for (const key in fresh) {
-                if (JSON.stringify(cellsCache[key]) !== JSON.stringify(fresh[key])) {
-                    cellsCache[key] = fresh[key];
-                    changedKeys.push(key);
-                    cellsChanged = true;
-                }
-            }
-            // Remove cells from cache that are no longer in the DB (deleted by another user)
-            const freshKeys = new Set(Object.keys(fresh));
-            const venturePrefix = currentVenture ? currentVenture.id + '_' : null;
-            for (const ck of Object.keys(cellsCache)) {
-                // Only clean up keys belonging to the current venture
-                if (venturePrefix && !ck.startsWith(venturePrefix)) continue;
-                if (!freshKeys.has(ck) && cellsCache[ck] && !cellsCache[ck]?.__notFound) {
-                    cellsCache[ck] = CELL_NOT_FOUND;
-                    changedKeys.push(ck);
-                    cellsChanged = true;
-                }
-            }
-            if (cellsChanged) {
-                changed = true;
-                if (overviewVisible) {
-                    if (typeof renderOverviewPage === 'function') renderOverviewPage();
-                } else if (currentView === 'work') {
-                    renderWorkView();
-                } else if (currentView === 'super') {
-                    renderSuperStructure();
-                } else if (currentView === 'pending') {
-                    await renderPendingView();
-                }
+    }
+
+    // Process invoices
+    if (data.invoices && data.invoices.status === 'fulfilled') {
+        const fresh = data.invoices.value || [];
+        const diff = diffByIds(allInvoices, fresh);
+        if (diff.added.length > 0 || diff.modified.length > 0 || diff.removed.length > 0) {
+            allInvoices = fresh;
+            changed = true;
+            if (diff.hasStructuralChange) {
+                renderInvoiceCards();
+            } else {
+                patchInvoiceCardsInPlace(diff.modified);
             }
         }
-    } catch (e) {}
+    }
+
+    // Process POs
+    if (data.pos && data.pos.status === 'fulfilled') {
+        const fresh = data.pos.value || [];
+        const diff = diffByIds(allPOs, fresh);
+        if (diff.added.length > 0 || diff.modified.length > 0 || diff.removed.length > 0) {
+            allPOs = fresh;
+            changed = true;
+            if (diff.hasStructuralChange) {
+                renderPOCards();
+            } else {
+                patchPOCardsInPlace(diff.modified);
+            }
+        }
+    }
+
+    // Process vendors
+    if (data.vendors && data.vendors.status === 'fulfilled') {
+        const fresh = data.vendors.value || [];
+        if (JSON.stringify(fresh) !== JSON.stringify(allVendors)) {
+            allVendors = fresh;
+            changed = true;
+            renderVendorDirList();
+        }
+    }
+
+    // Process cells
+    if (data.cells && data.cells.status === 'fulfilled' && data.cells.value) {
+        const fresh = data.cells.value;
+        let cellsChanged = false;
+        const changedKeys = [];
+        for (const key in fresh) {
+            if (JSON.stringify(cellsCache[key]) !== JSON.stringify(fresh[key])) {
+                cellsCache[key] = fresh[key];
+                changedKeys.push(key);
+                cellsChanged = true;
+            }
+        }
+        const freshKeys = new Set(Object.keys(fresh));
+        const venturePrefix = currentVenture ? currentVenture.id + '_' : null;
+        for (const ck of Object.keys(cellsCache)) {
+            if (venturePrefix && !ck.startsWith(venturePrefix)) continue;
+            if (!freshKeys.has(ck) && cellsCache[ck] && !cellsCache[ck]?.__notFound) {
+                cellsCache[ck] = CELL_NOT_FOUND;
+                changedKeys.push(ck);
+                cellsChanged = true;
+            }
+        }
+        if (cellsChanged) {
+            changed = true;
+            if (overviewVisible) {
+                if (typeof renderOverviewPage === 'function') renderOverviewPage();
+            } else if (currentView === 'work') {
+                renderWorkView();
+            } else if (currentView === 'super') {
+                renderSuperStructure();
+            } else if (currentView === 'pending') {
+                await renderPendingView();
+            }
+        }
+    }
 }
 
 // ========================

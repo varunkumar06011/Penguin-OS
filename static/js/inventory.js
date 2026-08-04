@@ -20,6 +20,8 @@ let selectedInventoryVenture = null;
 let inventoryCategories = [];
 let inventorySelectedCategory = null;
 let inventorySelectedMaterialId = null;
+let _inventoryCache = { ventureId: null, ts: 0 };
+const _INVENTORY_CACHE_TTL = 30000; // 30 seconds
 let inventoryRegTypeFilter = 'all';
 let inventoryRegMaterialFilter = 'all';
 let inventoryLocMaterialFilter = 'all';
@@ -99,12 +101,22 @@ async function renderInventoryView() {
         selectedInventoryVenture = venture;
     }
 
-    inventoryMaterials = await loadInventoryMaterials(venture.id);
-    const globalMats = await loadGlobalMaterials();
-    inventoryMaterials = [...globalMats, ...inventoryMaterials.filter(m => !globalMats.some(g => g.id === m.id))];
-    inventoryStockEntries = await loadInventoryStock(venture.id);
-    inventoryBalance = await loadInventorySummary(venture.id);
-    inventoryCategories = await loadInventoryCategories(venture.id);
+    const now = Date.now();
+    const cacheValid = _inventoryCache.ventureId === venture.id && (now - _inventoryCache.ts) < _INVENTORY_CACHE_TTL;
+    if (!cacheValid) {
+        const [ventureMats, globalMats, stockEntries, balanceSummary, categories] = await Promise.all([
+            loadInventoryMaterials(venture.id),
+            loadGlobalMaterials(),
+            loadInventoryStock(venture.id),
+            loadInventorySummary(venture.id),
+            loadInventoryCategories(venture.id)
+        ]);
+        inventoryMaterials = [...globalMats, ...ventureMats.filter(m => !globalMats.some(g => g.id === m.id))];
+        inventoryStockEntries = stockEntries;
+        inventoryBalance = balanceSummary;
+        inventoryCategories = categories;
+        _inventoryCache = { ventureId: venture.id, ts: now };
+    }
 
     const isAdmin = currentUserRole === 'admin';
 
@@ -206,7 +218,17 @@ async function renderInventoryView() {
     header.querySelector('#inventoryCategorySelect').addEventListener('change', (e) => {
         inventorySelectedCategory = e.target.value || null;
         inventorySelectedMaterialId = null;
-        renderInventoryView();
+        const content = container.querySelector('.inv-content-area');
+        if (content) {
+            content.innerHTML = '';
+            if (inventorySelectedMaterialId) {
+                renderMaterialLedger(content, inventorySelectedMaterialId);
+            } else if (inventorySelectedCategory) {
+                renderCategoryMaterials(content, inventorySelectedCategory);
+            } else {
+                content.innerHTML = '<div style="padding:24px;color:#999;text-align:center;">Select a category above to view materials.</div>';
+            }
+        }
     });
     if (isAdmin) {
         header.querySelector('#inventoryAddMaterialBtn').addEventListener('click', () => openMaterialModal(null));
@@ -214,6 +236,7 @@ async function renderInventoryView() {
 
     // Content area
     const content = document.createElement('div');
+    content.className = 'inv-content-area';
     container.appendChild(content);
 
     if (inventorySelectedMaterialId) {
@@ -294,7 +317,12 @@ function renderCategoryMaterials(container, category) {
 
     topRow.querySelector('.inv-back-btn').addEventListener('click', () => {
         inventorySelectedCategory = null;
-        renderInventoryView();
+        const content = document.querySelector('.inv-content-area');
+        if (content) {
+            content.innerHTML = '<div style="padding:24px;color:#999;text-align:center;">Select a category above to view materials.</div>';
+        }
+        const catSelect = document.getElementById('inventoryCategorySelect');
+        if (catSelect) catSelect.value = '';
     });
 
     // Materials table
@@ -348,7 +376,8 @@ function renderCategoryMaterials(container, category) {
             tr.addEventListener('click', (e) => {
                 if (e.target.classList.contains('inv-view-ledger-btn')) return;
                 inventorySelectedMaterialId = mat.id;
-                renderInventoryView();
+                const content = document.querySelector('.inv-content-area');
+                if (content) { content.innerHTML = ''; renderMaterialLedger(content, mat.id); }
             });
             tbody.appendChild(tr);
         });
@@ -357,7 +386,8 @@ function renderCategoryMaterials(container, category) {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 inventorySelectedMaterialId = btn.dataset.mid;
-                renderInventoryView();
+                const content = document.querySelector('.inv-content-area');
+                if (content) { content.innerHTML = ''; renderMaterialLedger(content, btn.dataset.mid); }
             });
         });
     }
@@ -413,7 +443,15 @@ function renderMaterialLedger(container, materialId) {
 
     topRow.querySelector('.inv-back-cat-btn').addEventListener('click', () => {
         inventorySelectedMaterialId = null;
-        renderInventoryView();
+        const content = document.querySelector('.inv-content-area');
+        if (content) {
+            content.innerHTML = '';
+            if (inventorySelectedCategory) {
+                renderCategoryMaterials(content, inventorySelectedCategory);
+            } else {
+                content.innerHTML = '<div style="padding:24px;color:#999;text-align:center;">Select a category above to view materials.</div>';
+            }
+        }
     });
 
     // Build ledger from stock entries for this material
