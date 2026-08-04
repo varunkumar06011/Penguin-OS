@@ -10,7 +10,7 @@
     <link rel="icon" href="/static/images/favicon.jpg" type="image/jpeg">
     <link rel="stylesheet" href="/static/css/fonts.css?v=15">
     <link rel="stylesheet" href="/static/css/theme.css?v=15">
-    <link rel="stylesheet" href="/static/css/style.css?v=51">
+    <link rel="stylesheet" href="/static/css/style.css?v=55">
     <style>
         /* Fallback: ensure sidebar is always dark and readable */
         #app #appSidebar.app-sidebar {
@@ -76,8 +76,13 @@
         <!-- Overview Page -->
         <div id="overviewPage" class="overview-page" style="display:none;">
             <div class="overview-header">
-                <h2>Overview</h2>
-                <p>Complete summary across all your ventures</p>
+                <div>
+                    <h2>Overview</h2>
+                    <p>Complete summary across all your ventures</p>
+                </div>
+                <button id="shareDailyReportBtn" class="whatsapp-share-btn" title="Share daily report on WhatsApp" style="display:none;">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.521.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.521-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.521.074-.797.372-.273.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.004 5.45-4.439 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.891c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/></svg>
+                </button>
             </div>
 
             <!-- Skeleton Loading State -->
@@ -277,6 +282,15 @@
                 <h2 class="invoice-panel-title">Inventory</h2>
             </div>
             <div id="inventoryPanelContent"></div>
+        </div>
+
+        <!-- Venture Analysis Panel -->
+        <div id="ventureAnalysisPanel" style="display:none;">
+            <div class="invoice-panel-header">
+                <button id="backFromVentureAnalysis" class="back-btn">&larr; Back to Ventures</button>
+                <h2 class="invoice-panel-title">Venture-wise Analysis</h2>
+            </div>
+            <div id="ventureAnalysisContent"></div>
         </div>
 
         <!-- Instant Reports Panel (Admin-only) -->
@@ -664,7 +678,10 @@
                 <div class="invoice-form-row">
                     <div class="invoice-form-field" style="flex:1;">
                         <label>Password <span class="req">*</span></label>
-                        <input type="password" id="newUserPassword" placeholder="Min 6 characters">
+                        <div style="position:relative;">
+                            <input type="password" id="newUserPassword" placeholder="Min 6 characters" style="width:100%;padding-right:36px;">
+                            <span class="pw-eye-toggle" onclick="togglePasswordVisibility('newUserPassword', this)" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);cursor:pointer;color:#999;font-size:1.1rem;user-select:none;" title="Show/hide password">&#128065;</span>
+                        </div>
                     </div>
                     <div class="invoice-form-field" style="flex:1;">
                         <label>Role <span class="req">*</span></label>
@@ -688,11 +705,17 @@
                     <div class="invoice-form-row">
                         <div class="invoice-form-field" style="flex:1;">
                             <label>New Password</label>
-                            <input type="password" id="manageUsersPassword" placeholder="Enter new password">
+                            <div style="position:relative;">
+                                <input type="password" id="manageUsersPassword" placeholder="Enter new password" style="width:100%;padding-right:36px;">
+                                <span class="pw-eye-toggle" onclick="togglePasswordVisibility('manageUsersPassword', this)" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);cursor:pointer;color:#999;font-size:1.1rem;user-select:none;" title="Show/hide password">&#128065;</span>
+                            </div>
                         </div>
                         <div class="invoice-form-field" style="flex:1;">
                             <label>Confirm Password</label>
-                            <input type="password" id="manageUsersConfirmPassword" placeholder="Confirm new password">
+                            <div style="position:relative;">
+                                <input type="password" id="manageUsersConfirmPassword" placeholder="Confirm new password" style="width:100%;padding-right:36px;">
+                                <span class="pw-eye-toggle" onclick="togglePasswordVisibility('manageUsersConfirmPassword', this)" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);cursor:pointer;color:#999;font-size:1.1rem;user-select:none;" title="Show/hide password">&#128065;</span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1256,6 +1279,140 @@
         </div>
     </div>
 
+    <!-- Add Usage Modal -->
+    <div id="addUsageModal" class="modal">
+        <div class="modal-content" style="max-width:500px;">
+            <div class="modal-header">
+                <h3>Add Usage Purpose</h3>
+                <button class="close-btn" id="closeAddUsage">&times;</button>
+            </div>
+            <div class="invoice-form-body">
+                <input type="hidden" id="addUsageMaterialId">
+                <input type="hidden" id="addUsageDate">
+                <div style="font-size:0.85rem;color:#888;margin-bottom:12px;">
+                    Material: <strong id="addUsageMaterialName"></strong> &mdash; Date: <strong id="addUsageDateDisplay"></strong>
+                </div>
+                <div class="invoice-form-grid">
+                    <div class="invoice-form-field">
+                        <label>Venture</label>
+                        <select id="addUsageVenture"></select>
+                    </div>
+                    <div class="invoice-form-field" style="max-width:100px;">
+                        <label>Flat No</label>
+                        <input type="text" id="addUsageFlat" placeholder="e.g. 101">
+                    </div>
+                    <div class="invoice-form-field">
+                        <label>Purpose / Work</label>
+                        <input type="text" id="addUsageWorkItem" placeholder="e.g. Plastering">
+                    </div>
+                    <div class="invoice-form-field" style="max-width:120px;">
+                        <label>Qty Used</label>
+                        <input type="number" id="addUsageQty" min="0" step="0.01" placeholder="0">
+                    </div>
+                    <div class="invoice-form-field">
+                        <label>Remarks</label>
+                        <input type="text" id="addUsageRemarks" placeholder="Optional">
+                    </div>
+                </div>
+            </div>
+            <div class="invoice-form-actions">
+                <button id="cancelAddUsage" class="btn-secondary">Cancel</button>
+                <button id="saveAddUsage" class="btn-primary">Add Usage</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Next Inventory Entry Modal -->
+    <div id="nextEntryModal" class="modal">
+        <div class="modal-content popup-large">
+            <div class="modal-header">
+                <h3 id="nextEntryTitle">Next Entry</h3>
+                <button class="close-btn" id="closeNextEntry">&times;</button>
+            </div>
+            <div class="invoice-form-body">
+                <div class="invoice-form-row">
+                    <div class="invoice-form-field" style="flex:1;">
+                        <label>Material</label>
+                        <div id="nextEntryMaterialDisplay" class="pending-readonly" style="font-weight:600;"></div>
+                        <input type="hidden" id="nextEntryMaterialId">
+                    </div>
+                    <div class="invoice-form-field" style="max-width:160px;">
+                        <label>Date <span class="req">*</span></label>
+                        <input type="date" id="nextEntryDate">
+                    </div>
+                </div>
+                <div class="invoice-form-row">
+                    <div class="invoice-form-field">
+                        <label>Opening Balance</label>
+                        <input type="number" id="nextEntryOpening" readonly style="background:#f5f5f5;">
+                    </div>
+                    <div class="invoice-form-field">
+                        <label>Purchase</label>
+                        <input type="number" id="nextEntryPurchase" min="0" step="0.01">
+                    </div>
+                    <div class="invoice-form-field">
+                        <label>Total</label>
+                        <input type="number" id="nextEntryTotal" readonly style="background:#f5f5f5;">
+                    </div>
+                    <div class="invoice-form-field">
+                        <label>Total Usage</label>
+                        <input type="number" id="nextEntryUsage" readonly style="background:#f5f5f5;">
+                    </div>
+                    <div class="invoice-form-field">
+                        <label>Closing Balance</label>
+                        <input type="number" id="nextEntryClosing" readonly style="background:#f5f5f5;">
+                    </div>
+                </div>
+                <div class="invoice-form-row" id="nextEntryPurchaseDetails">
+                    <div class="invoice-form-field">
+                        <label>Vendor</label>
+                        <div class="creatable-select" id="nextEntryVendorWrap">
+                            <input type="text" id="nextEntryVendorInput" class="creatable-input" placeholder="Search or type to create..." autocomplete="off">
+                            <input type="hidden" id="nextEntryVendor">
+                            <div class="creatable-dropdown" id="nextEntryVendorDropdown"></div>
+                        </div>
+                    </div>
+                    <div class="invoice-form-field">
+                        <label>Rate per Unit (&#8377;)</label>
+                        <input type="number" id="nextEntryRate" min="0" step="0.01">
+                    </div>
+                    <div class="invoice-form-field">
+                        <label>Invoice No</label>
+                        <input type="text" id="nextEntryInvoiceNo" placeholder="e.g. INV-123">
+                    </div>
+                    <div class="invoice-form-field" style="max-width:120px;">
+                        <label>GST</label>
+                        <select id="nextEntryIsGst">
+                            <option value="false">Non-GST</option>
+                            <option value="true">GST</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Purpose Section -->
+                <div class="invoice-form-section" style="border-top:1px solid #e0e4e8;padding-top:14px;margin-top:4px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                        <h4 style="margin:0;font-size:0.95rem;color:#333;">Purpose of Usage</h4>
+                        <button id="addNextEntryPurpose" type="button" class="btn-secondary" style="padding:6px 12px;font-size:0.8rem;">+ Add Purpose</button>
+                    </div>
+                    <div id="nextEntryPurposeList" style="display:flex;flex-direction:column;gap:10px;"></div>
+                    <div id="nextEntryPurposeEmpty" style="color:#888;font-size:0.85rem;padding:8px 0;">No usage purposes added. Click "+ Add Purpose" to record where material was used.</div>
+                </div>
+
+                <div class="invoice-form-row">
+                    <div class="invoice-form-field" style="flex:1;">
+                        <label>Notes</label>
+                        <input type="text" id="nextEntryRemarks" placeholder="Optional notes for this entry">
+                    </div>
+                </div>
+            </div>
+            <div class="invoice-form-actions">
+                <button id="cancelNextEntry" class="btn-secondary">Cancel</button>
+                <button id="saveNextEntry" class="btn-primary">Save Entry</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Material Master Modal -->
     <div id="materialModal" class="modal">
         <div class="modal-content popup-small">
@@ -1280,6 +1437,12 @@
                         <label>Category</label>
                         <input type="text" id="materialCategory" placeholder="e.g. Cement" list="materialCategoryList">
                         <datalist id="materialCategoryList"></datalist>
+                    </div>
+                    <div class="invoice-form-field">
+                        <label>Sub-Type</label>
+                        <select id="materialSubType">
+                            <option value="">-- None --</option>
+                        </select>
                     </div>
                     <div class="invoice-form-field" style="max-width:120px;">
                         <label>Unit <span class="req">*</span></label>
@@ -1447,13 +1610,16 @@
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-    <script src="/static/js/app.js?v=37"></script>
-    <script src="/static/js/cells.js?v=34"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="/static/js/app.js?v=41"></script>
+    <script src="/static/js/daily_report.js?v=2"></script>
+    <script src="/static/js/cells.js?v=35"></script>
     <script src="/static/js/invoices.js?v=20"></script>
     <script src="/static/js/payroll.js?v=27"></script>
-    <script src="/static/js/inventory.js?v=19"></script>
+    <script src="/static/js/inventory.js?v=31"></script>
+    <script src="/static/js/venture_analysis.js?v=3"></script>
     <script src="/static/js/reports.js?v=25"></script>
-    <script src="/static/js/features.js?v=37"></script>
+    <script src="/static/js/features.js?v=42"></script>
     <script src="/static/js/contractor_payments.js?v=3"></script>
     <script src="/static/js/inventory_purchase.js?v=14"></script>
     <script src="/static/js/inventory_register.js?v=15"></script>

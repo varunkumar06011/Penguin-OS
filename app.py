@@ -70,25 +70,6 @@ if not _secret:
     else:
         raise RuntimeError('SECRET_KEY environment variable is not set. Refusing to start.')
 
-# ============================================================
-# Rate Limiting (in-memory, per-IP)
-# ============================================================
-_rate_limit_store = defaultdict(deque)
-RATE_LIMIT_WINDOW = 60  # seconds
-RATE_LIMIT_MAX_LOGIN = 10  # max login attempts per IP per window
-
-def rate_limited(key, max_requests=RATE_LIMIT_MAX_LOGIN, window=RATE_LIMIT_WINDOW):
-    """Check if a request should be rate-limited. Returns True if limited."""
-    now = time.time()
-    store = _rate_limit_store[key]
-    # Evict entries outside the window
-    while store and store[0] < now - window:
-        store.popleft()
-    if len(store) >= max_requests:
-        return True
-    store.append(now)
-    return False
-
 def get_client_ip():
     """Get real client IP, accounting for reverse proxies."""
     if request.headers.get('X-Forwarded-For'):
@@ -761,9 +742,6 @@ def run_marketplace_seed():
 
 @app.route('/login', methods=['POST'])
 def login():
-    if rate_limited(f'login:{get_client_ip()}'):
-        logger.warning(f'Rate limit hit for login from {get_client_ip()}')
-        return jsonify({'success': False, 'error': 'Too many attempts. Please wait a minute.'}), 429
     data = request.get_json() or {}
     username = data.get('username', '').strip()
     password = data.get('password', '')
@@ -827,9 +805,6 @@ def generate_otp():
 
 @app.route('/api/visitor/resident-login', methods=['POST'])
 def visitor_resident_login():
-    if rate_limited(f'resident_login:{get_client_ip()}'):
-        logger.warning(f'Rate limit hit for resident login from {get_client_ip()}')
-        return jsonify({'error': 'Too many attempts. Please wait a minute.'}), 429
     if not supabase:
         return jsonify({'error': 'Supabase not connected'}), 500
     body = request.get_json() or {}
@@ -858,9 +833,6 @@ def visitor_resident_login():
 
 @app.route('/api/visitor/security-login', methods=['POST'])
 def visitor_security_login():
-    if rate_limited(f'security_login:{get_client_ip()}'):
-        logger.warning(f'Rate limit hit for security login from {get_client_ip()}')
-        return jsonify({'error': 'Too many attempts. Please wait a minute.'}), 429
     if not supabase:
         return jsonify({'error': 'Supabase not connected'}), 500
     body = request.get_json() or {}
@@ -1444,12 +1416,25 @@ def api_ventures():
                 except Exception:
                     pass  # non-fatal — will retry on next fetch
 
+        def _venture_data(row):
+            d = row.get('data')
+            if isinstance(d, str):
+                import json as _json
+                try: d = _json.loads(d)
+                except Exception: d = None
+            if not d and row.get('id'):
+                d = {'id': row['id'], 'name': row.get('name', row['id'])}
+            return d
+
+        # Filter out WAREHOUSE — it's a pseudo-venture only for inventory, not shown in dashboard
+        all_ventures = [v for v in all_ventures if v.get('id') != 'WAREHOUSE']
+
         if user.get('role') in ('admin', 'manager'):
-            return jsonify([row['data'] for row in all_ventures if row.get('data')])
+            result = [_venture_data(row) for row in all_ventures if row.get('data') or row.get('id')]
+            return jsonify(result)
         else:
             allowed = _allowed_ventures(user)
-            # Include legacy ventures (now auto-fixed) + ventures in allowed set
-            return jsonify([row['data'] for row in all_ventures if row.get('data') and (row['id'] in allowed or not row.get('org_id'))])
+            return jsonify([_venture_data(row) for row in all_ventures if row.get('data') and (row['id'] in allowed or not row.get('org_id'))])
     except Exception as e:
         logger.error(f'Error fetching ventures: {e}')
         fallback = load_json_fallback('ventures.json')
@@ -2061,11 +2046,33 @@ def api_materials():
         q = q.is_('venture_id', 'null')
     elif venture_id:
         allowed = _allowed_ventures(session['user'])
-        if venture_id not in allowed:
+        allowed_with_wh = allowed | {'WAREHOUSE'}
+        if venture_id not in allowed_with_wh:
             return jsonify({'error': 'Forbidden'}), 403
         q = q.or_(f'venture_id.eq.{venture_id},venture_id.is.null')
     res = q.execute()
     return jsonify(res.data or [])
+
+
+@app.route('/api/materials/categories')
+@requires_role_or_override('supervisor')
+def api_material_categories():
+    """Return distinct categories from materials table, scoped to venture + global."""
+    if not supabase:
+        return jsonify([]), 500
+    venture_id = request.args.get('venture_id')
+    allowed = _allowed_ventures(session['user'])
+    allowed_with_wh = allowed | {'WAREHOUSE'}
+    q = supabase.table('materials').select('category')
+    if venture_id:
+        if venture_id not in allowed_with_wh:
+            return jsonify({'error': 'Forbidden'}), 403
+        q = q.or_(f'venture_id.eq.{venture_id},venture_id.is.null')
+    else:
+        q = q.in_('venture_id', list(allowed_with_wh))
+    res = q.execute()
+    cats = sorted(set(r['category'] for r in (res.data or []) if r.get('category')))
+    return jsonify(cats)
 
 
 @app.route('/api/material', methods=['POST'])
@@ -2073,6 +2080,9 @@ def api_materials():
 def api_material_post():
     if not supabase:
         return jsonify({'error': 'Supabase not connected'}), 500
+    # Only admin may create/edit materials
+    if session['user'].get('role') != 'admin':
+        return jsonify({'error': 'Only admins can create or modify materials'}), 403
     m = request.get_json() or {}
     if not m.get('id'):
         m['id'] = str(__import__('uuid').uuid4())
@@ -2137,8 +2147,22 @@ def api_stock():
         q = q.gte('entry_date', from_date)
     if to_date:
         q = q.lte('entry_date', to_date)
-    res = q.execute()
-    return jsonify(res.data or [])
+
+    # Supabase caps single responses at 1000 rows; paginate to fetch all.
+    all_data = []
+    chunk_size = 1000
+    start = 0
+    while True:
+        chunk = q.range(start, start + chunk_size - 1).execute()
+        rows = chunk.data or []
+        if not rows:
+            break
+        all_data.extend(rows)
+        if len(rows) < chunk_size:
+            break
+        start += chunk_size
+
+    return jsonify(all_data)
 
 
 @app.route('/api/stock', methods=['POST'])
@@ -2162,6 +2186,88 @@ def api_stock_post():
         entry['id'] = str(__import__('uuid').uuid4())
     supabase.table('stock_ledger').upsert(entry, on_conflict='id').execute()
     return jsonify({'success': True})
+
+
+@app.route('/api/stock/next-entry', methods=['POST'])
+@requires_role_or_override('supervisor')
+def api_stock_next_entry():
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    body = request.get_json() or {}
+    org_id = session['user'].get('org_id')
+    user_email = (session.get('user') or {}).get('email', '')
+    venture_id = body.get('venture_id')
+    material_id = body.get('material_id')
+    material_name = (body.get('material_name') or '').strip()
+    unit = (body.get('unit') or 'pcs').strip()
+    entry_date = body.get('entry_date')
+    purchase = float(body.get('purchase') or 0)
+    usage = float(body.get('usage') or 0)
+    rate = float(body.get('rate') or 0)
+    vendor_id = body.get('vendor_id') or None
+    invoice_no = (body.get('invoice_no') or '').strip() or None
+    is_gst = bool(body.get('is_gst'))
+    remarks = (body.get('remarks') or '').strip() or None
+
+    if venture_id:
+        allowed = _allowed_ventures(session['user'])
+        if venture_id not in allowed and venture_id != 'WAREHOUSE':
+            return jsonify({'error': 'Forbidden'}), 403
+    if not material_id or not entry_date:
+        return jsonify({'error': 'material_id and entry_date are required'}), 400
+    if purchase == 0 and usage == 0:
+        return jsonify({'error': 'purchase or usage must be > 0'}), 400
+
+    # Ensure material exists in the target venture (or globally)
+    mat = supabase.table('materials').select('id,name,category,unit').eq('id', material_id).limit(1).execute()
+    if not mat.data:
+        return jsonify({'error': 'Material not found'}), 404
+    mat = mat.data[0]
+
+    entries = body.get('entries') or []
+    saved_stock_ids = []
+    for e in entries:
+        e['id'] = e.get('id') or str(__import__('uuid').uuid4())
+        e['created_by'] = user_email
+        if e.get('entry_type') == 'IN' and float(e.get('rate') or 0) > 0:
+            e['cost_per_unit'] = float(e['rate'])
+        supabase.table('stock_ledger').upsert(e, on_conflict='id').execute()
+        saved_stock_ids.append(e['id'])
+
+    # Auto-create Day Book purchase when a purchase quantity is present
+    if purchase > 0 and rate > 0:
+        vendor_name = ''
+        if vendor_id:
+            v = supabase.table('vendors').select('id,data').eq('id', vendor_id).maybe_single().execute()
+            if v.data:
+                vendor_name = (v.data.get('data') or {}).get('name') or v.data.get('name') or vendor_id
+        if not vendor_id or not vendor_name:
+            vendor_name = 'Inventory Entry'
+        purchase_body = {
+            'id': str(__import__('uuid').uuid4()),
+            'org_id': org_id,
+            'venture_id': venture_id,
+            'invoice_date': entry_date,
+            'invoice_no': invoice_no or 'AUTO-' + str(__import__('uuid').uuid4())[:8].upper(),
+            'is_gst': is_gst,
+            'received_date': entry_date,
+            'vendor_id': vendor_id,
+            'vendor_name': vendor_name,
+            'material_name': material_name,
+            'category': mat.get('category'),
+            'qty': purchase,
+            'unit': unit,
+            'rate': rate,
+            'amount': purchase * rate,
+            'remarks': remarks or 'Auto-created from inventory next entry',
+            'created_by': user_email
+        }
+        try:
+            supabase.table('inventory_purchases').upsert(purchase_body, on_conflict='id').execute()
+        except Exception as e:
+            logger.warning(f'Auto-create day book purchase failed (non-fatal): {e}')
+
+    return jsonify({'success': True, 'stock_ids': saved_stock_ids})
 
 
 @app.route('/api/stock/summary')
@@ -2263,6 +2369,32 @@ def _ensure_material_master(org_id, name, unit=None):
     except Exception:
         # race condition — another request created it; ignore
         pass
+
+
+def _get_or_create_material_for_stock(material_name, venture_id, category=None, unit=None):
+    """Find or create a material in the main materials table for stock_ledger integration."""
+    if not supabase or not material_name:
+        return None
+    existing = supabase.table('materials').select('id,name,category,unit').execute()
+    for r in (existing.data or []):
+        if (r.get('name') or '').strip().lower() == material_name.strip().lower():
+            return r
+    # create as venture-specific material so it shows in that venture's inventory
+    new_id = str(__import__('uuid').uuid4())
+    new_row = {
+        'id': new_id,
+        'name': material_name.strip(),
+        'category': category or 'Uncategorized',
+        'unit': unit or 'pcs',
+        'min_threshold': 0,
+        'venture_id': None if venture_id == 'WAREHOUSE' else venture_id
+    }
+    try:
+        supabase.table('materials').insert(new_row).execute()
+        return new_row
+    except Exception as e:
+        logger.warning(f'Create material for stock failed: {e}')
+        return None
 
 
 def _auto_create_daily_entry(org_id, material_name, category_type, entry_date, user_email=''):
@@ -2423,6 +2555,27 @@ def api_day_book_upsert():
     category_type = body.get('category_type')
     if mname and received_date:
         _auto_create_daily_entry(org_id, mname, category_type, received_date, user_email)
+    # Auto-create stock_ledger IN entry so purchase appears in main inventory
+    if mname and received_date and qty > 0:
+        try:
+            stock_mat = _get_or_create_material_for_stock(mname, venture_id, body.get('category'), body.get('unit'))
+            if stock_mat:
+                stock_entry = {
+                    'id': str(__import__('uuid').uuid4()),
+                    'venture_id': venture_id or 'WAREHOUSE',
+                    'material_id': stock_mat['id'],
+                    'entry_type': 'IN',
+                    'qty': qty,
+                    'entry_date': received_date,
+                    'vendor_id': body.get('vendor_id'),
+                    'rate': rate,
+                    'amount': qty * rate,
+                    'remarks': (body.get('remarks') or 'From Day Book').strip() or 'From Day Book',
+                    'created_by': user_email
+                }
+                supabase.table('stock_ledger').upsert(stock_entry, on_conflict='id').execute()
+        except Exception as e:
+            logger.warning(f'Auto-create stock ledger from day book failed (non-fatal): {e}')
     return jsonify({'success': True})
 
 
@@ -7404,6 +7557,599 @@ def api_ventures_with_names():
     except Exception as e:
         logger.error(f'Error fetching ventures with names: {e}')
         return jsonify({'error': str(e)}), 500
+
+
+# ========================
+# Venture-wise Analysis API
+# ========================
+
+@app.route('/api/venture-analysis')
+@requires_role('supervisor', 'manager', 'admin')
+def api_venture_analysis():
+    """Aggregate work done/pending from cell_data and inventory usage from stock_ledger per venture."""
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    user = session.get('user') or {}
+    org_id = user.get('org_id')
+    allowed_ids = _allowed_ventures(user)
+
+    # Fetch ventures
+    venture_names = {}
+    venture_structures = {}
+    try:
+        vres = supabase.table('ventures').select('*').or_(f'org_id.eq.{org_id},org_id.is.null').execute()
+        for v in (vres.data or []):
+            if v.get('id') in allowed_ids and v.get('id') != '__all__':
+                d = v.get('data') or {}
+                if isinstance(d, str):
+                    try:
+                        d = json.loads(d)
+                    except Exception:
+                        d = {}
+                venture_names[v['id']] = (d or {}).get('name') or v.get('name') or v['id']
+                venture_structures[v['id']] = d
+    except Exception as e:
+        logger.error(f'Error fetching ventures for venture analysis: {e}')
+
+    # Fetch all cell_data and compute work done/pending per venture
+    venture_work = {}
+    try:
+        cells_res = supabase.table('cell_data').select('*').execute()
+        for row in (cells_res.data or []):
+            cell_id = row.get('id', '')
+            d = row.get('data') or {}
+            color = d.get('color', '') or 'none'
+            # Determine which venture this cell belongs to
+            vid = None
+            for v_id in allowed_ids:
+                if cell_id.startswith(v_id + '_'):
+                    vid = v_id
+                    break
+            if not vid:
+                continue
+            if vid not in venture_work:
+                venture_work[vid] = {'total': 0, 'green': 0, 'yellow': 0, 'blue': 0, 'red': 0, 'none': 0}
+            venture_work[vid]['total'] += 1
+            venture_work[vid][color] = (venture_work[vid].get(color, 0) or 0) + 1
+    except Exception as e:
+        logger.error(f'Error fetching cell_data for venture analysis: {e}')
+
+    # Compute total possible cells from venture structure (untouched = red/pending)
+    for vid, vdata in venture_structures.items():
+        blocks = vdata.get('blocks', [])
+        work_categories = vdata.get('work_categories', {})
+        flat_view_items = vdata.get('flat_view_items', [])
+        super_structure_items = vdata.get('super_structure_items', [])
+        num_work_items = sum(len(items) if isinstance(items, list) else 0 for items in work_categories.values())
+        num_flat_items = len(flat_view_items) if isinstance(flat_view_items, list) else 0
+        num_ss_items = len(super_structure_items) if isinstance(super_structure_items, list) else 0
+        total_items = num_work_items + num_flat_items + num_ss_items
+        if total_items == 0:
+            total_items = len(DEFAULT_WORK_ITEMS)
+        total_possible = 0
+        for blk in blocks:
+            if not isinstance(blk, dict):
+                continue
+            floors = blk.get('floors', 5)
+            flats_per_floor = blk.get('flats_per_floor', FLATS_PER_FLOOR)
+            total_possible += floors * flats_per_floor * total_items
+        if vid not in venture_work:
+            venture_work[vid] = {'total': 0, 'green': 0, 'yellow': 0, 'blue': 0, 'red': 0, 'none': 0}
+        existing_total = venture_work[vid]['total']
+        if total_possible > existing_total:
+            untouched = total_possible - existing_total
+            venture_work[vid]['total'] = total_possible
+            venture_work[vid]['none'] = venture_work[vid].get('none', 0) + untouched
+
+    # Fetch stock_ledger OUT entries and group by purpose_venture_id
+    venture_inventory = {}
+    try:
+        all_out_entries = []
+        offset = 0
+        page_size = 1000
+        while True:
+            page = supabase.table('stock_ledger').select('*').eq('entry_type', 'OUT').order('created_at', desc=True).range(offset, offset + page_size - 1).execute()
+            rows = page.data or []
+            all_out_entries.extend(rows)
+            if len(rows) < page_size:
+                break
+            offset += page_size
+        logger.info(f'Venture analysis: fetched {len(all_out_entries)} OUT entries from stock_ledger')
+        for entry in all_out_entries:
+            pvid = entry.get('purpose_venture_id') or entry.get('venture_id')
+            if not pvid:
+                continue
+            if pvid not in venture_inventory:
+                venture_inventory[pvid] = {'total_qty': 0.0, 'total_cost': 0.0, 'materials': {}, 'by_flat': {}}
+            qty = float(entry.get('qty') or 0)
+            rate = float(entry.get('rate') or 0)
+            cost = qty * rate if rate > 0 else 0
+            venture_inventory[pvid]['total_qty'] += qty
+            venture_inventory[pvid]['total_cost'] += cost
+            mid = entry.get('material_id', 'unknown')
+            if mid not in venture_inventory[pvid]['materials']:
+                venture_inventory[pvid]['materials'][mid] = {'qty': 0.0, 'cost': 0.0}
+            venture_inventory[pvid]['materials'][mid]['qty'] += qty
+            venture_inventory[pvid]['materials'][mid]['cost'] += cost
+            # Track by flat if present
+            flat = entry.get('flat')
+            if flat:
+                flat_key = str(flat)
+                if flat_key not in venture_inventory[pvid]['by_flat']:
+                    venture_inventory[pvid]['by_flat'][flat_key] = {'qty': 0.0, 'cost': 0.0, 'materials': {}}
+                venture_inventory[pvid]['by_flat'][flat_key]['qty'] += qty
+                venture_inventory[pvid]['by_flat'][flat_key]['cost'] += cost
+                if mid not in venture_inventory[pvid]['by_flat'][flat_key]['materials']:
+                    venture_inventory[pvid]['by_flat'][flat_key]['materials'][mid] = 0.0
+                venture_inventory[pvid]['by_flat'][flat_key]['materials'][mid] += qty
+        logger.info(f'Venture analysis: venture_inventory keys = {list(venture_inventory.keys())}')
+        logger.info(f'Venture analysis: allowed_ids = {sorted(allowed_ids)}')
+    except Exception as e:
+        logger.error(f'Error fetching stock_ledger for venture analysis: {e}')
+
+    # Fetch materials for names
+    materials_map = {}
+    try:
+        mat_res = supabase.table('materials').select('id,name,unit').execute()
+        for m in (mat_res.data or []):
+            materials_map[m['id']] = {'name': m.get('name', m['id']), 'unit': m.get('unit', '')}
+    except Exception as e:
+        logger.error(f'Error fetching materials for venture analysis: {e}')
+
+    # Build response
+    ventures = []
+    for vid in sorted(allowed_ids):
+        if vid == '__all__' or vid == 'WAREHOUSE':
+            continue
+        w = venture_work.get(vid, {'total': 0, 'green': 0, 'yellow': 0, 'blue': 0, 'red': 0, 'none': 0})
+        inv = venture_inventory.get(vid, {'total_qty': 0, 'total_cost': 0, 'materials': {}, 'by_flat': {}})
+        done = w.get('green', 0)
+        total = w.get('total', 0)
+        pending = total - done
+        pct = round((done / total) * 100, 1) if total > 0 else 0
+
+        # Top materials used
+        top_materials = []
+        for mid, mdata in sorted(inv['materials'].items(), key=lambda x: -x[1]['qty'])[:10]:
+            mat_info = materials_map.get(mid, {'name': mid, 'unit': ''})
+            top_materials.append({
+                'name': mat_info['name'],
+                'unit': mat_info['unit'],
+                'qty': round(mdata['qty'], 2),
+                'cost': round(mdata['cost'], 2),
+            })
+
+        # Flat-wise usage
+        flat_usage = []
+        for flat_key, fdata in sorted(inv['by_flat'].items()):
+            flat_materials = []
+            for mid, mqty in sorted(fdata.get('materials', {}).items(), key=lambda x: -x[1])[:5]:
+                mat_info = materials_map.get(mid, {'name': mid, 'unit': ''})
+                flat_materials.append({'name': mat_info['name'], 'qty': round(mqty, 2)})
+            flat_usage.append({
+                'flat': flat_key,
+                'qty': round(fdata['qty'], 2),
+                'cost': round(fdata['cost'], 2),
+                'materials': flat_materials,
+            })
+
+        ventures.append({
+            'venture_id': vid,
+            'venture_name': venture_names.get(vid, vid),
+            'work_done': done,
+            'work_pending': pending,
+            'work_total': total,
+            'work_pct': pct,
+            'status_breakdown': {
+                'green': w.get('green', 0),
+                'yellow': w.get('yellow', 0),
+                'blue': w.get('blue', 0),
+                'red': w.get('red', 0) + w.get('none', 0),
+            },
+            'inventory_used_qty': round(inv['total_qty'], 2),
+            'inventory_used_cost': round(inv['total_cost'], 2),
+            'top_materials': top_materials,
+            'flat_usage': flat_usage,
+        })
+
+    # Include WAREHOUSE (Central Warehouse) as a special entry for unassigned/legacy usage
+    wh_inv = venture_inventory.get('WAREHOUSE', None)
+    if wh_inv and wh_inv['total_qty'] > 0:
+        wh_top = []
+        for mid, mdata in sorted(wh_inv['materials'].items(), key=lambda x: -x[1]['qty'])[:10]:
+            mat_info = materials_map.get(mid, {'name': mid, 'unit': ''})
+            wh_top.append({
+                'name': mat_info['name'],
+                'unit': mat_info['unit'],
+                'qty': round(mdata['qty'], 2),
+                'cost': round(mdata['cost'], 2),
+            })
+        wh_flat = []
+        for flat_key, fdata in sorted(wh_inv['by_flat'].items()):
+            wh_flat.append({
+                'flat': flat_key,
+                'qty': round(fdata['qty'], 2),
+                'cost': round(fdata['cost'], 2),
+                'materials': [],
+            })
+        ventures.append({
+            'venture_id': 'WAREHOUSE',
+            'venture_name': 'Central Warehouse (Unassigned Usage)',
+            'work_done': 0,
+            'work_pending': 0,
+            'work_total': 0,
+            'work_pct': 0,
+            'status_breakdown': {'green': 0, 'yellow': 0, 'blue': 0, 'red': 0},
+            'inventory_used_qty': round(wh_inv['total_qty'], 2),
+            'inventory_used_cost': round(wh_inv['total_cost'], 2),
+            'top_materials': wh_top,
+            'flat_usage': wh_flat,
+        })
+
+    return jsonify({'ventures': ventures})
+
+
+# ========================
+# Daily Business Report API
+# ========================
+
+def _daily_report_ordinal(n):
+    if 11 <= (n % 100) <= 13:
+        return f"{n}th"
+    return f"{n}{'st' if n % 10 == 1 else 'nd' if n % 10 == 2 else 'rd' if n % 10 == 3 else 'th'}"
+
+
+def _daily_report_format_date(dt):
+    return f"{_daily_report_ordinal(dt.day)} {dt.strftime('%B %Y')} | {dt.strftime('%A')}"
+
+
+def _fallback_daily_report(date_str):
+    try:
+        dt = datetime.strptime(date_str, '%Y-%m-%d')
+    except ValueError:
+        dt = datetime.now()
+    return {
+        'report_date': _daily_report_format_date(dt),
+        'raw_date': date_str,
+        'company_name': 'VGrand Infra Pvt. Ltd.',
+        'total_expenditure': 0,
+        'work_done': 0,
+        'pending_works': 0,
+        'outstanding_amount': 0,
+        'day_book': {
+            'opening_balance': 0,
+            'total_receipts': 0,
+            'total_payments': 0,
+            'closing_balance': 0,
+        },
+        'venture_analysis': [],
+        'work_done_by_venture': [],
+        'materials_purchases': [],
+        'outstanding_by_party': [],
+    }
+
+
+@app.route('/api/daily-report')
+@requires_role('manager', 'admin')
+def api_daily_report():
+    """Return live daily business report aggregates for the current org."""
+    date_param = request.args.get('date')
+    if date_param:
+        try:
+            report_dt = datetime.strptime(date_param, '%Y-%m-%d')
+        except ValueError:
+            return jsonify({'error': 'Invalid date format, use YYYY-MM-DD'}), 400
+    else:
+        report_dt = datetime.now(IST)
+    date_str = report_dt.strftime('%Y-%m-%d')
+
+    if not supabase:
+        return jsonify(_fallback_daily_report(date_str))
+
+    user = session.get('user') or {}
+    org_id = user.get('org_id')
+    allowed_ids = _allowed_ventures(user)
+
+    venture_names = {}
+    try:
+        vres = supabase.table('ventures').select('*').or_(f'org_id.eq.{org_id},org_id.is.null').execute()
+        for v in (vres.data or []):
+            if v.get('id') in allowed_ids and v.get('id') != '__all__':
+                d = v.get('data') or {}
+                if isinstance(d, str):
+                    try:
+                        d = json.loads(d)
+                    except Exception:
+                        d = {}
+                venture_names[v['id']] = (d or {}).get('name') or v.get('name') or v['id']
+    except Exception as e:
+        logger.error(f'Error fetching ventures for daily report: {e}')
+
+    vendors_map = {}
+    try:
+        ven_res = supabase.table('vendors').select('*').execute()
+        for v in (ven_res.data or []):
+            d = v.get('data') or {}
+            if isinstance(d, str):
+                try:
+                    d = json.loads(d)
+                except Exception:
+                    d = {}
+            vendors_map[v['id']] = d.get('name') or v.get('name') or v['id']
+    except Exception as e:
+        logger.error(f'Error fetching vendors for daily report: {e}')
+
+    expenditures = []
+    try:
+        expenditures = supabase.table('expenditures').select('*').execute().data or []
+    except Exception as e:
+        logger.error(f'Error fetching expenditures for daily report: {e}')
+
+    invoices = []
+    try:
+        invoices = supabase.table('invoices').select('*').execute().data or []
+    except Exception as e:
+        logger.error(f'Error fetching invoices for daily report: {e}')
+
+    cell_rows = []
+    try:
+        cell_rows = supabase.table('cell_data').select('*').execute().data or []
+    except Exception as e:
+        logger.error(f'Error fetching cell_data for daily report: {e}')
+
+    contracts = []
+    contract_payments = []
+    try:
+        contracts = supabase.table('contractor_contracts').select('*').eq('org_id', org_id).execute().data or []
+        contract_ids = [c['id'] for c in contracts if c.get('status') != 'cancelled']
+        if contract_ids:
+            contract_payments = supabase.table('contractor_payments').select('*').in_('contract_id', contract_ids).execute().data or []
+    except Exception as e:
+        logger.error(f'Error fetching contractor data for daily report: {e}')
+
+    inv_purchases = []
+    inv_payments = []
+    try:
+        inv_purchases = supabase.table('inventory_purchases').select('*').eq('org_id', org_id).execute().data or []
+        inv_purchase_ids = [p['id'] for p in inv_purchases]
+        if inv_purchase_ids:
+            inv_payments = supabase.table('inventory_purchase_payments').select('*').in_('purchase_id', inv_purchase_ids).execute().data or []
+    except Exception as e:
+        logger.error(f'Error fetching inventory data for daily report: {e}')
+
+    today_expenditure = 0.0
+    venture_expenditure_today = defaultdict(float)
+    for r in expenditures:
+        d = r.get('data') or {}
+        if isinstance(d, str):
+            try:
+                d = json.loads(d)
+            except Exception:
+                d = {}
+        if r.get('venture_id') in allowed_ids and d.get('date') == date_str:
+            amt = float(d.get('amount', 0) or 0)
+            today_expenditure += amt
+            venture_expenditure_today[r.get('venture_id')] += amt
+
+    contract_payment_totals = defaultdict(float)
+    today_contractor_payments = 0.0
+    for p in contract_payments:
+        if p.get('is_deleted'):
+            continue
+        amt = float(p.get('amount', 0) or 0)
+        contract_payment_totals[p.get('contract_id')] += amt
+        if p.get('payment_date') == date_str:
+            today_contractor_payments += amt
+
+    inv_payment_totals = defaultdict(float)
+    today_inventory_payments = 0.0
+    for p in inv_payments:
+        amt = float(p.get('amount', 0) or 0)
+        inv_payment_totals[p.get('purchase_id')] += amt
+        if p.get('payment_date') == date_str:
+            today_inventory_payments += amt
+
+    total_expenditure = today_expenditure + today_contractor_payments + today_inventory_payments
+
+    total_receipts = 0.0
+    venture_receipts = defaultdict(float)
+    for r in invoices:
+        d = r.get('data') or {}
+        if isinstance(d, str):
+            try:
+                d = json.loads(d)
+            except Exception:
+                d = {}
+        vid = d.get('ventureId')
+        if vid in allowed_ids and d.get('purchaseDate') == date_str:
+            amt = float(d.get('amount', 0) or 0)
+            total_receipts += amt
+            venture_receipts[vid] += amt
+
+    opening_balance = 0.0
+    try:
+        ob_res = supabase.table('settings').select('*').eq('key', 'daily_report_opening_balance').execute()
+        if ob_res.data:
+            val = ob_res.data[0].get('value')
+            if isinstance(val, dict):
+                opening_balance = float(val.get(date_str, val.get('default', 0)) or 0)
+            else:
+                opening_balance = float(val or 0)
+    except Exception as e:
+        logger.error(f'Error fetching opening balance for daily report: {e}')
+
+    closing_balance = opening_balance + total_receipts - total_expenditure
+
+    # Contract value baseline per venture
+    venture_contract_value = defaultdict(float)
+    for c in contracts:
+        if c.get('status') == 'cancelled':
+            continue
+        vid = c.get('venture_id') or '_unknown'
+        if vid in allowed_ids:
+            venture_contract_value[vid] += float(c.get('total_amount', 0) or 0)
+
+    # Cell-level progress per venture
+    cell_stats = defaultdict(lambda: {'total': 0, 'green': 0, 'blue': 0, 'yellow': 0, 'red': 0, 'none': 0})
+    for row in cell_rows:
+        vid = row['id'].split('_')[0] if '_' in row['id'] else '_unknown'
+        if vid not in allowed_ids:
+            continue
+        d = row.get('data') or {}
+        if isinstance(d, str):
+            try:
+                d = json.loads(d)
+            except Exception:
+                d = {}
+        color = d.get('color') or 'none'
+        cell_stats[vid]['total'] += 1
+        cell_stats[vid][color] += 1
+
+    # Work done / pending derived from actual cell color progress scaled by contract value
+    work_done = 0.0
+    pending_works = 0.0
+    venture_work_done = defaultdict(float)
+    for vid, stats in cell_stats.items():
+        if vid not in allowed_ids:
+            continue
+        total_cells = stats['total']
+        if total_cells == 0:
+            continue
+        weighted = (stats['green'] * 100 + stats['blue'] * 75 + stats['yellow'] * 40) / total_cells
+        contract_total = venture_contract_value.get(vid, 0.0)
+        if contract_total > 0:
+            completed_value = contract_total * weighted / 100
+            pending_value = contract_total - completed_value
+        else:
+            completed_value = 0.0
+            pending_value = 0.0
+        work_done += completed_value
+        pending_works += pending_value
+        venture_work_done[vid] += completed_value
+
+    # Ventures with contracts but no cell data count as fully pending
+    for vid, contract_total in venture_contract_value.items():
+        if vid in allowed_ids and vid not in cell_stats:
+            pending_works += contract_total
+
+    # Ensure all allowed ventures appear in the analysis tables
+    for vid in allowed_ids:
+        if vid in ('__all__', 'WAREHOUSE'):
+            continue
+        if vid not in venture_contract_value:
+            venture_contract_value[vid] = 0.0
+        if vid not in venture_work_done:
+            venture_work_done[vid] = 0.0
+
+    party_outstanding_raw = defaultdict(float)
+    party_display = {}
+    for c in contracts:
+        if c.get('status') == 'cancelled':
+            continue
+        total = float(c.get('total_amount', 0) or 0)
+        paid = contract_payment_totals.get(c['id'], 0.0)
+        name = (c.get('person_name') or 'Unknown Contractor').strip()
+        key = name.lower()
+        party_outstanding_raw[key] += total - paid
+        party_display.setdefault(key, name)
+
+    for p in inv_purchases:
+        amt = float(p.get('amount', 0) or 0)
+        paid = inv_payment_totals.get(p['id'], 0.0)
+        name = (p.get('vendor_name') or vendors_map.get(p.get('vendor_id')) or 'Unknown Vendor').strip()
+        key = name.lower()
+        party_outstanding_raw[key] += amt - paid
+        party_display.setdefault(key, name)
+
+    party_outstanding = {party_display[k]: v for k, v in party_outstanding_raw.items()}
+    total_outstanding = sum(party_outstanding.values())
+
+    venture_analysis = []
+    total_turnover = sum(venture_contract_value.values())
+    if total_turnover > 0:
+        for vid, amount in sorted(venture_contract_value.items(), key=lambda x: -x[1]):
+            venture_analysis.append({
+                'name': venture_names.get(vid, 'Unknown'),
+                'amount': round(amount, 2),
+                'pct': round((amount / total_turnover) * 100, 1) if total_turnover else 0,
+            })
+    else:
+        for vid in set(venture_receipts.keys()) | set(venture_expenditure_today.keys()):
+            venture_analysis.append({
+                'name': venture_names.get(vid, 'Unknown'),
+                'amount': round(venture_receipts.get(vid, 0) + venture_expenditure_today.get(vid, 0), 2),
+                'pct': 0,
+            })
+        total_turnover = sum(v['amount'] for v in venture_analysis)
+        if total_turnover > 0:
+            for v in venture_analysis:
+                v['pct'] = round((v['amount'] / total_turnover) * 100, 1)
+
+    work_done_by_venture = []
+    if work_done > 0:
+        for vid, amount in sorted(venture_work_done.items(), key=lambda x: -x[1]):
+            work_done_by_venture.append({
+                'name': venture_names.get(vid, 'Unknown'),
+                'amount': round(amount, 2),
+                'pct': round((amount / work_done) * 100, 1) if work_done else 0,
+            })
+
+    materials = defaultdict(lambda: {'qty': 0.0, 'amount': 0.0, 'unit': ''})
+    total_material_purchase = 0.0
+    for p in inv_purchases:
+        if p.get('invoice_date') == date_str:
+            m = p.get('material_name') or 'Others'
+            materials[m]['qty'] += float(p.get('qty', 0) or 0)
+            materials[m]['amount'] += float(p.get('amount', 0) or 0)
+            if not materials[m]['unit'] and p.get('unit'):
+                materials[m]['unit'] = p.get('unit')
+            total_material_purchase += float(p.get('amount', 0) or 0)
+
+    materials_purchases = [
+        {'name': k, 'qty': round(v['qty'], 2), 'unit': v['unit'], 'amount': round(v['amount'], 2)}
+        for k, v in sorted(materials.items(), key=lambda x: -x[1]['amount'])
+    ]
+
+    outstanding_by_party = []
+    if total_outstanding > 0:
+        for name, amount in sorted(party_outstanding.items(), key=lambda x: -x[1]):
+            outstanding_by_party.append({
+                'name': name,
+                'amount': round(amount, 2),
+                'pct': round((amount / total_outstanding) * 100, 1) if total_outstanding else 0,
+            })
+
+    company_name = 'VGrand Infra Pvt. Ltd.'
+    try:
+        cn = supabase.table('settings').select('*').eq('key', 'company_name').execute()
+        if cn.data:
+            val = cn.data[0].get('value')
+            if isinstance(val, dict):
+                company_name = val.get('name') or company_name
+            elif val:
+                company_name = str(val)
+    except Exception:
+        pass
+
+    return jsonify({
+        'report_date': _daily_report_format_date(report_dt),
+        'raw_date': date_str,
+        'company_name': company_name,
+        'total_expenditure': round(total_expenditure, 2),
+        'work_done': round(work_done, 2),
+        'pending_works': round(pending_works, 2),
+        'outstanding_amount': round(total_outstanding, 2),
+        'day_book': {
+            'opening_balance': round(opening_balance, 2),
+            'total_receipts': round(total_receipts, 2),
+            'total_payments': round(total_expenditure, 2),
+            'closing_balance': round(closing_balance, 2),
+        },
+        'venture_analysis': venture_analysis,
+        'work_done_by_venture': work_done_by_venture,
+        'materials_purchases': materials_purchases,
+        'outstanding_by_party': outstanding_by_party,
+    })
 
 
 if __name__ == '__main__':

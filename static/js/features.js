@@ -1006,17 +1006,21 @@ function renderVentureDashboard() {
         // Compute progress from cellsCache if available
         let completed = 0, total = 0;
         if (venture.blocks) {
-            const flatItems = venture.flat_view_items || DEFAULT_WORK_ITEMS;
+            const workCategories = venture.work_categories ? ensureWorkCategories(venture.work_categories) : null;
             venture.blocks.forEach(b => {
                 for (let f = 1; f <= (b.floors || 1); f++) {
                     for (let flat = 1; flat <= (b.flats_per_floor || 1); flat++) {
                         const flatNum = (f * 100) + flat;
-                        flatItems.forEach(item => {
-                            const ck = `${venture.id}_${cellKeyById(b.id, f, flatNum, item.id)}`;
-                            const cell = cellsCache[ck];
-                            total++;
-                            if (cell && cell.color === 'green') completed++;
-                        });
+                        if (workCategories) {
+                            Object.entries(workCategories).forEach(([_, items]) => {
+                                items.forEach(itemObj => {
+                                    const ck = `${venture.id}_${cellKeyById(b.id, f, flatNum, itemObj.id)}`;
+                                    const cell = cellsCache[ck];
+                                    total++;
+                                    if (cell && cell.color === 'green') completed++;
+                                });
+                            });
+                        }
                     }
                 }
             });
@@ -1464,7 +1468,10 @@ async function renderOverviewPage() {
     const statusCounts = { red: 0, yellow: 0, blue: 0, green: 0, none: 0 };
     const totalBlocks = venturesList.reduce((s, v) => s + (v.blocks ? v.blocks.length : 0), 0);
     const totalUnits = venturesList.reduce((s, v) => s + (v.blocks ? v.blocks.reduce((bs, b) => bs + (b.floors || 1) * (b.flats_per_floor || 1), 0) : 0), 0);
-    const totalWorkItems = venturesList.reduce((s, v) => s + (v.flat_view_items ? v.flat_view_items.length : 0), 0);
+    const totalWorkItems = venturesList.reduce((s, v) => {
+        const cats = v.work_categories ? ensureWorkCategories(v.work_categories) : null;
+        return s + (cats ? Object.values(cats).reduce((cs, items) => cs + items.length, 0) : 0);
+    }, 0);
     const ventureProgress = [];
 
     venturesList.forEach(venture => {
@@ -1472,19 +1479,11 @@ async function renderOverviewPage() {
         let vCompleted = 0, vTotal = 0;
         const vStatusCounts = { red: 0, yellow: 0, blue: 0, green: 0, none: 0 };
         const workCategories = venture.work_categories ? ensureWorkCategories(venture.work_categories) : null;
-        const flatItems = venture.flat_view_items || DEFAULT_WORK_ITEMS;
 
         venture.blocks.forEach(b => {
             for (let f = 1; f <= (b.floors || 1); f++) {
                 for (let flat = 1; flat <= (b.flats_per_floor || 1); flat++) {
                     const flatNum = (f * 100) + flat;
-                    flatItems.forEach(item => {
-                        const ck = `${venture.id}_${cellKeyById(b.id, f, flatNum, item.id)}`;
-                        const cell = cellsCache[ck];
-                        const color = cell?.color || 'none';
-                        statusCounts[color]++; vStatusCounts[color]++; totalCells++; vTotal++;
-                        if (color === 'green') vCompleted++;
-                    });
                     if (workCategories) {
                         Object.entries(workCategories).forEach(([_, items]) => {
                             items.forEach(itemObj => {
@@ -1732,6 +1731,20 @@ async function renderOverviewPage() {
         });
     }
     if (vList) vList.appendChild(list);
+
+    const waBtn = document.getElementById('shareDailyReportBtn');
+    if (waBtn) {
+        if (currentUserRole === 'admin' || currentUserRole === 'manager') {
+            waBtn.style.display = '';
+        } else {
+            waBtn.style.display = 'none';
+        }
+        if (!waBtn._bound) {
+            waBtn.addEventListener('click', shareDailyReport);
+            waBtn._bound = true;
+        }
+    }
+
     _overviewRendering = false;
 }
 
@@ -1881,7 +1894,7 @@ async function openVenture(venture, opts = {}) {
     editMode = false;
     archivedItems = venture.archived || {};
 
-    workItems = ensureItemIds(venture.flat_view_items ? [...venture.flat_view_items] : [...DEFAULT_WORK_ITEMS]);
+    workItems = ensureItemIds([]);
 
     hideAllMainPanels();
     document.getElementById('trackerView').style.display = '';
@@ -1974,7 +1987,20 @@ let wizardData = {};
 
 function openWizard() {
     wizardStep = 1;
-    wizardData = { blocks: [], workCategories: JSON.parse(JSON.stringify(WORK_CATEGORIES)), superItems: [...SUPER_STRUCTURE_ITEMS] };
+    const existing = venturesList.find(v => v.blocks && v.blocks.length > 0);
+    if (existing) {
+        wizardData = {
+            blocks: [],
+            workCategories: JSON.parse(JSON.stringify(existing.work_categories || WORK_CATEGORIES)),
+            superItems: JSON.parse(JSON.stringify(existing.super_structure_items || SUPER_STRUCTURE_ITEMS))
+        };
+    } else {
+        wizardData = {
+            blocks: [],
+            workCategories: JSON.parse(JSON.stringify(WORK_CATEGORIES)),
+            superItems: [...SUPER_STRUCTURE_ITEMS]
+        };
+    }
     renderWizardStep();
     document.getElementById('wizardModal').classList.add('show');
 }
@@ -2039,8 +2065,9 @@ function renderWizardStep() {
         Object.entries(wizardData.workCategories).forEach(([cat, items]) => {
             html += `<div class="wizard-items-section"><h4>${cat}</h4>`;
             items.forEach((item, i) => {
+                const label = typeof item === 'object' ? (item.label || '') : item;
                 html += `<div class="wizard-item-row">
-                    <input type="text" value="${item}" data-cat="${cat}" data-index="${i}">
+                    <input type="text" value="${label}" data-cat="${cat}" data-index="${i}">
                     <button class="remove-item-btn" data-cat="${cat}" data-index="${i}">&times;</button>
                 </div>`;
             });
@@ -2078,8 +2105,9 @@ function renderWizardStep() {
         title.textContent = 'Add New Venture — Step 4: Super Structure';
         let html = '<div style="max-height:400px;overflow-y:auto;">';
         wizardData.superItems.forEach((item, i) => {
+            const label = typeof item === 'object' ? (item.label || '') : item;
             html += `<div class="wizard-item-row">
-                <input type="text" value="${item}" data-index="${i}">
+                <input type="text" value="${label}" data-index="${i}">
                 <button class="remove-item-btn" data-index="${i}">&times;</button>
             </div>`;
         });
@@ -2184,18 +2212,12 @@ async function createVentureFromWizard() {
             return { id: `item_${slugId(cat)}_${slugId(label)}_${ts}_${i}`, label };
         });
     });
-    const flatItems = (DEFAULT_WORK_ITEMS || []).map((item, i) => {
-        if (typeof item === 'object' && item.id) return item;
-        const label = typeof item === 'string' ? item : (item && item.label) || 'Untitled';
-        return { id: `item_${slugId(label)}_${ts}_${i}`, label };
-    });
     const newVenture = {
         id: ventureId,
         name: wizardData.name,
         created_by: currentUser,
         created_at: new Date().toISOString(),
         blocks: wizardData.blocks,
-        flat_view_items: flatItems,
         work_categories: workCats,
         super_structure_items: superItems,
         archived: {}
@@ -2220,6 +2242,7 @@ async function createVentureFromWizard() {
 
 function hideAllMainPanels() {
     ['venturesDashboard', 'overviewPage', 'invoicesPanel', 'poPanel', 'reportsPanel', 'payrollPanel', 'inventoryPanel',
+     'ventureAnalysisPanel',
      'instantReportsPanel', 'inventoryAuditPanel',
      'expenditurePanel', 'designGeneratorPanel', 'contractorPaymentsPanel',
      'dayBookPanel', 'vendorDirPanel', 'trackerView'].forEach(id => {
@@ -2322,10 +2345,11 @@ function openInventoryRegisterPanel() {
     hideAllMainPanels();
     var panel = document.getElementById('inventoryPanel');
     if (panel) panel.style.display = '';
-    if (venturesList.length > 0 && typeof selectedInventoryVenture !== 'undefined' && !selectedInventoryVenture) {
-        selectedInventoryVenture = venturesList[0];
+    if (typeof selectedInventoryVenture !== 'undefined' && !selectedInventoryVenture) {
+        selectedInventoryVenture = { id: 'WAREHOUSE', name: 'Central Warehouse' };
     }
-    renderInventoryRegisterView();
+    if (typeof renderInventoryView === 'function') renderInventoryView();
+    else if (typeof renderInventoryRegisterView === 'function') renderInventoryRegisterView();
     navigateTo('#/inventory');
 }
 

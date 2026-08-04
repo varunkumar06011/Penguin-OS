@@ -13,10 +13,13 @@ async function renderInventoryView() {
 let inventoryMaterials = [];
 let inventoryStockEntries = [];
 let inventoryBalance = [];
-let inventoryTab = 'summary';
+let inventoryTab = 'materials';
 let inventoryEntryEditingId = null;
 let inventoryMaterialEditingId = null;
 let selectedInventoryVenture = null;
+let inventoryCategories = [];
+let inventorySelectedCategory = null;
+let inventorySelectedMaterialId = null;
 let inventoryRegTypeFilter = 'all';
 let inventoryRegMaterialFilter = 'all';
 let inventoryLocMaterialFilter = 'all';
@@ -35,7 +38,17 @@ function expenditureActiveVenture() {
 }
 
 function inventoryActiveVenture() {
-    return selectedInventoryVenture || currentVenture;
+    return selectedInventoryVenture || currentVenture || WAREHOUSE_VENTURE;
+}
+
+const WAREHOUSE_VENTURE = { id: 'WAREHOUSE', name: 'Central Warehouse' };
+
+function inventoryVentureList() {
+    const list = [...venturesList];
+    if (!list.some(v => v.id === 'WAREHOUSE')) {
+        list.push(WAREHOUSE_VENTURE);
+    }
+    return list;
 }
 
 async function loadInventoryMaterials(ventureId) {
@@ -65,14 +78,25 @@ async function loadInventorySummary(ventureId) {
     } catch (e) { return []; }
 }
 
+async function loadInventoryCategories(ventureId) {
+    try {
+        const params = ventureId ? '?venture_id=' + encodeURIComponent(ventureId) : '';
+        return await apiGet('/api/materials/categories' + params) || [];
+    } catch (e) { return []; }
+}
+
 async function renderInventoryView() {
     const container = document.getElementById('inventoryPanelContent');
     container.innerHTML = '';
 
-    const venture = inventoryActiveVenture();
+    let venture = inventoryActiveVenture();
     if (!venture) {
         container.innerHTML = '<div style="padding:24px;color:#999;">No venture selected.</div>';
         return;
+    }
+    // Ensure the selected inventory venture reflects the active fallback
+    if (!selectedInventoryVenture) {
+        selectedInventoryVenture = venture;
     }
 
     inventoryMaterials = await loadInventoryMaterials(venture.id);
@@ -80,15 +104,80 @@ async function renderInventoryView() {
     inventoryMaterials = [...globalMats, ...inventoryMaterials.filter(m => !globalMats.some(g => g.id === m.id))];
     inventoryStockEntries = await loadInventoryStock(venture.id);
     inventoryBalance = await loadInventorySummary(venture.id);
+    inventoryCategories = await loadInventoryCategories(venture.id);
 
-    // Header bar
+    const isAdmin = currentUserRole === 'admin';
+
+    // If an advanced tab is selected, render it with a back link
+    if (inventoryTab !== 'materials' && inventoryTab !== 'daily-register') {
+        const backBar = document.createElement('div');
+        backBar.style.cssText = 'padding:12px 0;';
+        backBar.innerHTML = `<button class="btn-text" id="invBackToSheet" style="font-size:0.85rem;padding:4px 8px;">&larr; Back to Inventory</button>`;
+        container.appendChild(backBar);
+        backBar.querySelector('#invBackToSheet').addEventListener('click', () => {
+            inventoryTab = 'materials';
+            inventorySelectedCategory = null;
+            inventorySelectedMaterialId = null;
+            renderInventoryView();
+        });
+
+        // Action bar for Stock In / Out (for certain tabs)
+        if (!['transfers', 'budgets', 'alerts', 'wastage'].includes(inventoryTab)) {
+            const actionBar = document.createElement('div');
+            actionBar.className = 'inventory-actions';
+            actionBar.innerHTML = `
+                <button id="inventoryStockInBtn" class="btn-primary" style="flex:1;max-width:220px;">+ Stock In</button>
+                <button id="inventoryStockOutBtn" class="btn-secondary" style="flex:1;max-width:220px;">+ Stock Out</button>
+            `;
+            container.appendChild(actionBar);
+            actionBar.querySelector('#inventoryStockInBtn').addEventListener('click', () => openStockEntryModal(null, 'IN'));
+            actionBar.querySelector('#inventoryStockOutBtn').addEventListener('click', () => openStockEntryModal(null, 'OUT'));
+        }
+
+        const tabContent = document.createElement('div');
+        container.appendChild(tabContent);
+        if (inventoryTab === 'summary') renderInventorySummary(tabContent);
+        else if (inventoryTab === 'register') renderInventoryRegister(tabContent);
+        else if (inventoryTab === 'location') renderInventoryLocation(tabContent);
+        else if (inventoryTab === 'vendor') renderInventoryVendor(tabContent);
+        else if (inventoryTab === 'wastage') renderInventoryWastage(tabContent);
+        else if (inventoryTab === 'transfers') renderInventoryTransfers(tabContent);
+        else if (inventoryTab === 'budgets') renderInventoryBudgets(tabContent);
+        else if (inventoryTab === 'alerts') renderInventoryAlerts(tabContent);
+        return;
+    }
+
+    // If daily register tab is selected
+    if (inventoryTab === 'daily-register') {
+        const backBar = document.createElement('div');
+        backBar.style.cssText = 'padding:12px 0;';
+        backBar.innerHTML = `<button class="btn-text" id="invBackToSheet" style="font-size:0.85rem;padding:4px 8px;">&larr; Back to Inventory</button>`;
+        container.appendChild(backBar);
+        backBar.querySelector('#invBackToSheet').addEventListener('click', () => {
+            inventoryTab = 'materials';
+            renderInventoryView();
+        });
+        if (typeof renderInventoryRegisterView === 'function') renderInventoryRegisterView();
+        else container.innerHTML += '<div style="padding:24px;color:#999;">Daily Register module not loaded.</div>';
+        return;
+    }
+
+    // ===== Default: Sheet view (Venture → Category → Material → Ledger) =====
+
+    // Header bar with venture dropdown + category dropdown + admin button
     const isPanel = !!selectedInventoryVenture;
     const header = document.createElement('div');
     header.className = 'pending-filter-bar';
     let ventureOptions = '';
-    venturesList.forEach(v => {
+    inventoryVentureList().forEach(v => {
         ventureOptions += `<option value="${v.id}" ${selectedInventoryVenture && selectedInventoryVenture.id === v.id ? 'selected' : ''}>${escapeHtml(v.name)}</option>`;
     });
+
+    let categoryOptions = '<option value="">-- Select Category --</option>';
+    inventoryCategories.forEach(c => {
+        categoryOptions += `<option value="${escapeHtml(c)}" ${inventorySelectedCategory === c ? 'selected' : ''}>${escapeHtml(c)}</option>`;
+    });
+
     header.innerHTML = `
         <div class="pending-filter-group">
             <label>Venture</label>
@@ -96,69 +185,364 @@ async function renderInventoryView() {
                 ? `<select id="inventoryVentureSelect">${ventureOptions}</select>`
                 : `<div class="pending-readonly">${escapeHtml(venture.name)}</div>`}
         </div>
-        <div class="pending-filter-group" style="align-self:flex-end;">
-            <button id="inventoryAddMaterialBtn" class="btn-secondary" style="padding:8px 16px;">+ Manage Materials</button>
+        <div class="pending-filter-group">
+            <label>Category</label>
+            <select id="inventoryCategorySelect">${categoryOptions}</select>
         </div>
+        ${isAdmin ? `<div class="pending-filter-group" style="align-self:flex-end;">
+            <button id="inventoryAddMaterialBtn" class="btn-primary" style="padding:8px 16px;">+ New Inventory</button>
+        </div>` : ''}
     `;
     container.appendChild(header);
 
     if (isPanel) {
         header.querySelector('#inventoryVentureSelect').addEventListener('change', (e) => {
-            selectedInventoryVenture = venturesList.find(v => v.id === e.target.value) || null;
+            selectedInventoryVenture = inventoryVentureList().find(v => v.id === e.target.value) || null;
+            inventorySelectedCategory = null;
+            inventorySelectedMaterialId = null;
             renderInventoryView();
         });
     }
+    header.querySelector('#inventoryCategorySelect').addEventListener('change', (e) => {
+        inventorySelectedCategory = e.target.value || null;
+        inventorySelectedMaterialId = null;
+        renderInventoryView();
+    });
+    if (isAdmin) {
+        header.querySelector('#inventoryAddMaterialBtn').addEventListener('click', () => openMaterialModal(null));
+    }
 
-    // Tab bar
-    const tabBar = document.createElement('div');
-    tabBar.className = 'inventory-tab-bar';
-    tabBar.innerHTML = `
-        <button class="inventory-tab ${inventoryTab === 'summary' ? 'active' : ''}" data-tab="summary">Stock Summary</button>
-        <button class="inventory-tab ${inventoryTab === 'register' ? 'active' : ''}" data-tab="register">Stock Register</button>
-        <button class="inventory-tab ${inventoryTab === 'location' ? 'active' : ''}" data-tab="location">By Location</button>
-        <button class="inventory-tab ${inventoryTab === 'vendor' ? 'active' : ''}" data-tab="vendor">By Vendor</button>
-        <button class="inventory-tab ${inventoryTab === 'wastage' ? 'active' : ''}" data-tab="wastage">Wastage</button>
-        <button class="inventory-tab ${inventoryTab === 'transfers' ? 'active' : ''}" data-tab="transfers">Transfers</button>
-        <button class="inventory-tab ${inventoryTab === 'budgets' ? 'active' : ''}" data-tab="budgets">Budgets</button>
-        <button class="inventory-tab ${inventoryTab === 'alerts' ? 'active' : ''}" data-tab="alerts">Alerts</button>
+    // Content area
+    const content = document.createElement('div');
+    container.appendChild(content);
+
+    if (inventorySelectedMaterialId) {
+        renderMaterialLedger(content, inventorySelectedMaterialId);
+    } else if (inventorySelectedCategory) {
+        renderCategoryMaterials(content, inventorySelectedCategory);
+    } else {
+        content.innerHTML = '<div style="padding:24px;color:#999;text-align:center;">Select a category above to view materials.</div>';
+    }
+
+    // More reports link at the bottom
+    const moreBar = document.createElement('div');
+    moreBar.style.cssText = 'padding:16px 0;border-top:1px solid #eee;margin-top:16px;';
+    moreBar.innerHTML = `
+        <details>
+            <summary style="cursor:pointer;color:#888;font-size:0.85rem;font-weight:600;">More reports &amp; tools</summary>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;">
+                <button class="btn-secondary inv-advanced-btn" data-tab="daily-register" style="padding:6px 14px;font-size:0.8rem;">Daily Register</button>
+                <button class="btn-secondary inv-advanced-btn" data-tab="summary" style="padding:6px 14px;font-size:0.8rem;">Stock Summary</button>
+                <button class="btn-secondary inv-advanced-btn" data-tab="register" style="padding:6px 14px;font-size:0.8rem;">Stock Register</button>
+                <button class="btn-secondary inv-advanced-btn" data-tab="location" style="padding:6px 14px;font-size:0.8rem;">By Location</button>
+                <button class="btn-secondary inv-advanced-btn" data-tab="vendor" style="padding:6px 14px;font-size:0.8rem;">By Vendor</button>
+                <button class="btn-secondary inv-advanced-btn" data-tab="wastage" style="padding:6px 14px;font-size:0.8rem;">Wastage</button>
+                <button class="btn-secondary inv-advanced-btn" data-tab="transfers" style="padding:6px 14px;font-size:0.8rem;">Transfers</button>
+                <button class="btn-secondary inv-advanced-btn" data-tab="budgets" style="padding:6px 14px;font-size:0.8rem;">Budgets</button>
+                <button class="btn-secondary inv-advanced-btn" data-tab="alerts" style="padding:6px 14px;font-size:0.8rem;">Alerts</button>
+            </div>
+        </details>
     `;
-    container.appendChild(tabBar);
+    container.appendChild(moreBar);
 
-    tabBar.querySelectorAll('.inventory-tab').forEach(btn => {
+    moreBar.querySelectorAll('.inv-advanced-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             inventoryTab = btn.dataset.tab;
             renderInventoryView();
         });
     });
+}
 
-    // Action bar for Stock In / Out (hide for transfers/budgets/alerts tabs)
-    if (!['transfers', 'budgets', 'alerts', 'wastage'].includes(inventoryTab)) {
-        const actionBar = document.createElement('div');
-        actionBar.className = 'inventory-actions';
-        actionBar.innerHTML = `
-            <button id="inventoryStockInBtn" class="btn-primary" style="flex:1;max-width:220px;">+ Stock In</button>
-            <button id="inventoryStockOutBtn" class="btn-secondary" style="flex:1;max-width:220px;">+ Stock Out</button>
-        `;
-        container.appendChild(actionBar);
+// ========================
+// Category Materials view (shown when a category is selected from dropdown)
+// ========================
+function renderCategoryMaterials(container, category) {
+    const isAdmin = currentUserRole === 'admin';
+    const matsInCat = inventoryMaterials.filter(m => m.category === category);
 
-        actionBar.querySelector('#inventoryStockInBtn').addEventListener('click', () => openStockEntryModal(null, 'IN'));
-        actionBar.querySelector('#inventoryStockOutBtn').addEventListener('click', () => openStockEntryModal(null, 'OUT'));
+    const wrapper = document.createElement('div');
+    wrapper.style.padding = '16px 0';
+
+    // Breadcrumb + actions
+    const topRow = document.createElement('div');
+    topRow.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px;';
+    topRow.innerHTML = `
+        <div style="display:flex;align-items:center;gap:8px;">
+            <button class="btn-text inv-back-btn" style="font-size:0.85rem;padding:4px 8px;">&larr; All Categories</button>
+            <h3 style="margin:0;font-size:1.1rem;color:#1a2a6c;">${escapeHtml(category)}</h3>
+        </div>
+    `;
+    if (isAdmin) {
+        const addBtn = document.createElement('button');
+        addBtn.className = 'btn-primary';
+        addBtn.style.cssText = 'padding:8px 16px;font-size:0.85rem;';
+        addBtn.textContent = '+ Add Material to this category';
+        addBtn.addEventListener('click', () => {
+            inventoryMaterialEditingId = null;
+            document.getElementById('materialFormTitle').textContent = 'Add New Material';
+            document.getElementById('materialName').value = '';
+            document.getElementById('materialCategory').value = category;
+            document.getElementById('materialUnit').value = '';
+            document.getElementById('materialThreshold').value = '0';
+            openMaterialModal(null);
+            // Pre-fill category after modal opens
+            setTimeout(() => { document.getElementById('materialCategory').value = category; }, 50);
+        });
+        topRow.appendChild(addBtn);
     }
-    header.querySelector('#inventoryAddMaterialBtn').addEventListener('click', () => openMaterialModal(null));
+    wrapper.appendChild(topRow);
 
-    // Render selected tab
-    const tabContent = document.createElement('div');
-    tabContent.id = 'inventoryTabContent';
-    container.appendChild(tabContent);
+    topRow.querySelector('.inv-back-btn').addEventListener('click', () => {
+        inventorySelectedCategory = null;
+        renderInventoryView();
+    });
 
-    if (inventoryTab === 'summary') renderInventorySummary(tabContent);
-    else if (inventoryTab === 'register') renderInventoryRegister(tabContent);
-    else if (inventoryTab === 'location') renderInventoryLocation(tabContent);
-    else if (inventoryTab === 'vendor') renderInventoryVendor(tabContent);
-    else if (inventoryTab === 'wastage') renderInventoryWastage(tabContent);
-    else if (inventoryTab === 'transfers') renderInventoryTransfers(tabContent);
-    else if (inventoryTab === 'budgets') renderInventoryBudgets(tabContent);
-    else if (inventoryTab === 'alerts') renderInventoryAlerts(tabContent);
+    // Materials table
+    const tableWrapper = document.createElement('div');
+    tableWrapper.className = 'grid-container';
+    const table = document.createElement('table');
+    table.className = 'tracker-table';
+    table.innerHTML = `
+        <thead>
+            <tr>
+                <th>S.No</th>
+                <th>Material</th>
+                <th>Sub-Type</th>
+                <th>Unit</th>
+                <th>Purchased</th>
+                <th>Used</th>
+                <th>Balance</th>
+                <th>Status</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    `;
+    const tbody = table.querySelector('tbody');
+
+    if (matsInCat.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#999;padding:24px;">No materials in this category yet.'
+            + (isAdmin ? ' Click "+ Add Material to this category" to create one.' : '') + '</td></tr>';
+    } else {
+        matsInCat.forEach((mat, idx) => {
+            const balRow = inventoryBalance.find(b => b.material_id === mat.id) || {};
+            const bal = parseFloat(balRow.balance) || 0;
+            const threshold = parseFloat(mat.min_threshold) || 0;
+            let statusHtml = '<span style="color:#27ae60;font-weight:600;">OK</span>';
+            if (bal <= 0) statusHtml = '<span style="color:#e74c3c;font-weight:600;">Out of Stock</span>';
+            else if (threshold > 0 && bal <= threshold) statusHtml = '<span style="color:#f39c12;font-weight:600;">Low</span>';
+
+            const tr = document.createElement('tr');
+            tr.style.cursor = 'pointer';
+            tr.innerHTML = `
+                <td data-label="S.No">${idx + 1}</td>
+                <td data-label="Material" style="font-weight:600;color:#1a2a6c;">${escapeHtml(mat.name)}</td>
+                <td data-label="Sub-Type">${mat.sub_type ? escapeHtml(mat.sub_type) : '-'}</td>
+                <td data-label="Unit">${escapeHtml(mat.unit || '-')}</td>
+                <td data-label="Purchased">${formatNumber(balRow.total_in)}</td>
+                <td data-label="Used">${formatNumber(balRow.total_out)}</td>
+                <td data-label="Balance" style="font-weight:700;">${formatNumber(bal)}</td>
+                <td data-label="Status">${statusHtml}</td>
+                <td data-label="Actions"><button class="btn-text inv-view-ledger-btn" data-mid="${mat.id}" style="font-size:0.78rem;">View Ledger</button></td>
+            `;
+            tr.addEventListener('click', (e) => {
+                if (e.target.classList.contains('inv-view-ledger-btn')) return;
+                inventorySelectedMaterialId = mat.id;
+                renderInventoryView();
+            });
+            tbody.appendChild(tr);
+        });
+
+        tbody.querySelectorAll('.inv-view-ledger-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                inventorySelectedMaterialId = btn.dataset.mid;
+                renderInventoryView();
+            });
+        });
+    }
+
+    tableWrapper.appendChild(table);
+    wrapper.appendChild(tableWrapper);
+    container.appendChild(wrapper);
+}
+
+function formatPurpose(row) {
+    const parts = [];
+    const purposeVid = row.purpose_venture_id;
+    if (purposeVid) {
+        const vList = inventoryVentureList();
+        const v = vList.find(x => x.id === purposeVid);
+        if (v) parts.push(v.name);
+    }
+    if (row.flat) parts.push('Flat ' + row.flat);
+    if (row.work_item) parts.push(row.work_item);
+    if (row.remarks) parts.push(row.remarks);
+    return parts.length > 0 ? escapeHtml(parts.join(' / ')) : '-';
+}
+
+function renderMaterialLedger(container, materialId) {
+    const mat = inventoryMaterials.find(m => m.id === materialId);
+    if (!mat) {
+        inventorySelectedMaterialId = null;
+        renderInventoryView();
+        return;
+    }
+
+    const wrapper = document.createElement('div');
+    wrapper.style.padding = '16px 0';
+
+    // Breadcrumb
+    const topRow = document.createElement('div');
+    topRow.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px;';
+    const category = mat.category || 'Uncategorized';
+    const canEdit = currentUserRole === 'admin' || currentUserRole === 'supervisor';
+    topRow.innerHTML = `
+        <div style="display:flex;align-items:center;gap:8px;">
+            <button class="btn-text inv-back-cat-btn" style="font-size:0.85rem;padding:4px 8px;">&larr; ${escapeHtml(category)}</button>
+            <h3 style="margin:0;font-size:1.1rem;color:#1a2a6c;">${escapeHtml(mat.name)}</h3>
+            ${mat.sub_type ? `<span style="font-size:0.75rem;padding:2px 8px;border-radius:10px;background:#e8ecf1;color:#1a2a6c;">${escapeHtml(mat.sub_type)}</span>` : ''}
+            <span style="font-size:0.8rem;color:#888;">${escapeHtml(mat.unit || '')}</span>
+        </div>
+        ${canEdit ? `<button id="invNextEntryBtn" class="btn-primary" style="padding:8px 16px;font-size:0.85rem;">+ Next Entry</button>` : ''}
+    `;
+    if (canEdit) {
+        topRow.querySelector('#invNextEntryBtn').addEventListener('click', () => openNextEntryModal(mat));
+    }
+    wrapper.appendChild(topRow);
+
+    topRow.querySelector('.inv-back-cat-btn').addEventListener('click', () => {
+        inventorySelectedMaterialId = null;
+        renderInventoryView();
+    });
+
+    // Build ledger from stock entries for this material
+    const entries = inventoryStockEntries
+        .filter(e => e.material_id === materialId)
+        .sort((a, b) => (a.entry_date || '').localeCompare(b.entry_date || ''));
+
+    // Compute running ledger: S.NO, Date, Opening, Purchase, Total, Usage, Balance
+    let runningBalance = 0;
+    const ledgerRows = entries.map((e, idx) => {
+        const opening = runningBalance;
+        const purchase = e.entry_type === 'IN' ? (parseFloat(e.qty) || 0) : 0;
+        const adjust = e.entry_type === 'ADJUST' ? (parseFloat(e.qty) || 0) : 0;
+        const usage = e.entry_type === 'OUT' ? (parseFloat(e.qty) || 0) : 0;
+        const total = opening + purchase + adjust;
+        runningBalance = total - usage;
+        return {
+            id: e.id,
+            sno: idx + 1,
+            date: e.entry_date,
+            material_id: e.material_id,
+            opening,
+            purchase,
+            total,
+            usage,
+            balance: runningBalance,
+            entry_type: e.entry_type,
+            remarks: e.remarks || '',
+            work_item: e.work_item || '',
+            purpose_venture_id: e.purpose_venture_id || e.venture_id || '',
+            flat: e.flat || '',
+        };
+    });
+
+    // Summary card
+    const balRow = inventoryBalance.find(b => b.material_id === materialId) || {};
+    const currentBalance = parseFloat(balRow.balance) || 0;
+    const threshold = parseFloat(mat.min_threshold) || 0;
+    let statusLabel = 'OK';
+    let statusColor = '#27ae60';
+    if (currentBalance <= 0) { statusLabel = 'Out of Stock'; statusColor = '#e74c3c'; }
+    else if (threshold > 0 && currentBalance <= threshold) { statusLabel = 'Low'; statusColor = '#f39c12'; }
+
+    const summaryCard = document.createElement('div');
+    summaryCard.style.cssText = 'display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px;';
+    summaryCard.innerHTML = `
+        <div style="background:var(--card-bg,#fff);border:1px solid #e8ecf0;border-radius:8px;padding:12px 20px;flex:1;min-width:140px;">
+            <div style="font-size:0.75rem;color:#888;">Current Balance</div>
+            <div style="font-size:1.4rem;font-weight:700;color:${statusColor};">${formatNumber(currentBalance)} ${escapeHtml(mat.unit || '')}</div>
+        </div>
+        <div style="background:var(--card-bg,#fff);border:1px solid #e8ecf0;border-radius:8px;padding:12px 20px;flex:1;min-width:140px;">
+            <div style="font-size:0.75rem;color:#888;">Total Purchased</div>
+            <div style="font-size:1.4rem;font-weight:700;color:#27ae60;">${formatNumber(balRow.total_in)}</div>
+        </div>
+        <div style="background:var(--card-bg,#fff);border:1px solid #e8ecf0;border-radius:8px;padding:12px 20px;flex:1;min-width:140px;">
+            <div style="font-size:0.75rem;color:#888;">Total Used</div>
+            <div style="font-size:1.4rem;font-weight:700;color:#e74c3c;">${formatNumber(balRow.total_out)}</div>
+        </div>
+        <div style="background:var(--card-bg,#fff);border:1px solid #e8ecf0;border-radius:8px;padding:12px 20px;flex:1;min-width:140px;">
+            <div style="font-size:0.75rem;color:#888;">Status</div>
+            <div style="font-size:1.4rem;font-weight:700;color:${statusColor};">${statusLabel}</div>
+        </div>
+    `;
+    wrapper.appendChild(summaryCard);
+
+    // Ledger table: S.NO, Date, Opening, Purchase, Total, Usage, Balance
+    const tableWrapper = document.createElement('div');
+    tableWrapper.className = 'grid-container';
+    const table = document.createElement('table');
+    table.className = 'tracker-table';
+    table.innerHTML = `
+        <thead>
+            <tr>
+                <th>S.NO</th>
+                <th>Date</th>
+                <th>Opening</th>
+                <th>Purchase</th>
+                <th>Total</th>
+                <th>Usage</th>
+                <th>Balance</th>
+                <th>Purpose</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    `;
+    const tbody = table.querySelector('tbody');
+
+    if (ledgerRows.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#999;padding:24px;">No ledger entries for this material yet.</td></tr>';
+    } else {
+        ledgerRows.forEach(row => {
+            const badgeClass = row.entry_type === 'IN' ? 'inv-in' : row.entry_type === 'OUT' ? 'inv-out' : 'inv-adj';
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td data-label="S.NO">${row.sno}</td>
+                <td data-label="Date">${formatDate(row.date)}</td>
+                <td data-label="Opening">${formatNumber(row.opening)}</td>
+                <td data-label="Purchase">${row.purchase > 0 ? formatNumber(row.purchase) : '-'}</td>
+                <td data-label="Total">${formatNumber(row.total)}</td>
+                <td data-label="Usage">
+                    ${row.usage > 0 ? formatNumber(row.usage) : '-'}
+                    ${canEdit && row.usage > 0 ? `<button class="btn-text edit-usage-btn" data-id="${row.id || ''}" style="margin-left:6px;font-size:0.75rem;" title="Edit usage">&#9998;</button>` : ''}
+                </td>
+                <td data-label="Balance" style="font-weight:700;">${formatNumber(row.balance)}</td>
+                <td data-label="Purpose" style="font-size:0.8rem;">${formatPurpose(row)}</td>
+                <td data-label="Action">${canEdit ? `<button class="btn-text add-usage-btn" data-date="${row.date}" data-material="${row.material_id || inventorySelectedMaterialId}" style="font-size:0.75rem;color:#2980b9;" title="Add new usage purpose">+ Usage</button>` : ''}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+        tbody.querySelectorAll('.edit-usage-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const entryId = btn.dataset.id;
+                const entry = inventoryStockEntries.find(x => x.id === entryId);
+                if (entry) openEditUsageModal(entry);
+            });
+        });
+        tbody.querySelectorAll('.add-usage-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                openAddUsageModal(btn.dataset.material, btn.dataset.date);
+            });
+        });
+    }
+
+    tableWrapper.appendChild(table);
+    wrapper.appendChild(tableWrapper);
+    container.appendChild(wrapper);
 }
 
 function renderInventorySummary(container) {
@@ -971,7 +1355,7 @@ function openStockEntryModal(entryId, defaultType) {
     document.getElementById('stockEntryRemarks').value = '';
 
     const invVenture = inventoryActiveVenture();
-    const isAdmin = currentUserRole === 'admin' || currentUserRole === 'manager';
+    const isAdmin = currentUserRole === 'admin';
 
     // Material creatable
     materialCreatable = initCreatableSelect({
@@ -981,7 +1365,7 @@ function openStockEntryModal(entryId, defaultType) {
         getItems: () => inventoryMaterials,
         getLabel: (m) => m.name,
         getSubLabel: (m) => `(${m.unit})`,
-        canCreate: true,
+        canCreate: isAdmin,
         createLabel: 'Material created',
         onCreate: async (name) => {
             const newMat = {
@@ -1110,7 +1494,7 @@ function closeStockEntryModal() {
     inventoryEntryEditingId = null;
 }
 
-function openMaterialModal(materialId) {
+async function openMaterialModal(materialId) {
     inventoryMaterialEditingId = materialId || null;
     document.getElementById('materialTitle').textContent = 'Manage Materials';
     document.getElementById('materialFormTitle').textContent = materialId ? 'Edit Material' : 'Add New Material';
@@ -1118,11 +1502,38 @@ function openMaterialModal(materialId) {
     document.getElementById('materialCategory').value = '';
     document.getElementById('materialUnit').value = '';
     document.getElementById('materialThreshold').value = '0';
+    document.getElementById('materialSubType').value = '';
+
+    // Load inventory categories with types for sub-type dropdown
+    let invCats = [];
+    try {
+        invCats = await apiGet('/api/inventory-categories') || [];
+    } catch (e) { invCats = []; }
+    const subTypeSelect = document.getElementById('materialSubType');
+    subTypeSelect.innerHTML = '<option value="">-- None --</option>';
+    invCats.forEach(cat => {
+        const types = cat.types || [];
+        if (types.length > 0) {
+            const optgroup = document.createElement('optgroup');
+            optgroup.label = cat.name;
+            types.forEach(t => {
+                const opt = document.createElement('option');
+                opt.value = t.name;
+                opt.textContent = t.name;
+                optgroup.appendChild(opt);
+            });
+            subTypeSelect.appendChild(optgroup);
+        }
+    });
 
     const datalist = document.getElementById('materialCategoryList');
     datalist.innerHTML = '';
-    const cats = new Set(inventoryMaterials.map(m => m.category).filter(Boolean));
-    cats.forEach(c => {
+    const cats = new Set([
+        ...invCats.map(c => c.name),
+        ...(inventoryCategories || []),
+        ...inventoryMaterials.map(m => m.category).filter(Boolean)
+    ]);
+    Array.from(cats).sort().forEach(c => {
         datalist.innerHTML += `<option value="${escapeHtml(c)}"></option>`;
     });
 
@@ -1147,7 +1558,7 @@ function openMaterialModal(materialId) {
             item.innerHTML = `
                 <div class="material-list-info">
                     <span class="material-list-name">${escapeHtml(mat.name)}</span>
-                    <span class="material-list-meta">${escapeHtml(mat.category || 'Uncategorized')} | ${escapeHtml(mat.unit)} | threshold: ${mat.min_threshold || 0} | balance: ${formatNumber(bal)} (${stockLabel})</span>
+                    <span class="material-list-meta">${escapeHtml(mat.category || 'Uncategorized')}${mat.sub_type ? ' &gt; ' + escapeHtml(mat.sub_type) : ''} | ${escapeHtml(mat.unit)} | threshold: ${mat.min_threshold || 0} | balance: ${formatNumber(bal)} (${stockLabel})</span>
                     <div class="material-stock-bar"><div class="material-stock-fill ${stockClass}" style="width:${stockPct}%"></div></div>
                 </div>
                 <div class="material-list-actions">
@@ -1169,6 +1580,7 @@ function openMaterialModal(materialId) {
                 document.getElementById('materialCategory').value = mat.category || '';
                 document.getElementById('materialUnit').value = mat.unit || '';
                 document.getElementById('materialThreshold').value = mat.min_threshold || '0';
+                document.getElementById('materialSubType').value = mat.sub_type || '';
             }
         });
     });
@@ -1212,6 +1624,344 @@ function closeMaterialModal() {
     document.getElementById('materialModal').classList.remove('show');
     inventoryMaterialEditingId = null;
 }
+
+let nextEntryVendorCreatable = null;
+let editingUsageEntry = null;
+
+function openNextEntryModal(mat) {
+    if (!mat) return;
+    const venture = inventoryActiveVenture();
+    if (!venture) { showToast('No venture selected', true); return; }
+
+    const canEdit = currentUserRole === 'admin' || currentUserRole === 'supervisor';
+    if (!canEdit) { showToast('Only admin or supervisor can create entries', true); return; }
+
+    // Determine previous closing balance for this material
+    const entries = inventoryStockEntries
+        .filter(e => e.material_id === mat.id)
+        .sort((a, b) => (a.entry_date || '').localeCompare(b.entry_date || ''));
+    let opening = 0;
+    entries.forEach(e => {
+        const qty = parseFloat(e.qty) || 0;
+        if (e.entry_type === 'IN') opening += qty;
+        else if (e.entry_type === 'OUT') opening -= qty;
+        else if (e.entry_type === 'ADJUST') opening += qty;
+    });
+
+    document.getElementById('nextEntryTitle').textContent = 'Next Entry — ' + escapeHtml(mat.name);
+    document.getElementById('nextEntryMaterialId').value = mat.id;
+    document.getElementById('nextEntryMaterialDisplay').textContent = escapeHtml(mat.name) + ' (' + escapeHtml(mat.unit || 'pcs') + ')';
+    document.getElementById('nextEntryDate').value = new Date().toISOString().split('T')[0];
+    document.getElementById('nextEntryOpening').value = opening;
+    document.getElementById('nextEntryPurchase').value = '';
+    document.getElementById('nextEntryTotal').value = opening;
+    document.getElementById('nextEntryUsage').value = '';
+    document.getElementById('nextEntryClosing').value = opening;
+    document.getElementById('nextEntryRemarks').value = '';
+    document.getElementById('nextEntryRate').value = '';
+    document.getElementById('nextEntryInvoiceNo').value = '';
+    document.getElementById('nextEntryIsGst').value = 'false';
+
+    // Reset purpose list and add one default row
+    const purposeList = document.getElementById('nextEntryPurposeList');
+    purposeList.innerHTML = '';
+    document.getElementById('nextEntryPurposeEmpty').style.display = '';
+    addNextEntryPurposeRow();
+
+    nextEntryVendorCreatable = initCreatableSelect({
+        inputId: 'nextEntryVendorInput',
+        hiddenId: 'nextEntryVendor',
+        dropdownId: 'nextEntryVendorDropdown',
+        getItems: () => allVendors,
+        getLabel: (v) => v.name,
+        canCreate: currentUserRole === 'admin',
+        createLabel: 'Vendor created',
+        onCreate: async (name) => {
+            const newVendor = { id: generateId(), name: name, contact: '', phone: '', gst: '' };
+            await apiPost('/api/vendor', newVendor);
+            allVendors.push(newVendor);
+            return newVendor;
+        }
+    });
+
+    recalcNextEntryTotals();
+    document.getElementById('nextEntryModal').classList.add('show');
+}
+
+function closeNextEntryModal() {
+    document.getElementById('nextEntryModal').classList.remove('show');
+    nextEntryVendorCreatable = null;
+}
+
+function recalcNextEntryTotals() {
+    const opening = parseFloat(document.getElementById('nextEntryOpening').value) || 0;
+    const purchase = parseFloat(document.getElementById('nextEntryPurchase').value) || 0;
+    const total = opening + purchase;
+
+    let usage = 0;
+    document.querySelectorAll('.next-entry-purpose-qty').forEach(input => {
+        usage += parseFloat(input.value) || 0;
+    });
+
+    const closing = total - usage;
+    document.getElementById('nextEntryTotal').value = total;
+    document.getElementById('nextEntryUsage').value = usage;
+    document.getElementById('nextEntryClosing').value = closing;
+}
+
+function addNextEntryPurposeRow(defaults) {
+    const list = document.getElementById('nextEntryPurposeList');
+    const emptyMsg = document.getElementById('nextEntryPurposeEmpty');
+    if (emptyMsg) emptyMsg.style.display = 'none';
+
+    const row = document.createElement('div');
+    row.className = 'invoice-form-row next-entry-purpose-row';
+    const idx = list.children.length;
+    const activeVenture = inventoryActiveVenture();
+
+    const vOptions = inventoryVentureList().map(v => {
+        const sel = defaults && defaults.venture_id === v.id ? 'selected' : (!defaults && activeVenture && activeVenture.id === v.id ? 'selected' : '');
+        return `<option value="${v.id}" ${sel}>${escapeHtml(v.name)}</option>`;
+    }).join('');
+
+    row.innerHTML = `
+        <div class="invoice-form-field">
+            <label>Venture</label>
+            <select class="next-entry-purpose-venture">${vOptions}</select>
+        </div>
+        <div class="invoice-form-field" style="max-width:90px;">
+            <label>Flat No</label>
+            <input type="text" class="next-entry-purpose-flat" placeholder="e.g. 101" value="${escapeHtml(defaults && defaults.flat || '')}">
+        </div>
+        <div class="invoice-form-field" style="flex:1.5;">
+            <label>Purpose / Work</label>
+            <input type="text" class="next-entry-purpose-work" placeholder="e.g. Plastering" value="${escapeHtml(defaults && defaults.work_item || '')}">
+        </div>
+        <div class="invoice-form-field" style="max-width:100px;">
+            <label>Qty Used</label>
+            <input type="number" class="next-entry-purpose-qty" min="0" step="0.01" value="${defaults && defaults.qty ? defaults.qty : ''}">
+        </div>
+        <div class="invoice-form-field" style="flex:1;">
+            <label>Remarks</label>
+            <input type="text" class="next-entry-purpose-remarks" placeholder="Optional" value="${escapeHtml(defaults && defaults.remarks || '')}">
+        </div>
+        <div class="invoice-form-field" style="max-width:40px;justify-content:flex-end;">
+            <label>&nbsp;</label>
+            <button type="button" class="btn-icon remove-purpose-row" title="Remove" style="background:none;border:none;color:#c0392b;font-size:1.2rem;cursor:pointer;">&times;</button>
+        </div>
+    `;
+
+    list.appendChild(row);
+
+    row.querySelector('.next-entry-purpose-qty').addEventListener('input', recalcNextEntryTotals);
+    row.querySelector('.remove-purpose-row').addEventListener('click', () => {
+        row.remove();
+        if (list.children.length === 0 && emptyMsg) emptyMsg.style.display = '';
+        recalcNextEntryTotals();
+    });
+
+    recalcNextEntryTotals();
+}
+
+function openEditUsageModal(entry) {
+    if (!entry) return;
+    const canEdit = currentUserRole === 'admin' || currentUserRole === 'supervisor';
+    if (!canEdit) { showToast('Only admin or supervisor can edit usage', true); return; }
+    editingUsageEntry = entry;
+
+    const newQty = prompt('Edit usage quantity:', entry.qty || '');
+    if (newQty === null) { editingUsageEntry = null; return; }
+    const qty = parseFloat(newQty);
+    if (isNaN(qty) || qty < 0) { showToast('Invalid quantity', true); editingUsageEntry = null; return; }
+
+    const updated = { ...entry, qty: qty };
+    apiPost('/api/stock', updated)
+        .then(() => {
+            showToast('Usage updated');
+            renderInventoryView();
+        })
+        .catch(err => {
+            console.error('Failed to update usage:', err);
+            showToast('Failed to update usage', true);
+        })
+        .finally(() => { editingUsageEntry = null; });
+}
+
+function openAddUsageModal(materialId, date) {
+    const canEdit = currentUserRole === 'admin' || currentUserRole === 'supervisor';
+    if (!canEdit) { showToast('Only admin or supervisor can add usage', true); return; }
+    const mat = inventoryMaterials.find(m => m.id === materialId);
+    if (!mat) { showToast('Material not found', true); return; }
+
+    document.getElementById('addUsageMaterialId').value = materialId;
+    document.getElementById('addUsageDate').value = date;
+    document.getElementById('addUsageMaterialName').textContent = mat.name + ' (' + (mat.unit || 'pcs') + ')';
+    document.getElementById('addUsageDateDisplay').textContent = formatDate(date);
+    document.getElementById('addUsageFlat').value = '';
+    document.getElementById('addUsageWorkItem').value = '';
+    document.getElementById('addUsageQty').value = '';
+    document.getElementById('addUsageRemarks').value = '';
+
+    // Populate venture dropdown
+    const vSel = document.getElementById('addUsageVenture');
+    const vList = inventoryVentureList();
+    const active = inventoryActiveVenture();
+    vSel.innerHTML = vList.map(v => {
+        const sel = active && active.id === v.id ? 'selected' : '';
+        return `<option value="${v.id}" ${sel}>${escapeHtml(v.name)}</option>`;
+    }).join('');
+
+    document.getElementById('addUsageModal').classList.add('show');
+}
+
+function closeAddUsageModal() {
+    const m = document.getElementById('addUsageModal');
+    if (m) m.classList.remove('show');
+}
+
+(function() {
+    const closeBtn = document.getElementById('closeAddUsage');
+    const cancelBtn = document.getElementById('cancelAddUsage');
+    const modal = document.getElementById('addUsageModal');
+    const saveBtn = document.getElementById('saveAddUsage');
+    if (closeBtn) closeBtn.addEventListener('click', closeAddUsageModal);
+    if (cancelBtn) cancelBtn.addEventListener('click', closeAddUsageModal);
+    if (modal) modal.addEventListener('click', (e) => {
+        if (e.target === modal) closeAddUsageModal();
+    });
+    if (saveBtn) saveBtn.addEventListener('click', async () => {
+        const materialId = document.getElementById('addUsageMaterialId').value;
+        const date = document.getElementById('addUsageDate').value;
+        const qty = parseFloat(document.getElementById('addUsageQty').value) || 0;
+        const ventureId = document.getElementById('addUsageVenture').value;
+        const flat = document.getElementById('addUsageFlat').value.trim() || null;
+        const workItem = document.getElementById('addUsageWorkItem').value.trim() || null;
+        const remarks = document.getElementById('addUsageRemarks').value.trim() || null;
+
+        if (!materialId || !date) { showToast('Missing material or date', true); return; }
+        if (qty <= 0) { showToast('Quantity must be greater than 0', true); return; }
+        if (!ventureId) { showToast('Please select a venture', true); return; }
+
+        const entry = {
+            id: generateId(),
+            venture_id: ventureId,
+            material_id: materialId,
+            entry_type: 'OUT',
+            qty: qty,
+            entry_date: date,
+            remarks: remarks,
+            work_item: workItem,
+            purpose_venture_id: ventureId,
+            flat: flat,
+            created_by: currentUser
+        };
+
+        try {
+            await apiPost('/api/stock', entry);
+            closeAddUsageModal();
+            showToast('Usage added');
+            renderInventoryView();
+        } catch (err) {
+            console.error('Failed to add usage:', err);
+            showToast('Failed to add usage', true);
+        }
+    });
+})();
+
+document.getElementById('closeNextEntry').addEventListener('click', closeNextEntryModal);
+document.getElementById('cancelNextEntry').addEventListener('click', closeNextEntryModal);
+document.getElementById('nextEntryModal').addEventListener('click', (e) => {
+    if (e.target === document.getElementById('nextEntryModal')) closeNextEntryModal();
+});
+document.getElementById('nextEntryPurchase').addEventListener('input', recalcNextEntryTotals);
+document.getElementById('addNextEntryPurpose').addEventListener('click', () => addNextEntryPurposeRow());
+
+document.getElementById('saveNextEntry').addEventListener('click', async () => {
+    const materialId = document.getElementById('nextEntryMaterialId').value;
+    const date = document.getElementById('nextEntryDate').value;
+    const purchase = parseFloat(document.getElementById('nextEntryPurchase').value) || 0;
+    const usage = parseFloat(document.getElementById('nextEntryUsage').value) || 0;
+    const notes = document.getElementById('nextEntryRemarks').value.trim() || null;
+
+    if (!materialId) { showToast('Material missing', true); return; }
+    if (!date) { showToast('Please select a date', true); return; }
+
+    const venture = inventoryActiveVenture();
+    if (!venture) { showToast('No venture selected', true); return; }
+    const mat = inventoryMaterials.find(m => m.id === materialId);
+
+    const entries = [];
+    const rate = parseFloat(document.getElementById('nextEntryRate').value) || 0;
+    const vendorId = document.getElementById('nextEntryVendor').value || null;
+    const invoiceNo = document.getElementById('nextEntryInvoiceNo').value.trim() || null;
+    const isGst = document.getElementById('nextEntryIsGst').value === 'true';
+
+    // Validate purchase rate if purchase entered
+    if (purchase > 0 && rate <= 0) { showToast('Rate is required when purchase > 0', true); return; }
+
+    // Add purchase IN entry
+    if (purchase > 0) {
+        entries.push({
+            id: generateId(),
+            venture_id: venture.id,
+            material_id: materialId,
+            entry_type: 'IN',
+            qty: purchase,
+            entry_date: date,
+            vendor_id: vendorId,
+            rate: rate,
+            amount: purchase * rate,
+            remarks: notes,
+            created_by: currentUser
+        });
+    }
+
+    // Add OUT entry for each purpose row
+    const purposeRows = document.querySelectorAll('.next-entry-purpose-row');
+    purposeRows.forEach(row => {
+        const qty = parseFloat(row.querySelector('.next-entry-purpose-qty').value) || 0;
+        if (qty <= 0) return;
+        entries.push({
+            id: generateId(),
+            venture_id: venture.id,
+            material_id: materialId,
+            entry_type: 'OUT',
+            qty: qty,
+            entry_date: date,
+            remarks: row.querySelector('.next-entry-purpose-remarks').value.trim() || notes,
+            work_item: row.querySelector('.next-entry-purpose-work').value.trim() || null,
+            purpose_venture_id: row.querySelector('.next-entry-purpose-venture').value || null,
+            flat: row.querySelector('.next-entry-purpose-flat').value.trim() || null,
+            created_by: currentUser
+        });
+    });
+
+    if (entries.length === 0) { showToast('Enter purchase or at least one usage purpose', true); return; }
+
+    try {
+        await apiPost('/api/stock/next-entry', {
+            venture_id: venture.id,
+            material_id: materialId,
+            material_name: mat ? mat.name : '',
+            unit: mat ? (mat.unit || 'pcs') : 'pcs',
+            entry_date: date,
+            purchase: purchase,
+            usage: usage,
+            rate: rate || null,
+            vendor_id: vendorId,
+            invoice_no: invoiceNo,
+            is_gst: isGst,
+            remarks: notes,
+            entries: entries
+        });
+        closeNextEntryModal();
+        showToast('Entry saved');
+        renderInventoryView();
+    } catch (err) {
+        console.error('Failed to save next entry:', err);
+        showToast('Failed to save entry', true);
+    }
+});
 
 document.getElementById('closeStockEntry').addEventListener('click', closeStockEntryModal);
 document.getElementById('cancelStockEntry').addEventListener('click', closeStockEntryModal);
@@ -1272,6 +2022,7 @@ document.getElementById('materialModal').addEventListener('click', (e) => {
 });
 
 document.getElementById('saveMaterial').addEventListener('click', async () => {
+    if (currentUserRole !== 'admin') { showToast('Only admins can create or modify materials', true); return; }
     const name = document.getElementById('materialName').value.trim();
     const unit = document.getElementById('materialUnit').value.trim();
     if (!name) { showToast('Please enter a material name', true); return; }
@@ -1279,12 +2030,12 @@ document.getElementById('saveMaterial').addEventListener('click', async () => {
 
     const invVenture = inventoryActiveVenture();
     if (!invVenture) { showToast('No venture selected', true); return; }
-    const isAdmin = currentUserRole === 'admin' || currentUserRole === 'manager';
     const material = {
         id: inventoryMaterialEditingId || generateId(),
-        venture_id: isAdmin ? null : invVenture.id,
+        venture_id: null,
         name: name,
         category: document.getElementById('materialCategory').value.trim() || null,
+        sub_type: document.getElementById('materialSubType').value || null,
         unit: unit,
         min_threshold: parseFloat(document.getElementById('materialThreshold').value) || 0
     };

@@ -1044,6 +1044,9 @@ body {
 }
 
 .overview-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     margin-bottom: 24px;
     padding: 16px 0;
 }
@@ -1060,6 +1063,33 @@ body {
     color: #666;
     margin: 0;
     font-size: 1rem;
+}
+
+.whatsapp-share-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border: none;
+    border-radius: 50%;
+    background: #25D366;
+    color: #fff;
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+    flex-shrink: 0;
+}
+.whatsapp-share-btn:hover {
+    transform: scale(1.08);
+    box-shadow: 0 4px 12px rgba(37, 211, 102, 0.4);
+}
+.whatsapp-share-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+.whatsapp-share-btn svg {
+    width: 24px;
+    height: 24px;
 }
 
 .overview-kpi-row {
@@ -8975,5 +9005,225 @@ video {
         flex-direction: row !important;
         justify-content: space-between !important;
         width: 100% !important;
+    }
+}
+
+/* ==================== Venture Analysis ==================== */
+.va-container {
+    padding: 16px;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+.va-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.va-summary-card {
+    background: #fff;
+    border: 1px solid #e0e4e8;
+    border-radius: 10px;
+    padding: 14px 10px;
+    text-align: center;
+}
+
+.va-summary-value {
+    font-size: 1.4rem;
+    font-weight: 700;
+    word-break: break-word;
+}
+
+.va-summary-label {
+    font-size: 0.78rem;
+    color: #888;
+    margin-top: 4px;
+}
+
+.va-card {
+    margin-bottom: 12px;
+    border: 1px solid #e0e4e8;
+    border-radius: 10px;
+    overflow: hidden;
+    background: #fff;
+}
+
+.va-card-header {
+    padding: 14px;
+    cursor: pointer;
+}
+
+.va-card-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.va-card-title {
+    margin: 0;
+    font-size: 1.05rem;
+}
+
+.va-card-subtitle {
+    font-size: 0.78rem;
+    color: #888;
+}
+
+.va-card-stats {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.va-stat {
+    font-size: 0.82rem;
+    white-space: nowrap;
+}
+
+.va-stat-done { color: #27ae60; }
+.va-stat-pending { color: #e74c3c; }
+.va-stat-qty { color: #f39c12; }
+.va-stat-cost { color: #3498db; }
+
+.va-progress-bar {
+    margin-top: 10px;
+    background: #f0f0f0;
+    border-radius: 6px;
+    height: 8px;
+    overflow: hidden;
+}
+
+.va-progress-fill {
+    height: 100%;
+    transition: width 0.3s;
+}
+
+.va-badges {
+    margin-top: 8px;
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.va-badge {
+    font-size: 0.72rem;
+    padding: 2px 8px;
+    border-radius: 12px;
+}
+
+.va-badge-done { background: #d4edda; color: #155724; }
+.va-badge-progress { background: #fff3cd; color: #856404; }
+.va-badge-patch { background: #cce5ff; color: #004085; }
+.va-badge-pending { background: #f8d7da; color: #721c24; }
+
+.va-expanded {
+    padding: 0 14px 14px;
+    border-top: 1px solid #e0e4e8;
+}
+
+.va-section-title {
+    margin: 12px 0 8px;
+    font-size: 0.9rem;
+    color: #333;
+}
+
+.va-table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.va-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #fff;
+    font-size: 0.82rem;
+    min-width: 500px;
+}
+
+.va-table th,
+.va-table td {
+    border: 1px solid #e0e4e8;
+    padding: 6px 8px;
+    text-align: center;
+    vertical-align: middle;
+}
+
+.va-table th {
+    background: #f8f9fb;
+    font-weight: 600;
+    color: #555;
+}
+
+.va-cell-materials {
+    font-size: 0.78rem;
+    text-align: left;
+}
+
+.va-empty {
+    padding: 12px 0;
+    color: #888;
+    font-size: 0.85rem;
+}
+
+/* Mobile responsive */
+@media (max-width: 600px) {
+    .va-container {
+        padding: 10px;
+    }
+
+    .va-summary-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+    }
+
+    .va-summary-value {
+        font-size: 1.1rem;
+    }
+
+    .va-summary-label {
+        font-size: 0.7rem;
+    }
+
+    .va-card-header {
+        padding: 10px;
+    }
+
+    .va-card-top {
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .va-card-stats {
+        justify-content: flex-start;
+        gap: 8px;
+    }
+
+    .va-stat {
+        font-size: 0.75rem;
+    }
+
+    .va-expanded {
+        padding: 0 10px 10px;
+    }
+
+    .va-table {
+        font-size: 0.75rem;
+    }
+
+    .va-table th,
+    .va-table td {
+        padding: 4px 6px;
+    }
+}
+
+/* Very small screens */
+@media (max-width: 380px) {
+    .va-summary-grid {
+        grid-template-columns: 1fr;
     }
 }

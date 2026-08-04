@@ -2614,7 +2614,6 @@ async function renderPendingView(targetContainer) {
         : [parseInt(pendingFilterFloor)];
 
     // Preload all cell data
-    const flatWorkItems = getFlatWorkItems();
     const workCategories = ensureWorkCategories((currentVenture && currentVenture.work_categories) ? currentVenture.work_categories : WORK_CATEGORIES);
     const requiredKeys = [];
 
@@ -2624,9 +2623,6 @@ async function renderPendingView(targetContainer) {
             flatNumbers.push((floor * 100) + i);
         }
         flatNumbers.forEach(flat => {
-            flatWorkItems.forEach(item => {
-                requiredKeys.push(cacheKey(cellKeyById(currentBlock, floor, flat, item.id)));
-            });
             Object.entries(workCategories).forEach(([category, items]) => {
                 items.forEach(itemObj => {
                     requiredKeys.push(cacheKey(cellKeyById(currentBlock, floor, flat, itemObj.id)));
@@ -2648,23 +2644,6 @@ async function renderPendingView(targetContainer) {
             : [parseInt(pendingFilterFlat)].filter(f => flatNumbers.includes(f));
 
         flatsToCheck.forEach(flat => {
-            // Work items (flat_view_items)
-            flatWorkItems.forEach(item => {
-                const cellId = cellKeyById(currentBlock, floor, flat, item.id);
-                const cellData = cellsCache[cacheKey(cellId)];
-                const color = cellData?.color || 'red';
-                if (color !== 'green') {
-                    rows.push({
-                        floor: floors === 1 ? 'Ground' : `${floorLabels[floor - 1] || floor + 'th'}`,
-                        flat: flat,
-                        workItem: item.label,
-                        status: color,
-                        statusLabel: COLOR_LABELS[color],
-                        category: 'Work View',
-                        cellId: cellId
-                    });
-                }
-            });
             // Work view items
             Object.entries(workCategories).forEach(([category, items]) => {
                 items.forEach(itemObj => {

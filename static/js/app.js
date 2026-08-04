@@ -1,4 +1,17 @@
 // ========================
+// Utility Functions
+// ========================
+
+function togglePasswordVisibility(inputId, eyeEl) {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+    const isHidden = input.type === 'password';
+    input.type = isHidden ? 'text' : 'password';
+    eyeEl.style.opacity = isHidden ? '1' : '0.5';
+    eyeEl.innerHTML = isHidden ? '&#128065;&#65038;' : '&#128065;';
+}
+
+// ========================
 // API Persistence
 // ========================
 
@@ -74,6 +87,7 @@ const SIDEBAR_CONFIG = {
                 items: [
                     { id: 'sidebarDashboard', icon: '\u{1F3D7}\uFE0F', label: 'Dashboard', action: 'tracker' },
                     { id: 'openInventoryBtn', icon: '\u{1F4E6}', label: 'Inventory' },
+                    { id: 'openVentureAnalysisBtn', icon: '\u{1F4CA}', label: 'Venture Analysis' },
                     { id: 'openDayBookBtn', icon: '\u{1F9FE}', label: 'Day Book' },
                 ]
             },
@@ -129,6 +143,7 @@ const SIDEBAR_CONFIG = {
                 items: [
                     { id: 'sidebarDashboard', icon: '\u{1F3D7}\uFE0F', label: 'Dashboard', action: 'tracker' },
                     { id: 'openInventoryBtn', icon: '\u{1F4E6}', label: 'Inventory' },
+                    { id: 'openVentureAnalysisBtn', icon: '\u{1F4CA}', label: 'Venture Analysis' },
                     { id: 'openDayBookBtn', icon: '\u{1F9FE}', label: 'Day Book' },
                 ]
             },
@@ -183,6 +198,7 @@ const SIDEBAR_CONFIG = {
                 items: [
                     { id: 'sidebarDashboard', icon: '\u{1F3D7}\uFE0F', label: 'Dashboard', action: 'tracker' },
                     { id: 'openInventoryBtn', icon: '\u{1F4E6}', label: 'Inventory' },
+                    { id: 'openVentureAnalysisBtn', icon: '\u{1F4CA}', label: 'Venture Analysis' },
                     { id: 'openDayBookBtn', icon: '\u{1F9FE}', label: 'Day Book' },
                 ]
             },
@@ -579,9 +595,8 @@ function navigateTo(hash) {
     if (window.location.hash !== target) {
         ignoreNextHashChange = true;
         window.location.hash = target;
-    } else {
-        saveAppState();
     }
+    saveAppState();
 }
 
 function parseHash(hash) {
@@ -602,6 +617,7 @@ function parseHash(hash) {
     if (parts[0] === 'instant-reports') return { route: 'instant-reports' };
     if (parts[0] === 'inventory-audit') return { route: 'inventory-audit' };
     if (parts[0] === 'design-generator') return { route: 'design-generator' };
+    if (parts[0] === 'venture-analysis') return { route: 'venture-analysis' };
     if (parts[0] === 'venture' && parts[1]) {
         return { route: 'tracker', ventureId: parts[1], block: parts[2], floor: parts[3], view: parts[4] };
     }
@@ -611,15 +627,16 @@ function parseHash(hash) {
 async function applyHashRoute() {
     const saved = loadAppState();
     let hash = window.location.hash;
-    // Admins always land on Overview by default — don't restore last page
-    if (!hash && currentUserRole === 'admin') {
-        hash = '#/overview';
-        ignoreNextHashChange = true;
-        window.location.hash = '#/overview';
-    } else if (!hash && saved.hash) {
+    // Restore the last visited section if the URL has no hash
+    if (!hash && saved.hash) {
         hash = saved.hash;
         ignoreNextHashChange = true;
         window.location.hash = saved.hash;
+    } else if (!hash && currentUserRole === 'admin') {
+        // First visit with no saved state: default admin to overview
+        hash = '#/overview';
+        ignoreNextHashChange = true;
+        window.location.hash = '#/overview';
     }
     const route = parseHash(hash);
 
@@ -649,6 +666,8 @@ async function applyHashRoute() {
     } else if (route.route === 'inventory') {
         if (typeof openInventoryRegisterPanel === 'function') openInventoryRegisterPanel();
         else openInventoryPanel();
+    } else if (route.route === 'venture-analysis') {
+        if (typeof openVentureAnalysisPanel === 'function') openVentureAnalysisPanel();
     } else if (route.route === 'day-book') {
         if (typeof openDayBookPanel === 'function') openDayBookPanel();
     } else if (route.route === 'vendors') {
@@ -805,10 +824,7 @@ function ensureWorkCategories(cats) {
 }
 
 function getFlatWorkItems() {
-    if (currentVenture && currentVenture.flat_view_items) {
-        return ensureItemIds(currentVenture.flat_view_items);
-    }
-    return ensureItemIds(workItems);
+    return [];
 }
 
 function getSuperStructureItems() {
@@ -1164,6 +1180,7 @@ function renderSidebar() {
         'openAttendanceBtn': () => { if (typeof openAttendancePanel === 'function') openAttendancePanel(); },
         'openVendorsBtn': () => { if (typeof openVendorDirPanel === 'function') openVendorDirPanel(); else { const m = document.getElementById('vendorDirModal'); if (m) m.classList.add('show'); } },
         'openInventoryBtn': () => { if (typeof openInventoryRegisterPanel === 'function') openInventoryRegisterPanel(); else if (typeof openInventoryPanel === 'function') openInventoryPanel(); },
+        'openVentureAnalysisBtn': () => { if (typeof openVentureAnalysisPanel === 'function') openVentureAnalysisPanel(); },
         'openDayBookBtn': () => { if (typeof openDayBookPanel === 'function') openDayBookPanel(); },
         'openPOBtn': () => { if (typeof openPOPanel === 'function') openPOPanel(); },
         'openReportsBtn': () => { if (typeof openReportsPanel === 'function') openReportsPanel(); },
