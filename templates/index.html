@@ -10,7 +10,7 @@
     <link rel="icon" href="/static/images/favicon.jpg" type="image/jpeg">
     <link rel="stylesheet" href="/static/css/fonts.css?v=15">
     <link rel="stylesheet" href="/static/css/theme.css?v=15">
-    <link rel="stylesheet" href="/static/css/style.css?v=55">
+    <link rel="stylesheet" href="/static/css/style.css?v=56">
     <style>
         /* Fallback: ensure sidebar is always dark and readable */
         #app #appSidebar.app-sidebar {
@@ -80,7 +80,7 @@
                     <h2>Overview</h2>
                     <p>Complete summary across all your ventures</p>
                 </div>
-                <button id="shareDailyReportBtn" class="whatsapp-share-btn" title="Share daily report on WhatsApp" style="display:none;">
+                <button id="shareDailyReportBtn" class="whatsapp-share-btn" title="Share overview on WhatsApp">
                     <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.521.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.521-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.521.074-.797.372-.273.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.004 5.45-4.439 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.891c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/></svg>
                 </button>
             </div>
@@ -115,7 +115,7 @@
 
             <!-- Actual Content (hidden until data ready) -->
             <div id="overviewContent" style="display:none;">
-                <div class="overview-kpi-row" id="overviewKpiRow"></div>
+                <div id="overviewKpiRow" class="overview-kpi-row"></div>
                 <div class="overview-charts">
                     <div class="overview-chart-card">
                         <h3>Work Status Distribution</h3>
@@ -326,6 +326,13 @@
                 <button id="backFromContractorPayments" class="back-btn">&larr; Back to Ventures</button>
                 <h2 class="invoice-panel-title">Contractor Payments</h2>
                 <input id="cpSearchInput" type="text" placeholder="Search by name or work description..." style="flex:1;max-width:300px;padding:8px 12px;border:1px solid #ccc;border-radius:6px;font-size:0.9rem;">
+                <select id="cpStatusFilter" style="padding:8px 12px;border:1px solid #ccc;border-radius:6px;font-size:0.9rem;background:#fff;">
+                <option value="open">Active &amp; Completed</option>
+                <option value="all">All</option>
+                <option value="active">Active</option>
+                <option value="completed">Completed</option>
+                <option value="cancelled">Cancelled</option>
+            </select>
                 <button id="addContractBtn" class="btn-primary">+ New Contract</button>
             </div>
             <div id="contractorSummaryBar" class="po-outstanding-banner"></div>
@@ -1611,16 +1618,15 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    <script src="/static/js/app.js?v=42"></script>
+    <script src="/static/js/app.js?v=56"></script>
+    <script src="/static/js/features.js?v=1"></script>
     <script src="/static/js/daily_report.js?v=2"></script>
     <script src="/static/js/cells.js?v=35"></script>
     <script src="/static/js/invoices.js?v=20"></script>
     <script src="/static/js/payroll.js?v=27"></script>
     <script src="/static/js/inventory.js?v=32"></script>
     <script src="/static/js/venture_analysis.js?v=3"></script>
-    <script src="/static/js/reports.js?v=25"></script>
-    <script src="/static/js/features.js?v=42"></script>
-    <script src="/static/js/contractor_payments.js?v=3"></script>
+    <script src="/static/js/contractor_payments.js?v=4"></script>
     <script src="/static/js/inventory_purchase.js?v=14"></script>
     <script src="/static/js/inventory_register.js?v=15"></script>
     <script src="/static/js/vendor_directory.js?v=2"></script>
@@ -1630,27 +1636,39 @@
             var sb = document.getElementById('appSidebar');
             var app = document.getElementById('app');
             var main = document.getElementById('appMain');
+            var collapsed = false;
+            try { collapsed = localStorage.getItem('sidebarCollapsed') === '1'; } catch (e) {}
             // Only force sidebar visible on desktop (> 900px)
             if (window.innerWidth > 900) {
                 if (sb) {
-                    sb.classList.remove('collapsed');
                     sb.style.position = 'fixed';
                     sb.style.top = '0';
                     sb.style.left = '0';
                     sb.style.bottom = '0';
-                    sb.style.width = '248px';
                     sb.style.backgroundColor = '#1a1a1a';
                     sb.style.display = 'flex';
                     sb.style.zIndex = '99999';
                     sb.style.visibility = 'visible';
                     sb.style.opacity = '1';
+                    if (collapsed) {
+                        sb.classList.add('collapsed');
+                        sb.style.width = '';
+                    } else {
+                        sb.classList.remove('collapsed');
+                        sb.style.width = '248px';
+                    }
                 }
                 if (app) {
                     app.classList.add('sidebar-open');
                 }
                 if (main) {
-                    main.classList.remove('sidebar-collapsed');
-                    main.style.marginLeft = '248px';
+                    if (collapsed) {
+                        main.classList.add('sidebar-collapsed');
+                        main.style.marginLeft = '';
+                    } else {
+                        main.classList.remove('sidebar-collapsed');
+                        main.style.marginLeft = '248px';
+                    }
                 }
             }
             // Expand all sidebar accordion sections by default

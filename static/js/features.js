@@ -1734,18 +1734,75 @@ async function renderOverviewPage() {
 
     const waBtn = document.getElementById('shareDailyReportBtn');
     if (waBtn) {
-        if (currentUserRole === 'admin' || currentUserRole === 'manager') {
-            waBtn.style.display = '';
-        } else {
-            waBtn.style.display = 'none';
-        }
+        waBtn.style.display = '';
         if (!waBtn._bound) {
-            waBtn.addEventListener('click', shareDailyReport);
+            waBtn.addEventListener('click', shareOverviewWhatsApp);
             waBtn._bound = true;
         }
     }
 
     _overviewRendering = false;
+}
+
+async function shareOverviewWhatsApp() {
+    const btn = document.getElementById('shareDailyReportBtn');
+    if (!btn) return;
+    if (typeof html2canvas !== 'function') {
+        showToast('Image renderer not loaded. Please check your internet connection.', true);
+        return;
+    }
+    btn.disabled = true;
+
+    try {
+        const content = document.getElementById('overviewKpiRow');
+        if (!content) throw new Error('Overview content not found');
+
+        const clone = content.cloneNode(true);
+        clone.style.position = 'fixed';
+        clone.style.top = '-9999px';
+        clone.style.left = '-9999px';
+        clone.style.width = '720px';
+        clone.style.padding = '24px';
+        clone.style.background = '#ffffff';
+        clone.style.boxSizing = 'border-box';
+        clone.style.zIndex = '-1';
+        document.body.appendChild(clone);
+
+        await document.fonts.ready;
+        await new Promise(r => requestAnimationFrame(r));
+
+        const canvas = await html2canvas(clone, {
+            scale: 2,
+            useCORS: true,
+            backgroundColor: '#ffffff',
+            logging: false,
+        });
+        document.body.removeChild(clone);
+
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+        const date = new Date().toISOString().slice(0, 10);
+        const filename = `penguin_os_overview_${date}.png`;
+        const file = new File([blob], filename, { type: 'image/png' });
+        const shareText = `Penguin OS Overview - ${date}`;
+
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+            await navigator.share({ files: [file], title: 'Penguin OS Overview', text: shareText });
+        } else {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+            const waText = encodeURIComponent(shareText + '\n\nDownload the overview image above.');
+            window.open('https://wa.me/?text=' + waText, '_blank');
+        }
+    } catch (err) {
+        console.error('Overview share error:', err);
+        showToast(err.message || 'Could not share overview', true);
+    } finally {
+        btn.disabled = false;
+    }
 }
 
 let homePayrollData = { employees: [], categories: [] };
