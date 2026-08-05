@@ -2005,15 +2005,6 @@ async function openVenture(venture, opts = {}) {
 
     // Update sticky header offset after view renders
     if (window.updateTrackerStickyOffset) window.updateTrackerStickyOffset();
-
-    // Render admin/manager widgets if venture is open
-    const leakageWidget = document.getElementById('materialLeakageWidget');
-    if (leakageWidget && currentUserPermissions.viewMaterialLeakage && currentVenture.id) {
-        leakageWidget.style.display = '';
-        renderMaterialLeakageWidget(leakageWidget, currentVenture.id);
-    } else if (leakageWidget) {
-        leakageWidget.style.display = 'none';
-    }
 }
 
 function exitToDashboard() {
@@ -2026,8 +2017,6 @@ function exitToDashboard() {
     document.getElementById('editModeBtn').style.display = 'none';
     document.getElementById('editModeBanner').style.display = 'none';
     document.body.classList.remove('edit-mode-active');
-    const lw = document.getElementById('materialLeakageWidget');
-    if (lw) lw.style.display = 'none';
     renderVentureDashboard();
     navigateTo('#/ventures');
 }

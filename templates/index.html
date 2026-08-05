@@ -326,12 +326,15 @@
                 <button id="backFromContractorPayments" class="back-btn">&larr; Back to Ventures</button>
                 <h2 class="invoice-panel-title">Contractor Payments</h2>
                 <input id="cpSearchInput" type="text" placeholder="Search by name or work description..." style="flex:1;max-width:300px;padding:8px 12px;border:1px solid #ccc;border-radius:6px;font-size:0.9rem;">
-                <select id="cpStatusFilter" style="padding:8px 12px;border:1px solid #ccc;border-radius:6px;font-size:0.9rem;background:#fff;">
+            <select id="cpStatusFilter" style="padding:8px 12px;border:1px solid #ccc;border-radius:6px;font-size:0.9rem;background:#fff;">
                 <option value="open">Active &amp; Completed</option>
                 <option value="all">All</option>
                 <option value="active">Active</option>
                 <option value="completed">Completed</option>
                 <option value="cancelled">Cancelled</option>
+            </select>
+            <select id="cpVentureFilter" style="padding:8px 12px;border:1px solid #ccc;border-radius:6px;font-size:0.9rem;background:#fff;">
+                <option value="all">All Ventures</option>
             </select>
                 <button id="addContractBtn" class="btn-primary">+ New Contract</button>
             </div>
@@ -506,8 +509,6 @@
             <!-- Payroll View -->
             <div id="payrollViewContainer" style="display:none;"></div>
 
-            <!-- Material Leakage Widget -->
-            <div id="materialLeakageWidget" style="display:none;padding:16px 24px;"></div>
         </div>
 
         </main>
@@ -1619,14 +1620,14 @@
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="/static/js/app.js?v=56"></script>
-    <script src="/static/js/features.js?v=1"></script>
+    <script src="/static/js/features.js?v=2"></script>
     <script src="/static/js/daily_report.js?v=2"></script>
     <script src="/static/js/cells.js?v=35"></script>
     <script src="/static/js/invoices.js?v=20"></script>
     <script src="/static/js/payroll.js?v=27"></script>
     <script src="/static/js/inventory.js?v=32"></script>
     <script src="/static/js/venture_analysis.js?v=3"></script>
-    <script src="/static/js/contractor_payments.js?v=4"></script>
+    <script src="/static/js/contractor_payments.js?v=5"></script>
     <script src="/static/js/inventory_purchase.js?v=14"></script>
     <script src="/static/js/inventory_register.js?v=15"></script>
     <script src="/static/js/vendor_directory.js?v=2"></script>

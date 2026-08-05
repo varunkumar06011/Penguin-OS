@@ -8,8 +8,25 @@ var contractorDetailContract = null;
 var contractorPayments = [];
 var contractorEditingContractId = null;
 var cpSearchQuery = '';
+var cpStatusFilter = 'open';
+var cpVentureFilter = 'all';
 
 // --- Helpers ---
+
+function cpVentureName(ventureId) {
+    if (!ventureId) return '';
+    if (typeof venturesList === 'undefined') return '';
+    var v = venturesList.find(function(x) { return x.id === ventureId; });
+    return v ? v.name : '';
+}
+
+async function cpEnsureVentures() {
+    if (typeof venturesList !== 'undefined' && venturesList.length) return;
+    try {
+        var list = await apiGet('/api/ventures');
+        if (Array.isArray(list)) venturesList = list;
+    } catch (e) {}
+}
 
 function cpFmtMoney(amount) {
     return '\u20B9' + (Number(amount) || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
@@ -48,13 +65,40 @@ function cpStatusClass(status) {
 
 // --- Panel open/close ---
 
+function populateCPVentureFilter() {
+    var sel = document.getElementById('cpVentureFilter');
+    if (!sel) return;
+    var current = sel.value || 'all';
+    sel.innerHTML = '<option value="all">All Ventures</option>';
+    if (typeof venturesList !== 'undefined') {
+        venturesList.forEach(function(v) {
+            var o = document.createElement('option');
+            o.value = v.id;
+            o.textContent = v.name;
+            sel.appendChild(o);
+        });
+    }
+    if (current !== 'all' && typeof venturesList !== 'undefined' && venturesList.some(function(v) { return v.id === current; })) {
+        sel.value = current;
+    } else {
+        sel.value = 'all';
+    }
+}
+
 function openContractorPaymentsPanel() {
     hideAllMainPanels();
     var panel = document.getElementById('contractorPaymentsPanel');
     if (panel) panel.style.display = '';
     cpSearchQuery = '';
+    cpStatusFilter = 'open';
+    cpVentureFilter = 'all';
     var si = document.getElementById('cpSearchInput');
     if (si) si.value = '';
+    var sf = document.getElementById('cpStatusFilter');
+    if (sf) sf.value = 'open';
+    var vf = document.getElementById('cpVentureFilter');
+    if (vf) vf.value = 'all';
+    populateCPVentureFilter();
     loadContractorContracts();
     navigateTo('#/contractor-payments');
 }
@@ -70,6 +114,20 @@ document.addEventListener('DOMContentLoaded', function() {
     if (si) {
         si.addEventListener('input', function() {
             cpSearchQuery = this.value.trim();
+            renderContractorCards();
+        });
+    }
+    var sf = document.getElementById('cpStatusFilter');
+    if (sf) {
+        sf.addEventListener('change', function() {
+            cpStatusFilter = this.value;
+            renderContractorCards();
+        });
+    }
+    var vf = document.getElementById('cpVentureFilter');
+    if (vf) {
+        vf.addEventListener('change', function() {
+            cpVentureFilter = this.value;
             renderContractorCards();
         });
     }
@@ -115,32 +173,50 @@ function renderContractorSummary() {
 function renderContractorCards() {
     var grid = document.getElementById('contractorCardsGrid');
     if (!grid) return;
+    // Filter by status ('open' shows active + completed; cancelled cards are hidden by default)
+    var filtered = contractorContracts.filter(function(c) {
+        var status = c.status || 'active';
+        if (cpStatusFilter === 'all') return true;
+        if (cpStatusFilter === 'open') return status === 'active' || status === 'completed';
+        return status === cpStatusFilter;
+    });
+    // Filter by venture
+    if (cpVentureFilter !== 'all') {
+        filtered = filtered.filter(function(c) {
+            return c.venture_id === cpVentureFilter;
+        });
+    }
     // Filter by search query (name or work description, case-insensitive)
-    var filtered = contractorContracts;
     if (cpSearchQuery) {
         var q = cpSearchQuery.toLowerCase();
-        filtered = contractorContracts.filter(function(c) {
+        filtered = filtered.filter(function(c) {
             return (c.person_name || '').toLowerCase().indexOf(q) !== -1 ||
                    (c.work_description || '').toLowerCase().indexOf(q) !== -1;
         });
     }
     if (!filtered.length) {
-        grid.innerHTML = contractorContracts.length
-            ? '<div class="att-empty" style="padding:32px 0;text-align:center;">No contracts match your search.</div>'
-            : '<div class="att-empty" style="padding:32px 0;text-align:center;">No contracts yet. Click "+ New Contract" to get started.</div>';
+        if (!contractorContracts.length) {
+            grid.innerHTML = '<div class="att-empty" style="padding:32px 0;text-align:center;">No contracts yet. Click "+ New Contract" to get started.</div>';
+        } else {
+            grid.innerHTML = '<div class="att-empty" style="padding:32px 0;text-align:center;">No contracts match the current filter.</div>';
+        }
         return;
     }
     var html = '';
     filtered.forEach(function(c) {
         var statusLabel = c.status === 'active' ? 'Active' : c.status === 'completed' ? 'Completed' : 'Cancelled';
+        var ventureName = cpVentureName(c.venture_id);
         html +=
             '<div class="po-card cp-contract-card" data-contract-id="' + escapeHtml(c.id) + '">' +
                 '<div class="cp-card-header">' +
                     '<div>' +
                         '<div class="cp-card-title">' + escapeHtml(c.person_name) + '</div>' +
-                        '<div class="cp-card-subtitle">' + escapeHtml(c.work_description) + '</div>' +
+                        '<div class="cp-card-subtitle">' + escapeHtml(c.work_description) + (ventureName ? ' &nbsp;·&nbsp; ' + escapeHtml(ventureName) : '') + '</div>' +
                     '</div>' +
-                    '<span class="cp-status ' + cpStatusClass(c.status) + '">' + statusLabel + '</span>' +
+                    '<div class="cp-card-actions" style="display:flex;align-items:center;gap:6px;">' +
+                        '<span class="cp-status ' + cpStatusClass(c.status) + '">' + statusLabel + '</span>' +
+                        (c.status !== 'cancelled' ? '<button class="cp-delete-contract-btn" data-contract-id="' + escapeHtml(c.id) + '" title="Cancel contract">&#128465;</button>' : '') +
+                    '</div>' +
                 '</div>' +
                 '<div class="po-card-financials">' +
                     '<div class="po-fin-row"><span class="po-fin-label">Total</span><span class="po-fin-value">' + cpFmtMoney(c.total_amount) + '</span></div>' +
@@ -167,17 +243,39 @@ function renderContractorCards() {
             openContractDetail(card.dataset.contractId);
         });
     });
+
+    grid.querySelectorAll('.cp-delete-contract-btn').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            cancelContract(btn.dataset.contractId);
+        });
+    });
+}
+
+async function cancelContract(contractId) {
+    var c = contractorContracts.find(function(x) { return x.id === contractId; });
+    if (!c) return;
+    showConfirm('Cancel Contract', 'Cancel "' + escapeHtml(c.person_name) + '"? The payment history will be preserved. This can be reversed from the Cancelled filter.', async function() {
+        try {
+            await apiPost('/api/contractor-contracts/' + encodeURIComponent(c.id) + '/cancel', {});
+            showToast('Contract cancelled');
+            await loadContractorContracts();
+        } catch (e) {
+            showToast(cpParseError(e) || 'Failed to cancel contract', true);
+        }
+    }, null, 'Cancel Contract', true);
 }
 
 // --- New Contract modal ---
 
-function openContractForm() {
+async function openContractForm() {
     contractorEditingContractId = null;
     document.getElementById('contractFormTitle').textContent = 'New Contract';
     ['cpFormName', 'cpFormDesc', 'cpFormAmount', 'cpFormUnits', 'cpFormUnitLabel', 'cpFormNotes'].forEach(function(id) {
         var el = document.getElementById(id);
         if (el) el.value = '';
     });
+    await cpEnsureVentures();
     var ventureSel = document.getElementById('cpFormVenture');
     if (ventureSel) {
         ventureSel.innerHTML = '<option value="">-- None --</option>';
@@ -187,6 +285,11 @@ function openContractForm() {
                 o.value = v.id; o.textContent = v.name;
                 ventureSel.appendChild(o);
             });
+        }
+        if (typeof currentVenture !== 'undefined' && currentVenture && currentVenture.id) {
+            ventureSel.value = currentVenture.id;
+        } else {
+            ventureSel.value = '';
         }
     }
     document.getElementById('contractFormModal').classList.add('show');
