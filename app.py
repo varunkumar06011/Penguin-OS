@@ -106,37 +106,37 @@ class GzipMiddleware:
     def __call__(self, environ, start_response):
         if 'gzip' not in environ.get('HTTP_ACCEPT_ENCODING', ''):
             return self.app(environ, start_response)
-        status, headers, body = self._get_response(environ, start_response)
-        if not self._should_gzip(status, headers, body):
-            return self.app(environ, start_response)
-        compressed = self._gzip(body)
-        if len(compressed) >= len(body):
-            return self.app(environ, start_response)
-        headers = [(k, v) for k, v in headers if k.lower() not in ('content-length', 'content-encoding')]
-        headers.append(('Content-Encoding', 'gzip'))
-        headers.append(('Content-Length', str(len(compressed))))
-        def new_start_response(status, headers, exc_info=None):
-            return start_response(status, headers, exc_info)
-        return [compressed]
 
-    def _get_response(self, environ, start_response):
-        response = self.app(environ, lambda s, h: None)
-        body = b''.join(response)
-        return '200 OK', [], body
+        # Buffer the response to check size before deciding to gzip
+        captured = {}
+        def capture_start_response(status, headers, exc_info=None):
+            captured['status'] = status
+            captured['headers'] = headers
+            return lambda data: None
 
-    def _should_gzip(self, status, headers, body):
-        if not status.startswith('200'):
-            return False
-        if len(body) < self.minimum_size:
-            return False
-        return True
+        body = b''.join(self.app(environ, capture_start_response))
+        status = captured.get('status', '200 OK')
+        headers = captured.get('headers', [])
 
-    def _gzip(self, data):
+        if not status.startswith('200') or len(body) < self.minimum_size:
+            start_response(status, headers)
+            return [body]
+
         import gzip
         buf = io.BytesIO()
         with gzip.GzipFile(fileobj=buf, mode='wb') as f:
-            f.write(data)
-        return buf.getvalue()
+            f.write(body)
+        compressed = buf.getvalue()
+
+        if len(compressed) >= len(body):
+            start_response(status, headers)
+            return [body]
+
+        headers = [(k, v) for k, v in headers if k.lower() not in ('content-length', 'content-encoding')]
+        headers.append(('Content-Encoding', 'gzip'))
+        headers.append(('Content-Length', str(len(compressed))))
+        start_response(status, headers)
+        return [compressed]
 
 app.wsgi_app = GzipMiddleware(app.wsgi_app)
 
