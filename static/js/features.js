@@ -72,10 +72,22 @@ function renderWorkCategoriesSettings() {
         const li = document.createElement('li');
         li.draggable = true;
         li.dataset.index = index;
+        li.dataset.category = category;
+        li.style.flexDirection = 'column';
+        li.style.alignItems = 'stretch';
+
+        // --- Category header row (drag to reorder categories) ---
+        const catRow = document.createElement('div');
+        catRow.style.cssText = 'display:flex;align-items:center;gap:8px;width:100%;';
 
         const handle = document.createElement('span');
         handle.className = 'drag-handle';
         handle.textContent = '≡';
+
+        const toggle = document.createElement('span');
+        toggle.className = 'work-cat-toggle';
+        toggle.textContent = '\u25B6';
+        toggle.style.cssText = 'cursor:pointer;font-size:0.7rem;color:#999;user-select:none;width:14px;';
 
         const nameSpan = document.createElement('span');
         nameSpan.className = 'work-item-name';
@@ -102,11 +114,183 @@ function renderWorkCategoriesSettings() {
             showConfirm('Delete Category', `Delete '${category}' and all its items?`, () => deleteWorkCategory(category), null, 'Delete', true);
         });
 
-        li.appendChild(handle);
-        li.appendChild(nameSpan);
-        li.appendChild(remove);
+        catRow.appendChild(handle);
+        catRow.appendChild(toggle);
+        catRow.appendChild(nameSpan);
+        catRow.appendChild(remove);
+        li.appendChild(catRow);
+
+        // --- Items sub-list (collapsible, drag to reorder items) ---
+        const items = cats[category] || [];
+        const subList = document.createElement('ul');
+        subList.className = 'work-cat-items-list';
+        subList.style.cssText = 'display:none;list-style:none;margin:4px 0 4px 28px;padding:0;width:calc(100% - 28px);';
+
+        items.forEach((item, itemIdx) => {
+            const itemLi = document.createElement('li');
+            itemLi.draggable = true;
+            itemLi.dataset.itemId = item.id;
+            itemLi.dataset.itemIndex = itemIdx;
+            itemLi.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px 10px;border-bottom:1px solid #f0f2f5;background:#f9fafb;cursor:grab;';
+
+            const itemHandle = document.createElement('span');
+            itemHandle.className = 'drag-handle';
+            itemHandle.textContent = '≡';
+            itemHandle.style.fontSize = '0.85rem';
+
+            const itemName = document.createElement('span');
+            itemName.className = 'work-item-name';
+            itemName.contentEditable = true;
+            itemName.textContent = item.label;
+            itemName.style.fontSize = '0.82rem';
+            itemName.addEventListener('blur', () => {
+                const newLabel = itemName.textContent.trim();
+                if (newLabel && newLabel !== item.label) {
+                    renameWorkItem(category, item.id, newLabel);
+                }
+            });
+            itemName.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') { e.preventDefault(); itemName.blur(); }
+            });
+
+            const itemRemove = document.createElement('button');
+            itemRemove.className = 'remove-btn';
+            itemRemove.innerHTML = '&times;';
+            itemRemove.title = 'Remove item';
+            itemRemove.style.fontSize = '0.8rem';
+            itemRemove.addEventListener('click', () => {
+                deleteWorkItem(category, item.id);
+            });
+
+            itemLi.appendChild(itemHandle);
+            itemLi.appendChild(itemName);
+            itemLi.appendChild(itemRemove);
+            subList.appendChild(itemLi);
+
+            // Drag-and-drop for items within this category
+            itemLi.addEventListener('dragstart', () => itemLi.classList.add('dragging'));
+            itemLi.addEventListener('dragend', () => {
+                itemLi.classList.remove('dragging');
+                syncWorkCategoryItemsFromDOM(category, subList);
+            });
+            itemLi.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                const dragging = subList.querySelector('.dragging');
+                if (!dragging || dragging === itemLi) return;
+                const siblings = [...subList.querySelectorAll('li:not(.dragging)')];
+                const next = siblings.find(s => {
+                    const rect = s.getBoundingClientRect();
+                    return e.clientY <= rect.top + rect.height / 2;
+                });
+                subList.insertBefore(dragging, next || null);
+            });
+        });
+
+        // "Add item" row at the bottom of the sub-list
+        const addItemRow = document.createElement('div');
+        addItemRow.style.cssText = 'display:flex;gap:6px;padding:6px 10px;align-items:center;';
+        const addItemInput = document.createElement('input');
+        addItemInput.type = 'text';
+        addItemInput.placeholder = '+ Add work description...';
+        addItemInput.style.cssText = 'flex:1;padding:4px 8px;font-size:0.8rem;border:1px solid #ddd;border-radius:4px;';
+        const addItemBtn = document.createElement('button');
+        addItemBtn.textContent = 'Add';
+        addItemBtn.className = 'btn-secondary';
+        addItemBtn.style.cssText = 'padding:4px 10px;font-size:0.78rem;';
+        const doAdd = () => {
+            const val = addItemInput.value.trim();
+            if (val) {
+                addWorkItemToCategory(category, val);
+                addItemInput.value = '';
+            }
+        };
+        addItemBtn.addEventListener('click', doAdd);
+        addItemInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doAdd(); });
+        addItemRow.appendChild(addItemInput);
+        addItemRow.appendChild(addItemBtn);
+        subList.appendChild(addItemRow);
+
+        li.appendChild(subList);
+
+        // Toggle expand/collapse
+        toggle.addEventListener('click', () => {
+            const isExpanded = subList.style.display !== 'none';
+            subList.style.display = isExpanded ? 'none' : '';
+            toggle.textContent = isExpanded ? '\u25B6' : '\u25BC';
+        });
+
+        // Prevent category drag from triggering when interacting with items
+        subList.addEventListener('dragstart', (e) => e.stopPropagation());
+
         list.appendChild(li);
     });
+}
+
+// Sync reordered items from DOM into currentVenture.work_categories
+function syncWorkCategoryItemsFromDOM(category, subList) {
+    const cats = ensureWorkCategories(currentVenture && currentVenture.work_categories ? currentVenture.work_categories : WORK_CATEGORIES);
+    if (!cats[category]) return;
+    const newItems = [];
+    subList.querySelectorAll('li').forEach(row => {
+        const nameSpan = row.querySelector('.work-item-name');
+        const label = nameSpan ? nameSpan.textContent.trim() : '';
+        if (!label) return;
+        const itemId = row.dataset.itemId;
+        if (itemId) {
+            newItems.push({ id: itemId, label });
+        } else {
+            newItems.push({ id: `item_${slugId(category)}_${slugId(label)}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label });
+        }
+    });
+    cats[category] = newItems;
+    if (currentVenture) {
+        currentVenture.work_categories = cats;
+    }
+}
+
+// Add a new work item to a category
+async function addWorkItemToCategory(category, label) {
+    const cats = ensureWorkCategories(currentVenture && currentVenture.work_categories ? currentVenture.work_categories : WORK_CATEGORIES);
+    if (!cats[category]) return;
+    const newItem = { id: `item_${slugId(category)}_${slugId(label)}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label };
+    cats[category].push(newItem);
+    if (currentVenture) {
+        currentVenture.work_categories = cats;
+    }
+    renderWorkCategoriesSettings();
+    // Re-expand the category that was being edited
+    setTimeout(() => {
+        const list = document.getElementById('workCategoriesList');
+        if (list) {
+            const catLi = [...list.querySelectorAll('li')].find(li => li.dataset.category === category);
+            if (catLi) {
+                const toggle = catLi.querySelector('.work-cat-toggle');
+                if (toggle && toggle.textContent === '\u25B6') toggle.click();
+            }
+        }
+    }, 10);
+}
+
+// Delete a work item from a category
+async function deleteWorkItem(category, itemId) {
+    const cats = ensureWorkCategories(currentVenture && currentVenture.work_categories ? currentVenture.work_categories : WORK_CATEGORIES);
+    if (!cats[category]) return;
+    cats[category] = cats[category].filter(i => i.id !== itemId);
+    if (currentVenture) {
+        currentVenture.work_categories = cats;
+    }
+    renderWorkCategoriesSettings();
+    // Re-expand the category
+    setTimeout(() => {
+        const list = document.getElementById('workCategoriesList');
+        if (list) {
+            const catLi = [...list.querySelectorAll('li')].find(li => li.dataset.category === category);
+            if (catLi) {
+                const toggle = catLi.querySelector('.work-cat-toggle');
+                if (toggle && toggle.textContent === '\u25B6') toggle.click();
+            }
+        }
+    }, 10);
 }
 
 function openSettingsModal() {
@@ -589,7 +773,7 @@ function collectSettingsFromModal() {
         settings.super_structure_items = superItems;
     }
 
-    // Work Categories — collect from DOM to capture reorders
+    // Work Categories — collect from DOM to capture category reorders AND item reorders
     const catList = document.getElementById('workCategoriesList');
     if (catList) {
         const orderedCats = {};
@@ -597,7 +781,24 @@ function collectSettingsFromModal() {
         catList.querySelectorAll('li').forEach(row => {
             const nameSpan = row.querySelector('.work-item-name');
             const catName = nameSpan.textContent.trim();
-            if (catName && cats[catName]) {
+            if (!catName) return;
+            // Collect items from the sub-list in DOM order
+            const subList = row.querySelector('.work-cat-items-list');
+            if (subList && cats[catName]) {
+                const orderedItems = [];
+                subList.querySelectorAll('li').forEach(itemRow => {
+                    const itemSpan = itemRow.querySelector('.work-item-name');
+                    const label = itemSpan ? itemSpan.textContent.trim() : '';
+                    if (!label) return;
+                    const itemId = itemRow.dataset.itemId;
+                    if (itemId) {
+                        orderedItems.push({ id: itemId, label });
+                    } else {
+                        orderedItems.push({ id: `item_${slugId(catName)}_${slugId(label)}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label });
+                    }
+                });
+                orderedCats[catName] = orderedItems.length > 0 ? orderedItems : cats[catName];
+            } else if (cats[catName]) {
                 orderedCats[catName] = cats[catName];
             }
         });
@@ -2302,7 +2503,7 @@ function hideAllMainPanels() {
 function openInstantReportsPanel() {
     hideAllMainPanels();
     document.getElementById('instantReportsPanel').style.display = '';
-    renderInstantReports();
+    if (typeof renderInstantReports === 'function') renderInstantReports();
     navigateTo('#/instant-reports');
 }
 

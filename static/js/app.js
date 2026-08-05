@@ -1274,7 +1274,7 @@ let pollInterval = null;
 
 function startPolling() {
     if (pollInterval) clearInterval(pollInterval);
-    pollInterval = setInterval(pollData, 15000);
+    pollInterval = setInterval(pollData, 10000);
 }
 
 function patchCellsInDOM(changedKeys) {
@@ -1405,8 +1405,8 @@ async function pollData() {
     // Ventures — always poll
     tasks.push({ key: 'ventures', fn: () => apiGet('/api/ventures') });
 
-    // Categories — only if invoices panel visible and loaded
-    if (invoicesVisible && _categoriesLoaded) {
+    // Categories — always poll if loaded (so new categories from admin replicate to all devices)
+    if (_categoriesLoaded) {
         tasks.push({ key: 'categories', fn: () => apiGet('/api/settings/invoice_categories') });
     }
 
@@ -1462,7 +1462,23 @@ async function pollData() {
         if (JSON.stringify(fresh) !== JSON.stringify(allCategories)) {
             allCategories = fresh;
             changed = true;
-            renderInvoiceCards();
+            // Update filter dropdown if invoices panel is open
+            if (invoicesVisible) {
+                renderInvoiceCards();
+                if (typeof populateInvoiceFilterCategories === 'function') {
+                    populateInvoiceFilterCategories();
+                }
+            }
+            // Update datalist for invoice form
+            const dl = document.getElementById('invoiceCategoryList');
+            if (dl) {
+                dl.innerHTML = '';
+                allCategories.forEach(c => {
+                    const opt = document.createElement('option');
+                    opt.value = c;
+                    dl.appendChild(opt);
+                });
+            }
         }
     }
 
@@ -1512,10 +1528,22 @@ async function pollData() {
         let cellsChanged = false;
         const changedKeys = [];
         for (const key in fresh) {
-            if (JSON.stringify(cellsCache[key]) !== JSON.stringify(fresh[key])) {
-                cellsCache[key] = fresh[key];
+            const oldCell = cellsCache[key];
+            const newCell = fresh[key];
+            if (!oldCell || oldCell.__notFound) {
+                cellsCache[key] = newCell;
                 changedKeys.push(key);
                 cellsChanged = true;
+            } else {
+                // Shallow comparison of key fields instead of full JSON.stringify
+                if (oldCell.color !== newCell.color ||
+                    oldCell.remarks !== newCell.remarks ||
+                    (oldCell.remarkImages?.length || 0) !== (newCell.remarkImages?.length || 0) ||
+                    oldCell.updated_at !== newCell.updated_at) {
+                    cellsCache[key] = newCell;
+                    changedKeys.push(key);
+                    cellsChanged = true;
+                }
             }
         }
         const freshKeys = new Set(Object.keys(fresh));
@@ -1532,10 +1560,8 @@ async function pollData() {
             changed = true;
             if (overviewVisible) {
                 if (typeof renderOverviewPage === 'function') renderOverviewPage();
-            } else if (currentView === 'work') {
-                renderWorkView();
-            } else if (currentView === 'super') {
-                renderSuperStructure();
+            } else if (currentView === 'work' || currentView === 'super') {
+                patchCellsInDOM(changedKeys);
             } else if (currentView === 'pending') {
                 await renderPendingView();
             }
@@ -1661,12 +1687,17 @@ function initSidebarToggle() {
     }
 
     if (sidebarToggle && app) {
-        sidebarToggle.addEventListener('click', () => {
+        sidebarToggle.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('[sidebar] hamburger clicked', { isOpen: app.classList.contains('sidebar-open') });
             app.classList.add('sidebar-open');
-            // Ensure sidebar is visible (override any inline display:none)
-            if (appSidebar) {
-                appSidebar.style.display = 'flex';
-            }
+        });
+        sidebarToggle.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('[sidebar] hamburger touchend');
+            app.classList.add('sidebar-open');
         });
     }
     if (sidebarScrim && app) {

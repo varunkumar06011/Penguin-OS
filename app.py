@@ -1360,14 +1360,10 @@ def api_cells():
             if len(res.data) < page_size:
                 break
             offset += page_size
-        # Defensive sort: most recent updated_at wins if duplicates still exist pre-migration
-        # Skip sort when single-page to reduce latency
-        if len(all_rows) > 1:
-            sorted_rows = sorted(all_rows, key=lambda r: (r.get('data') or {}).get('updated_at', ''), reverse=True)
-        else:
-            sorted_rows = all_rows
+        # Build response dict — migration 001 added UNIQUE constraint on id,
+        # so no duplicates. Skip Python-side sort for performance.
         data = {}
-        for row in sorted_rows:
+        for row in all_rows:
             merged = {**(row.get('data') or {})}
             merged['id'] = row['id']
             data[row['id']] = merged

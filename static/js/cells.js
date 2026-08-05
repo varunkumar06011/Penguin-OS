@@ -71,31 +71,11 @@ async function ensureCellsInCache(requiredKeys) {
         if (allCells) {
             Object.assign(cellsCache, allCells);
         }
-        // Fallback: if filtered query missed some keys (pre-backfill rows lack
-        // venture_id/block/floor in data JSON), fetch those individually by cell ID.
-        // Skip individual fetches if we already bulk-loaded all cells via overview.
+        // Any still-missing keys simply don't exist in DB — mark as not found.
+        // (Previous code fetched each missing key individually, causing 100+ sequential
+        //  API calls and multi-minute load times.)
         const stillMissing = requiredKeys.filter(k => cellsCache[k] === undefined);
-        if (stillMissing.length > 0 && !_allCellsBulkLoaded) {
-            // Limit concurrency to avoid ERR_NO_BUFFER_SPACE
-            const BATCH_SIZE = 10;
-            for (let i = 0; i < stillMissing.length; i += BATCH_SIZE) {
-                const batch = stillMissing.slice(i, i + BATCH_SIZE);
-                await Promise.all(batch.map(ck =>
-                    apiGet('/api/cell/' + encodeURIComponent(ck))
-                        .then(cellData => {
-                            if (cellData && Object.keys(cellData).length > 0) {
-                                cellsCache[ck] = cellData;
-                            } else {
-                                cellsCache[ck] = CELL_NOT_FOUND;
-                            }
-                        })
-                        .catch(() => { cellsCache[ck] = CELL_NOT_FOUND; })
-                ));
-            }
-        } else if (stillMissing.length > 0) {
-            // All cells were bulk-loaded; remaining keys simply don't exist in DB
-            stillMissing.forEach(ck => { cellsCache[ck] = CELL_NOT_FOUND; });
-        }
+        stillMissing.forEach(ck => { cellsCache[ck] = CELL_NOT_FOUND; });
     } catch (e) {
         console.error('Failed to bulk load cells:', e);
     }
@@ -267,7 +247,7 @@ async function saveCellRemarks(cellId, remarks, images) {
         inFlightSaves++;
         await apiPost('/api/cell/' + encodeURIComponent(ck), data);
         cellsCache[ck] = data;
-        if (currentView === 'work') await renderWorkView();
+        if (currentView === 'work') await renderWorkView(true);
         else if (currentView === 'super') await renderSuperStructure();
         showToast('Remarks saved');
     } catch (err) {
@@ -385,8 +365,18 @@ function isMobileView() {
 
 var mobileSelectedFlat = null;
 
-async function renderWorkView() {
+async function renderWorkView(force) {
     const container = document.getElementById('workViewContainer');
+
+    // Check if we can reuse existing DOM (same venture/block/floor/editMode)
+    const renderKey = `${currentVenture?.id}_${currentBlock}_${currentFloor}_${editMode}`;
+    if (!force && container._renderKey === renderKey && container._rendered && !editMode) {
+        container.style.display = '';
+        return; // DOM already built for this context — just show it
+    }
+    container._renderKey = renderKey;
+    container._rendered = true;
+
     container.style.display = '';
     container.innerHTML = '';
     container.className = 'work-view-container';
@@ -2154,7 +2144,7 @@ document.getElementById('editModeBtn').addEventListener('click', () => {
         banner.style.display = 'none';
         document.body.classList.remove('edit-mode-active');
     }
-    if (currentView === 'work') renderWorkView();
+    if (currentView === 'work') renderWorkView(true);
     else renderSuperStructure();
 });
 
@@ -2288,7 +2278,7 @@ async function renameFlatItem(itemId, newLabel) {
     currentVenture.flat_view_items = items;
     await logEdit('rename', 'flat_view', itemId, old, newLabel);
     await saveVentureConfig();
-    renderWorkView();
+    renderWorkView(true);
 }
 
 async function addFlatItem(label) {
@@ -2298,7 +2288,7 @@ async function addFlatItem(label) {
     currentVenture.flat_view_items = items;
     await logEdit('add', 'flat_view', newId, null, label);
     await saveVentureConfig();
-    renderWorkView();
+    renderWorkView(true);
 }
 
 async function archiveFlatItem(itemId) {
@@ -2307,7 +2297,7 @@ async function archiveFlatItem(itemId) {
     currentVenture.archived = archivedItems;
     await logEdit('delete', 'flat_view', itemId, null, null);
     await saveVentureConfig();
-    renderWorkView();
+    renderWorkView(true);
 }
 
 async function restoreFlatItem(itemId) {
@@ -2315,7 +2305,7 @@ async function restoreFlatItem(itemId) {
     currentVenture.archived = archivedItems;
     await logEdit('restore', 'flat_view', itemId, null, null);
     await saveVentureConfig();
-    renderWorkView();
+    renderWorkView(true);
 }
 
 async function reorderFlatItem(itemId, direction) {
@@ -2343,7 +2333,7 @@ async function renameWorkCategory(oldName, newName) {
     currentVenture.work_categories = cats;
     await logEdit('rename', 'work_category', oldName, oldName, newName);
     await saveVentureConfig();
-    renderWorkView();
+    renderWorkView(true);
 }
 
 async function renameWorkItem(category, itemId, newLabel) {
@@ -2365,7 +2355,7 @@ async function renameWorkItem(category, itemId, newLabel) {
 
     await logEdit('rename', 'work_item', itemId, old, newLabel);
     await saveVentureConfig();
-    renderWorkView();
+    renderWorkView(true);
 }
 
 async function addWorkItem(category, label, applyAll) {
@@ -2396,7 +2386,7 @@ async function addWorkItem(category, label, applyAll) {
             showToast('Saved here, but failed to apply to all ventures: ' + (err.message || ''), true);
         }
     }
-    renderWorkView();
+    renderWorkView(true);
 }
 
 async function addWorkCategory(categoryName) {
@@ -2412,7 +2402,7 @@ async function addWorkCategory(categoryName) {
     if (currentVenture.id) {
         try { await apiPost('/api/category', { venture_id: currentVenture.id, name: categoryName }); } catch (e) {}
     }
-    renderWorkView();
+    renderWorkView(true);
 }
 
 async function deleteWorkCategory(categoryName) {
@@ -2421,7 +2411,7 @@ async function deleteWorkCategory(categoryName) {
     currentVenture.work_categories = cats;
     await logEdit('delete', 'work_category', categoryName, null, null);
     await saveVentureConfig();
-    renderWorkView();
+    renderWorkView(true);
 }
 
 async function deleteWorkItem(category, itemId) {
@@ -2430,7 +2420,7 @@ async function deleteWorkItem(category, itemId) {
     currentVenture.work_categories = cats;
     await logEdit('delete', 'work_item', itemId, null, null);
     await saveVentureConfig();
-    renderWorkView();
+    renderWorkView(true);
 }
 
 async function reorderWorkItem(category, itemId, direction) {
