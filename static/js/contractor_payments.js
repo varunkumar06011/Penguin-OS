@@ -161,6 +161,7 @@ function renderContractorSummary() {
         totalPaid += c.total_paid || 0;
         totalOutstanding += c.outstanding_amount || 0;
     });
+    el.className = 'cp-summary-bar';
     el.innerHTML =
         '<div class="cp-summary-card"><span class="cp-summary-label">Total Contracts</span><span class="cp-summary-value">' + totalContracts + '</span></div>' +
         '<div class="cp-summary-card"><span class="cp-summary-label">Total Contract Value</span><span class="cp-summary-value">' + cpFmtMoney(totalValue) + '</span></div>' +
@@ -218,21 +219,25 @@ function renderContractorCards() {
                         (c.status !== 'cancelled' ? '<button class="cp-delete-contract-btn" data-contract-id="' + escapeHtml(c.id) + '" title="Cancel contract">&#128465;</button>' : '') +
                     '</div>' +
                 '</div>' +
-                '<div class="po-card-financials">' +
-                    '<div class="po-fin-row"><span class="po-fin-label">Total</span><span class="po-fin-value">' + cpFmtMoney(c.total_amount) + '</span></div>' +
-                    '<div class="po-fin-row"><span class="po-fin-label">Paid</span><span class="po-fin-value po-fin-paid">' + cpFmtMoney(c.total_paid) + '</span></div>' +
-                    '<div class="po-fin-row"><span class="po-fin-label">Outstanding</span><span class="po-fin-value ' + (c.outstanding_amount > 0 ? 'po-fin-outstanding' : (c.overpaid_amount > 0 ? 'po-fin-outstanding' : 'po-fin-clear')) + '">' + (c.outstanding_amount > 0 ? cpFmtMoney(c.outstanding_amount) : (c.overpaid_amount > 0 ? 'Overpaid by ' + cpFmtMoney(c.overpaid_amount) : '&#10003; Clear')) + '</span></div>' +
+                '<div class="cp-card-financials">' +
+                    '<div class="cp-fin-cell"><span class="cp-fin-label">Total</span><span class="cp-fin-value">' + cpFmtMoney(c.total_amount) + '</span></div>' +
+                    '<div class="cp-fin-cell"><span class="cp-fin-label">Paid</span><span class="cp-fin-value po-fin-paid">' + cpFmtMoney(c.total_paid) + '</span></div>' +
+                    '<div class="cp-fin-cell"><span class="cp-fin-label">Outstanding</span><span class="cp-fin-value ' + (c.outstanding_amount > 0 ? 'po-fin-outstanding' : (c.overpaid_amount > 0 ? 'po-fin-outstanding' : 'po-fin-clear')) + '">' + (c.outstanding_amount > 0 ? cpFmtMoney(c.outstanding_amount) : (c.overpaid_amount > 0 ? '<span class="cp-fin-suffix">Overpaid by ' + cpFmtMoney(c.overpaid_amount) + '</span>' : '&#10003; Clear')) + '</span></div>' +
                 '</div>' +
                 '<div class="cp-progress-section">' +
-                    '<div class="cp-progress-row"><span class="cp-progress-label">Work Progress</span><span class="cp-progress-detail">' + c.completed_units + '/' + c.total_units + ' ' + escapeHtml(c.unit_label) + '</span></div>' +
-                    cpProgressBar(c.work_progress) +
-                    '<div class="cp-progress-row" style="margin-top:10px;"><span class="cp-progress-label">Payment Progress</span><span class="cp-progress-detail">' + cpFmtMoney(c.total_paid) + ' / ' + cpFmtMoney(c.total_amount) + '</span></div>' +
-                    cpProgressBar(c.payment_progress) +
+                    '<div class="cp-progress-block">' +
+                        '<div class="cp-progress-row"><span class="cp-progress-label">Work Progress</span><span class="cp-progress-detail">' + c.completed_units + '/' + c.total_units + ' ' + escapeHtml(c.unit_label) + '</span></div>' +
+                        cpProgressBar(c.work_progress) +
+                    '</div>' +
+                    '<div class="cp-progress-block">' +
+                        '<div class="cp-progress-row"><span class="cp-progress-label">Payment Progress</span><span class="cp-progress-detail">' + cpFmtMoney(c.total_paid) + ' / ' + cpFmtMoney(c.total_amount) + '</span></div>' +
+                        cpProgressBar(c.payment_progress) +
+                    '</div>' +
                 '</div>' +
                 cpRiskBadge(c.risk_delta) +
                 '<div class="cp-card-footer">' +
-                    '<span class="po-fin-label">Per ' + escapeHtml(c.unit_label || 'unit') + ': ' + cpFmtMoney(c.per_unit_rate) + '</span>' +
-                    '<span class="po-fin-label">Remaining: ' + c.remaining_units + ' ' + escapeHtml(c.unit_label) + '</span>' +
+                    '<span>Per ' + escapeHtml(c.unit_label || 'unit') + ': ' + cpFmtMoney(c.per_unit_rate) + '</span>' +
+                    '<span>Remaining: ' + c.remaining_units + ' ' + escapeHtml(c.unit_label) + '</span>' +
                 '</div>' +
             '</div>';
     });
@@ -355,16 +360,20 @@ async function openContractDetail(contractId) {
     var summaryEl = document.getElementById('contractDetailSummary');
     if (summaryEl) {
         summaryEl.innerHTML =
-            '<div class="po-card-financials">' +
-                '<div class="po-fin-row"><span class="po-fin-label">Total</span><span class="po-fin-value">' + cpFmtMoney(c.total_amount) + '</span></div>' +
-                '<div class="po-fin-row"><span class="po-fin-label">Paid</span><span class="po-fin-value po-fin-paid">' + cpFmtMoney(c.total_paid) + '</span></div>' +
-                '<div class="po-fin-row"><span class="po-fin-label">Outstanding</span><span class="po-fin-value ' + (c.outstanding_amount > 0 ? 'po-fin-outstanding' : (c.overpaid_amount > 0 ? 'po-fin-outstanding' : 'po-fin-clear')) + '">' + (c.outstanding_amount > 0 ? cpFmtMoney(c.outstanding_amount) : (c.overpaid_amount > 0 ? 'Overpaid by ' + cpFmtMoney(c.overpaid_amount) : '&#10003; Clear')) + '</span></div>' +
+            '<div class="cp-card-financials">' +
+                '<div class="cp-fin-cell"><span class="cp-fin-label">Total</span><span class="cp-fin-value">' + cpFmtMoney(c.total_amount) + '</span></div>' +
+                '<div class="cp-fin-cell"><span class="cp-fin-label">Paid</span><span class="cp-fin-value po-fin-paid">' + cpFmtMoney(c.total_paid) + '</span></div>' +
+                '<div class="cp-fin-cell"><span class="cp-fin-label">Outstanding</span><span class="cp-fin-value ' + (c.outstanding_amount > 0 ? 'po-fin-outstanding' : (c.overpaid_amount > 0 ? 'po-fin-outstanding' : 'po-fin-clear')) + '">' + (c.outstanding_amount > 0 ? cpFmtMoney(c.outstanding_amount) : (c.overpaid_amount > 0 ? '<span class="cp-fin-suffix">Overpaid by ' + cpFmtMoney(c.overpaid_amount) + '</span>' : '&#10003; Clear')) + '</span></div>' +
             '</div>' +
             '<div class="cp-progress-section" style="margin-top:12px;">' +
-                '<div class="cp-progress-row"><span class="cp-progress-label">Work Progress</span><span class="cp-progress-detail">' + c.completed_units + '/' + c.total_units + ' ' + escapeHtml(c.unit_label) + '</span></div>' +
-                cpProgressBar(c.work_progress) +
-                '<div class="cp-progress-row" style="margin-top:10px;"><span class="cp-progress-label">Payment Progress</span><span class="cp-progress-detail">' + cpFmtMoney(c.total_paid) + ' / ' + cpFmtMoney(c.total_amount) + '</span></div>' +
-                cpProgressBar(c.payment_progress) +
+                '<div class="cp-progress-block">' +
+                    '<div class="cp-progress-row"><span class="cp-progress-label">Work Progress</span><span class="cp-progress-detail">' + c.completed_units + '/' + c.total_units + ' ' + escapeHtml(c.unit_label) + '</span></div>' +
+                    cpProgressBar(c.work_progress) +
+                '</div>' +
+                '<div class="cp-progress-block">' +
+                    '<div class="cp-progress-row"><span class="cp-progress-label">Payment Progress</span><span class="cp-progress-detail">' + cpFmtMoney(c.total_paid) + ' / ' + cpFmtMoney(c.total_amount) + '</span></div>' +
+                    cpProgressBar(c.payment_progress) +
+                '</div>' +
             '</div>' +
             cpRiskBadge(c.risk_delta);
     }
@@ -494,16 +503,16 @@ function renderContractPayments() {
         el.innerHTML = '<div class="att-empty" style="padding:16px 0;">No payments recorded yet.</div>';
         return;
     }
-    var html = '<table class="po-table"><thead><tr><th>Date</th><th>Amount</th><th>Method</th><th>Reference</th><th>Notes</th><th>Recorded By</th><th></th></tr></thead><tbody>';
+    var html = '<table class="cp-detail-table"><thead><tr><th class="cp-date-cell">Date</th><th class="cp-amt-cell">Amount</th><th>Method</th><th>Reference</th><th>Notes</th><th>Recorded By</th><th></th></tr></thead><tbody>';
     contractorPayments.forEach(function(p) {
         html += '<tr>' +
-            '<td>' + escapeHtml(p.payment_date) + '</td>' +
-            '<td class="po-fin-paid">' + cpFmtMoney(p.amount) + '</td>' +
+            '<td class="cp-date-cell">' + escapeHtml(p.payment_date) + '</td>' +
+            '<td class="cp-amt-cell po-fin-paid">' + cpFmtMoney(p.amount) + '</td>' +
             '<td>' + escapeHtml(p.method) + '</td>' +
             '<td>' + escapeHtml(p.reference || '\u2014') + '</td>' +
             '<td>' + escapeHtml(p.notes || '\u2014') + '</td>' +
             '<td>' + escapeHtml(p.recorded_by || '\u2014') + '</td>' +
-            '<td><button class="btn-text cp-delete-pay-btn" data-pay-id="' + escapeHtml(p.id) + '" style="color:#c0392b;font-size:0.75rem;">Delete</button></td>' +
+            '<td><button class="btn-text cp-delete-pay-btn" data-pay-id="' + escapeHtml(p.id) + '" style="color:#dc2626;font-size:0.75rem;">Delete</button></td>' +
         '</tr>';
     });
     html += '</tbody></table>';

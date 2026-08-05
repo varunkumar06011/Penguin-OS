@@ -618,6 +618,8 @@ let ignoreNextHashChange = false;
 
 function navigateTo(hash) {
     const target = hash.startsWith('#') ? hash : '#' + hash;
+    // Close all open modals when navigating away
+    document.querySelectorAll('.modal.show').forEach(m => m.classList.remove('show'));
     if (window.location.hash !== target) {
         ignoreNextHashChange = true;
         window.location.hash = target;
@@ -1201,6 +1203,8 @@ function renderSidebar() {
     nav.querySelectorAll('.sidebar-nav-item').forEach(item => {
         item.addEventListener('click', () => {
             setActiveNav(item.id);
+            // Close all open modals when navigating via sidebar
+            document.querySelectorAll('.modal.show').forEach(m => m.classList.remove('show'));
             if (window.innerWidth <= 900) {
                 const app = document.getElementById('app');
                 if (app) app.classList.remove('sidebar-open');
@@ -1690,13 +1694,14 @@ function initSidebarToggle() {
         sidebarToggle.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
-            console.log('[sidebar] hamburger clicked', { isOpen: app.classList.contains('sidebar-open') });
+            // Close any open modals so sidebar is accessible
+            document.querySelectorAll('.modal.show').forEach(m => m.classList.remove('show'));
             app.classList.add('sidebar-open');
         });
         sidebarToggle.addEventListener('touchend', (e) => {
             e.preventDefault();
             e.stopPropagation();
-            console.log('[sidebar] hamburger touchend');
+            document.querySelectorAll('.modal.show').forEach(m => m.classList.remove('show'));
             app.classList.add('sidebar-open');
         });
     }

@@ -114,7 +114,7 @@ function renderVDTable() {
     });
 
     if (filtered.length === 0) {
-        content.innerHTML = '<div class="att-empty" style="padding:32px 0;text-align:center;color:#999;">No vendors found. Vendors are auto-created when you add purchases in Day Book.</div>';
+        content.innerHTML = '<div class="att-empty" style="padding:32px 0;text-align:center;color:#999;">No vendors found. Click <strong>+ Add Vendor</strong> above to add one, or vendors are auto-created when you add purchases in Day Book.</div>';
         return;
     }
 
@@ -134,7 +134,7 @@ function renderVDTable() {
             '<td data-label="Total Purchased">' + vdFmtMoney(v.total_purchased) + '</td>' +
             '<td data-label="Total Paid">' + vdFmtMoney(v.total_paid) + '</td>' +
             '<td data-label="Outstanding" class="' + outClass + '" style="font-weight:600;">' + vdFmtMoney(v.outstanding) + '</td>' +
-            '<td data-label="Actions"><button class="btn-text vd-detail-btn" data-vid="' + vdEscape(v.id) + '" style="font-size:0.75rem;">View Details</button></td>' +
+            '<td data-label="Actions" style="white-space:nowrap;"><button class="btn-text vd-detail-btn" data-vid="' + vdEscape(v.id) + '" style="font-size:0.75rem;">View Details</button> <button class="btn-text vd-edit-btn" data-vid="' + vdEscape(v.id) + '" style="font-size:0.75rem;">Edit</button></td>' +
             '</tr>';
     });
 
@@ -143,6 +143,11 @@ function renderVDTable() {
 
     content.querySelectorAll('.vd-detail-btn').forEach(function(btn) {
         btn.addEventListener('click', function() { openVDDetail(btn.dataset.vid); });
+    });
+    content.querySelectorAll('.vd-edit-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            if (typeof openVendorForm === 'function') openVendorForm(btn.dataset.vid);
+        });
     });
 }
 

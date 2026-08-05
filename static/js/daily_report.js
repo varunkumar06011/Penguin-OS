@@ -295,14 +295,61 @@ function renderDailyReportCard(data) {
     return wrapper;
 }
 
+function _buildDailyReportText(data) {
+    const lines = [];
+    const fmt = formatDbrINR;
+    lines.push(`*${data.company_name}*`);
+    lines.push(`*DAILY BUSINESS REPORT*`);
+    lines.push(data.report_date);
+    lines.push('');
+    lines.push(`*Total Expenditure:* ${fmt(data.total_expenditure)}`);
+    lines.push(`*Work Done:* ${fmt(data.work_done)}`);
+    lines.push(`*Pending Works:* ${fmt(data.pending_works)}`);
+    lines.push(`*Outstanding Amount:* ${fmt(data.outstanding_amount)}`);
+    lines.push('');
+    if (data.venture_analysis && data.venture_analysis.length > 0) {
+        lines.push('*Venture Wise Analysis:*');
+        data.venture_analysis.forEach(v => lines.push(`• ${v.name}: ${fmt(v.amount)} (${v.pct}%)`));
+        lines.push(`*Total Turnover:* ${fmt(data.work_done + data.pending_works)}`);
+        lines.push('');
+    }
+    const db = data.day_book || {};
+    lines.push('*Day Book Summary:*');
+    lines.push(`Opening Balance: ${fmt(db.opening_balance || 0)}`);
+    lines.push(`Total Receipts: ${fmt(db.total_receipts || 0)}`);
+    lines.push(`Total Payments: ${fmt(db.total_payments || 0)}`);
+    lines.push(`Closing Balance: ${fmt(db.closing_balance || 0)}`);
+    lines.push('');
+    if (data.work_done_by_venture && data.work_done_by_venture.length > 0) {
+        lines.push('*Work Done (Venture Wise):*');
+        data.work_done_by_venture.forEach(v => lines.push(`• ${v.name}: ${fmt(v.amount)} (${v.pct}%)`));
+        lines.push(`*Total Work Done:* ${fmt(data.work_done)}`);
+        lines.push('');
+    }
+    if (data.materials_purchases && data.materials_purchases.length > 0) {
+        lines.push('*Materials Purchases:*');
+        data.materials_purchases.forEach(m => lines.push(`• ${m.name}: ${m.qty || 0} ${m.unit || ''} — ${fmt(m.amount)}`));
+        const totalMat = data.materials_purchases.reduce((s, m) => s + (Number(m.amount) || 0), 0);
+        lines.push(`*Total Purchase:* ${fmt(totalMat)}`);
+        lines.push('');
+    }
+    if (data.outstanding_by_party && data.outstanding_by_party.length > 0) {
+        lines.push('*Outstanding Amounts (Party Wise):*');
+        data.outstanding_by_party.forEach(p => lines.push(`• ${p.name}: ${fmt(p.amount)} (${p.pct}%)`));
+        lines.push(`*Total Outstanding:* ${fmt(data.outstanding_amount)}`);
+    }
+    return lines.join('\n');
+}
+
 async function shareDailyReport() {
     const btn = document.getElementById('shareDailyReportBtn');
-    if (!btn) return;
+    if (!btn || btn._sharing) return;
     if (typeof html2canvas !== 'function') {
         showToast('Report renderer not loaded. Please check your internet connection.', true);
         return;
     }
     btn.disabled = true;
+    btn._sharing = true;
 
     try {
         const date = new Date().toISOString().slice(0, 10);
@@ -311,6 +358,7 @@ async function shareDailyReport() {
             throw new Error(data && data.error ? data.error : 'Failed to load daily report');
         }
 
+        const reportText = _buildDailyReportText(data);
         const card = renderDailyReportCard(data);
         document.body.appendChild(card);
         await document.fonts.ready;
@@ -327,10 +375,10 @@ async function shareDailyReport() {
         const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
         const filename = `daily_business_report_${data.raw_date || date}.png`;
         const file = new File([blob], filename, { type: 'image/png' });
-        const shareText = `Daily Business Report - ${escapeHtml(data.company_name)} (${data.report_date})`;
+        const shareTitle = `Daily Business Report - ${data.company_name}`;
 
         if (navigator.canShare && navigator.canShare({ files: [file] })) {
-            await navigator.share({ files: [file], title: 'Daily Business Report', text: shareText });
+            await navigator.share({ files: [file], title: shareTitle, text: reportText });
         } else {
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -338,7 +386,7 @@ async function shareDailyReport() {
             a.download = filename;
             a.click();
             URL.revokeObjectURL(url);
-            const waText = encodeURIComponent(shareText + '\n\nDownload the report image above.');
+            const waText = encodeURIComponent(reportText + '\n\n_Report image downloaded above._');
             window.open('https://wa.me/?text=' + waText, '_blank');
         }
     } catch (err) {
@@ -346,5 +394,6 @@ async function shareDailyReport() {
         showToast(err.message || 'Could not share daily report', true);
     } finally {
         btn.disabled = false;
+        btn._sharing = false;
     }
 }

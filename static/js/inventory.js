@@ -302,14 +302,16 @@ function renderCategoryMaterials(container, category) {
         addBtn.textContent = '+ Add Material to this category';
         addBtn.addEventListener('click', () => {
             inventoryMaterialEditingId = null;
-            document.getElementById('materialFormTitle').textContent = 'Add New Material';
-            document.getElementById('materialName').value = '';
-            document.getElementById('materialCategory').value = category;
-            document.getElementById('materialUnit').value = '';
-            document.getElementById('materialThreshold').value = '0';
             openMaterialModal(null);
-            // Pre-fill category after modal opens
-            setTimeout(() => { document.getElementById('materialCategory').value = category; }, 50);
+            setTimeout(() => {
+                const catNode = _taxonTree.find(c => c.name.toLowerCase() === category.toLowerCase());
+                if (catNode) {
+                    _selectTaxonItem(0, catNode.id, catNode.name);
+                } else {
+                    const input0 = document.getElementById('taxonInput0');
+                    if (input0) input0.value = category;
+                }
+            }, 100);
         });
         topRow.appendChild(addBtn);
     }
@@ -1537,43 +1539,17 @@ async function openMaterialModal(materialId) {
     document.getElementById('materialTitle').textContent = 'Manage Materials';
     document.getElementById('materialFormTitle').textContent = materialId ? 'Edit Material' : 'Add New Material';
     document.getElementById('materialName').value = '';
-    document.getElementById('materialCategory').value = '';
     document.getElementById('materialUnit').value = '';
     document.getElementById('materialThreshold').value = '0';
-    document.getElementById('materialSubType').value = '';
 
-    // Load inventory categories with types for sub-type dropdown
+    // Load inventory categories tree (4-level)
     let invCats = [];
     try {
         invCats = await apiGet('/api/inventory-categories') || [];
     } catch (e) { invCats = []; }
-    const subTypeSelect = document.getElementById('materialSubType');
-    subTypeSelect.innerHTML = '<option value="">-- None --</option>';
-    invCats.forEach(cat => {
-        const types = cat.types || [];
-        if (types.length > 0) {
-            const optgroup = document.createElement('optgroup');
-            optgroup.label = cat.name;
-            types.forEach(t => {
-                const opt = document.createElement('option');
-                opt.value = t.name;
-                opt.textContent = t.name;
-                optgroup.appendChild(opt);
-            });
-            subTypeSelect.appendChild(optgroup);
-        }
-    });
 
-    const datalist = document.getElementById('materialCategoryList');
-    datalist.innerHTML = '';
-    const cats = new Set([
-        ...invCats.map(c => c.name),
-        ...(inventoryCategories || []),
-        ...inventoryMaterials.map(m => m.category).filter(Boolean)
-    ]);
-    Array.from(cats).sort().forEach(c => {
-        datalist.innerHTML += `<option value="${escapeHtml(c)}"></option>`;
-    });
+    // Initialize taxonomy combobox system
+    _initTaxonComboboxes(invCats);
 
     const listContainer = document.getElementById('materialList');
     listContainer.innerHTML = '';
@@ -1615,10 +1591,9 @@ async function openMaterialModal(materialId) {
                 inventoryMaterialEditingId = mat.id;
                 document.getElementById('materialFormTitle').textContent = 'Edit Material';
                 document.getElementById('materialName').value = mat.name || '';
-                document.getElementById('materialCategory').value = mat.category || '';
                 document.getElementById('materialUnit').value = mat.unit || '';
                 document.getElementById('materialThreshold').value = mat.min_threshold || '0';
-                document.getElementById('materialSubType').value = mat.sub_type || '';
+                _setTaxonValuesFromMaterial(mat);
             }
         });
     });
@@ -1649,9 +1624,9 @@ async function openMaterialModal(materialId) {
         const mat = inventoryMaterials.find(m => m.id === materialId);
         if (mat) {
             document.getElementById('materialName').value = mat.name || '';
-            document.getElementById('materialCategory').value = mat.category || '';
             document.getElementById('materialUnit').value = mat.unit || '';
             document.getElementById('materialThreshold').value = mat.min_threshold || '0';
+            _setTaxonValuesFromMaterial(mat);
         }
     }
 
@@ -2068,12 +2043,14 @@ document.getElementById('saveMaterial').addEventListener('click', async () => {
 
     const invVenture = inventoryActiveVenture();
     if (!invVenture) { showToast('No venture selected', true); return; }
+
+    const taxonValues = _getTaxonValues();
     const material = {
         id: inventoryMaterialEditingId || generateId(),
         venture_id: null,
         name: name,
-        category: document.getElementById('materialCategory').value.trim() || null,
-        sub_type: document.getElementById('materialSubType').value || null,
+        category: taxonValues[0] || null,
+        sub_type: taxonValues[3] || taxonValues[2] || taxonValues[1] || null,
         unit: unit,
         min_threshold: parseFloat(document.getElementById('materialThreshold').value) || 0
     };
@@ -2086,5 +2063,288 @@ document.getElementById('saveMaterial').addEventListener('click', async () => {
     } catch (err) {
         console.error('Failed to save material:', err);
         showToast('Failed to save material', true);
+    }
+});
+
+// ========================
+// Taxonomy Combobox Engine
+// 4-level: Category → Type → Subcategory → Subtype
+// With fuzzy search, partial matching, and + button to add new
+// ========================
+
+let _taxonTree = [];
+let _taxonSelected = [null, null, null, null];
+let _taxonActiveIdx = -1;
+
+const _TAXON_LABELS = ['Category', 'Type', 'Subcategory', 'Subtype'];
+
+function _fuzzyScore(query, target) {
+    if (!query || !target) return 0;
+    const q = query.toLowerCase().trim();
+    const t = target.toLowerCase().trim();
+    if (!q) return 0;
+    if (t === q) return 100;
+    if (t.startsWith(q)) return 80;
+    if (t.includes(q)) return 60;
+    let qi = 0, ti = 0, score = 0, consecutive = 0;
+    while (qi < q.length && ti < t.length) {
+        if (q[qi] === t[ti]) {
+            score += 10 + consecutive * 5;
+            consecutive++;
+            qi++;
+        } else {
+            consecutive = 0;
+        }
+        ti++;
+    }
+    if (qi < q.length) score -= (q.length - qi) * 5;
+    return Math.max(0, score);
+}
+
+function _fuzzyFilter(query, items) {
+    if (!query) return items.map(i => ({ ...i, _score: 0 }));
+    return items
+        .map(i => ({ ...i, _score: _fuzzyScore(query, i.name) }))
+        .filter(i => i._score > 0)
+        .sort((a, b) => b._score - a._score);
+}
+
+function _getTaxonChildren(level) {
+    let nodes = _taxonTree;
+    for (let i = 0; i < level; i++) {
+        const sel = _taxonSelected[i];
+        if (!sel) return [];
+        const found = nodes.find(n => n.id === sel);
+        if (!found) return [];
+        nodes = found.children || [];
+    }
+    return nodes;
+}
+
+function _initTaxonComboboxes(tree) {
+    _taxonTree = tree || [];
+    _taxonSelected = [null, null, null, null];
+    _taxonActiveIdx = -1;
+    for (let i = 0; i < 4; i++) {
+        const input = document.getElementById('taxonInput' + i);
+        const addBtn = document.getElementById('taxonAdd' + i);
+        const dropdown = document.getElementById('taxonDropdown' + i);
+        if (input) {
+            input.value = '';
+            input.disabled = i > 0;
+        }
+        if (addBtn) addBtn.disabled = i > 0;
+        if (dropdown) dropdown.classList.remove('open');
+        _attachTaxonListeners(i);
+    }
+}
+
+function _attachTaxonListeners(level) {
+    const input = document.getElementById('taxonInput' + level);
+    const addBtn = document.getElementById('taxonAdd' + level);
+    const dropdown = document.getElementById('taxonDropdown' + level);
+    if (!input || !dropdown) return;
+    if (input._taxonBound) return;
+    input._taxonBound = true;
+
+    input.addEventListener('focus', () => {
+        _taxonActiveIdx = level;
+        _renderTaxonDropdown(level, '');
+    });
+
+    input.addEventListener('input', () => {
+        _taxonActiveIdx = level;
+        _renderTaxonDropdown(level, input.value);
+    });
+
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            dropdown.classList.remove('open');
+            input.blur();
+        } else if (e.key === 'Enter') {
+            const firstOpt = dropdown.querySelector('.taxon-option:not(.taxon-option-new)');
+            if (firstOpt) {
+                firstOpt.click();
+                e.preventDefault();
+            }
+        }
+    });
+
+    input.addEventListener('blur', () => {
+        setTimeout(() => {
+            if (!dropdown._hovered) dropdown.classList.remove('open');
+        }, 150);
+    });
+
+    dropdown.addEventListener('mousedown', () => { dropdown._hovered = true; });
+    dropdown.addEventListener('mouseup', () => { dropdown._hovered = false; });
+
+    if (addBtn && !addBtn._taxonBound) {
+        addBtn._taxonBound = true;
+        addBtn.addEventListener('click', () => _addTaxonItem(level));
+    }
+}
+
+function _renderTaxonDropdown(level, query) {
+    const dropdown = document.getElementById('taxonDropdown' + level);
+    const input = document.getElementById('taxonInput' + level);
+    if (!dropdown || !input) return;
+
+    const children = _getTaxonChildren(level);
+    const filtered = _fuzzyFilter(query, children);
+
+    let html = '';
+    if (filtered.length > 0) {
+        filtered.forEach(item => {
+            const name = escapeHtml(item.name);
+            html += `<div class="taxon-option" data-id="${item.id}" data-name="${escapeHtml(item.name)}">${name}</div>`;
+        });
+    }
+
+    const trimmed = (query || '').trim();
+    if (trimmed) {
+        const exists = children.some(c => c.name.toLowerCase() === trimmed.toLowerCase());
+        if (!exists) {
+            html += `<div class="taxon-option taxon-option-new" data-new="1">${escapeHtml(trimmed)}</div>`;
+        }
+    }
+
+    if (!html) {
+        html = '<div class="taxon-option" style="color:#999;cursor:default;">No matches found</div>';
+    }
+
+    dropdown.innerHTML = html;
+    dropdown.classList.add('open');
+
+    dropdown.querySelectorAll('.taxon-option').forEach(opt => {
+        opt.addEventListener('click', () => {
+            if (opt.dataset.new === '1') {
+                input.value = opt.textContent.trim();
+                _addTaxonItem(level);
+            } else {
+                _selectTaxonItem(level, opt.dataset.id, opt.dataset.name);
+            }
+        });
+    });
+}
+
+function _selectTaxonItem(level, id, name) {
+    const input = document.getElementById('taxonInput' + level);
+    const dropdown = document.getElementById('taxonDropdown' + level);
+    if (input) input.value = name;
+    if (dropdown) dropdown.classList.remove('open');
+    _taxonSelected[level] = id;
+
+    for (let i = level + 1; i < 4; i++) {
+        _taxonSelected[i] = null;
+        const inp = document.getElementById('taxonInput' + i);
+        const btn = document.getElementById('taxonAdd' + i);
+        const dd = document.getElementById('taxonDropdown' + i);
+        if (inp) { inp.value = ''; inp.disabled = true; }
+        if (btn) btn.disabled = true;
+        if (dd) dd.classList.remove('open');
+    }
+
+    if (level < 3) {
+        const nextInput = document.getElementById('taxonInput' + (level + 1));
+        const nextBtn = document.getElementById('taxonAdd' + (level + 1));
+        if (nextInput) nextInput.disabled = false;
+        if (nextBtn) nextBtn.disabled = false;
+    }
+}
+
+async function _addTaxonItem(level) {
+    const input = document.getElementById('taxonInput' + level);
+    if (!input) return;
+    const name = input.value.trim();
+    if (!name) { showToast('Enter a ' + _TAXON_LABELS[level] + ' name first', true); return; }
+
+    const children = _getTaxonChildren(level);
+    const existing = children.find(c => c.name.toLowerCase() === name.toLowerCase());
+    if (existing) {
+        _selectTaxonItem(level, existing.id, existing.name);
+        showToast(_TAXON_LABELS[level] + ' already exists');
+        return;
+    }
+
+    const parentId = level > 0 ? _taxonSelected[level - 1] : null;
+    try {
+        const resp = await apiPost('/api/inventory-category', {
+            name: name,
+            parent_id: parentId
+        });
+        if (resp && resp.id) {
+            const newNode = { id: resp.id, name: name, parent_id: parentId, children: [] };
+            let nodes = _taxonTree;
+            for (let i = 0; i < level; i++) {
+                const sel = _taxonSelected[i];
+                if (!sel) break;
+                const found = nodes.find(n => n.id === sel);
+                if (!found) break;
+                if (!found.children) found.children = [];
+                nodes = found.children;
+            }
+            nodes.push(newNode);
+            _selectTaxonItem(level, newNode.id, newNode.name);
+            showToast(_TAXON_LABELS[level] + ' added successfully');
+        }
+    } catch (err) {
+        console.error('Failed to add ' + _TAXON_LABELS[level] + ':', err);
+        showToast('Failed to add ' + _TAXON_LABELS[level], true);
+    }
+}
+
+function _getTaxonValues() {
+    const values = [];
+    for (let i = 0; i < 4; i++) {
+        const input = document.getElementById('taxonInput' + i);
+        values.push(input ? input.value.trim() : '');
+    }
+    return values;
+}
+
+function _setTaxonValuesFromMaterial(mat) {
+    _taxonSelected = [null, null, null, null];
+    for (let i = 0; i < 4; i++) {
+        const input = document.getElementById('taxonInput' + i);
+        const addBtn = document.getElementById('taxonAdd' + i);
+        if (input) { input.value = ''; input.disabled = i > 0; }
+        if (addBtn) addBtn.disabled = i > 0;
+    }
+
+    if (mat.category) {
+        const catNode = _taxonTree.find(c => c.name.toLowerCase() === mat.category.toLowerCase());
+        if (catNode) {
+            _selectTaxonItem(0, catNode.id, catNode.name);
+            if (mat.sub_type) {
+                let found = false;
+                for (let lvl = 1; lvl <= 3 && !found; lvl++) {
+                    const children = _getTaxonChildren(lvl);
+                    const match = children.find(c => c.name.toLowerCase() === mat.sub_type.toLowerCase());
+                    if (match) {
+                        _selectTaxonItem(lvl, match.id, match.name);
+                        found = true;
+                    }
+                }
+                if (!found) {
+                    const subInput = document.getElementById('taxonInput3');
+                    if (subInput) subInput.value = mat.sub_type;
+                }
+            }
+        } else {
+            const input0 = document.getElementById('taxonInput0');
+            if (input0) input0.value = mat.category;
+            if (mat.sub_type) {
+                const input3 = document.getElementById('taxonInput3');
+                if (input3) { input3.value = mat.sub_type; input3.disabled = false; }
+            }
+        }
+    }
+}
+
+// Close all dropdowns when clicking outside
+document.addEventListener('click', (e) => {
+    if (!e.target.closest('.taxon-combobox')) {
+        document.querySelectorAll('.taxon-dropdown.open').forEach(dd => dd.classList.remove('open'));
     }
 });

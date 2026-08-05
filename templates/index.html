@@ -8,7 +8,7 @@
     <link rel="icon" href="/static/images/favicon.jpg" type="image/jpeg">
     <link rel="stylesheet" href="/static/css/fonts.css?v=15">
     <link rel="stylesheet" href="/static/css/theme.css?v=15">
-    <link rel="stylesheet" href="/static/css/style.css?v=61">
+    <link rel="stylesheet" href="/static/css/style.css?v=64">
     <style>
         /* Fallback: ensure sidebar is always dark and readable */
         #app #appSidebar.app-sidebar {
@@ -324,21 +324,28 @@
 
         <!-- Contractor Payments Panel -->
         <div id="contractorPaymentsPanel" style="display:none;">
-            <div class="invoice-panel-header">
-                <button id="backFromContractorPayments" class="back-btn">&larr; Back to Ventures</button>
-                <h2 class="invoice-panel-title">Contractor Payments</h2>
-                <input id="cpSearchInput" type="text" placeholder="Search by name or work description..." style="flex:1;max-width:300px;padding:8px 12px;border:1px solid #ccc;border-radius:6px;font-size:0.9rem;">
-            <select id="cpStatusFilter" style="padding:8px 12px;border:1px solid #ccc;border-radius:6px;font-size:0.9rem;background:#fff;">
-                <option value="open">Active &amp; Completed</option>
-                <option value="all">All</option>
-                <option value="active">Active</option>
-                <option value="completed">Completed</option>
-                <option value="cancelled">Cancelled</option>
-            </select>
-            <select id="cpVentureFilter" style="padding:8px 12px;border:1px solid #ccc;border-radius:6px;font-size:0.9rem;background:#fff;">
-                <option value="all">All Ventures</option>
-            </select>
-                <button id="addContractBtn" class="btn-primary">+ New Contract</button>
+            <div class="cp-panel-header">
+                <div class="cp-panel-header-left">
+                    <button id="backFromContractorPayments" class="back-btn">&larr; Back to Ventures</button>
+                    <h2 class="cp-panel-title">Contractor Payments</h2>
+                </div>
+                <div class="cp-panel-header-right">
+                    <div class="cp-search-box">
+                        <span class="cp-search-icon">&#128269;</span>
+                        <input id="cpSearchInput" type="text" placeholder="Search contractors or work...">
+                    </div>
+                    <select id="cpStatusFilter" class="cp-filter-select">
+                        <option value="open">Active &amp; Completed</option>
+                        <option value="all">All</option>
+                        <option value="active">Active</option>
+                        <option value="completed">Completed</option>
+                        <option value="cancelled">Cancelled</option>
+                    </select>
+                    <select id="cpVentureFilter" class="cp-filter-select">
+                        <option value="all">All Ventures</option>
+                    </select>
+                    <button id="addContractBtn" class="btn-primary">+ New Contract</button>
+                </div>
             </div>
             <div id="contractorSummaryBar" class="po-outstanding-banner"></div>
             <div id="contractorCardsGrid" class="po-cards-grid"></div>
@@ -361,6 +368,7 @@
             <div class="invoice-panel-header">
                 <button id="backFromVendorDir" class="back-btn">&larr; Back to Ventures</button>
                 <h2 class="invoice-panel-title">Vendor Directory</h2>
+                <button id="vdAddVendorBtn" class="btn-primary" style="margin-left:auto;">+ Add Vendor</button>
             </div>
             <div id="vendorDirFilters" class="pending-filter-bar"></div>
             <div id="vendorDirContent"></div>
@@ -1425,42 +1433,63 @@
 
     <!-- Material Master Modal -->
     <div id="materialModal" class="modal">
-        <div class="modal-content popup-small">
+        <div class="modal-content" style="max-width:440px;width:100%;">
             <div class="modal-header">
                 <h3 id="materialTitle">Manage Materials</h3>
                 <button class="close-btn" id="closeMaterial">&times;</button>
             </div>
-            <div class="invoice-form-body">
+            <div class="invoice-form-body" style="overflow-y:auto;overflow-x:hidden;">
                 <h4 style="margin:0 0 8px 0;color:#1a2a6c;font-size:0.95rem;">Existing Materials</h4>
-                <div id="materialList" class="material-list">
+                <div id="materialList" class="material-list" style="max-height:150px;overflow-y:auto;">
                     <div style="padding:12px;color:#999;font-size:0.85rem;">No materials added yet.</div>
                 </div>
                 <h4 style="margin:16px 0 8px 0;color:#1a2a6c;font-size:0.95rem;border-top:1px solid #eee;padding-top:12px;" id="materialFormTitle">Add New Material</h4>
-                <div class="invoice-form-row">
-                    <div class="invoice-form-field" style="flex:1;">
-                        <label>Name <span class="req">*</span></label>
-                        <input type="text" id="materialName" placeholder="e.g. Cement OPC 53">
+                <div style="display:flex;flex-direction:column;gap:10px;">
+                    <div>
+                        <label style="display:block;margin-bottom:4px;font-size:0.85rem;font-weight:600;">Name <span class="req">*</span></label>
+                        <input type="text" id="materialName" class="taxon-input" placeholder="e.g. Cement OPC 53" style="width:100%;">
                     </div>
-                </div>
-                <div class="invoice-form-row">
-                    <div class="invoice-form-field">
-                        <label>Category</label>
-                        <input type="text" id="materialCategory" placeholder="e.g. Cement" list="materialCategoryList">
-                        <datalist id="materialCategoryList"></datalist>
+                    <div>
+                        <label style="display:block;margin-bottom:4px;font-size:0.85rem;font-weight:600;">Category</label>
+                        <div class="taxon-combobox" data-level="0">
+                            <input type="text" id="taxonInput0" class="taxon-input" placeholder="Select or type category" autocomplete="off">
+                            <button type="button" class="taxon-add-btn" id="taxonAdd0" title="Add new category">+</button>
+                            <div class="taxon-dropdown" id="taxonDropdown0"></div>
+                        </div>
                     </div>
-                    <div class="invoice-form-field">
-                        <label>Sub-Type</label>
-                        <select id="materialSubType">
-                            <option value="">-- None --</option>
-                        </select>
+                    <div>
+                        <label style="display:block;margin-bottom:4px;font-size:0.85rem;font-weight:600;">Type</label>
+                        <div class="taxon-combobox" data-level="1">
+                            <input type="text" id="taxonInput1" class="taxon-input" placeholder="Select or type type" autocomplete="off" disabled>
+                            <button type="button" class="taxon-add-btn" id="taxonAdd1" title="Add new type" disabled>+</button>
+                            <div class="taxon-dropdown" id="taxonDropdown1"></div>
+                        </div>
                     </div>
-                    <div class="invoice-form-field" style="max-width:120px;">
-                        <label>Unit <span class="req">*</span></label>
-                        <input type="text" id="materialUnit" placeholder="bag">
+                    <div>
+                        <label style="display:block;margin-bottom:4px;font-size:0.85rem;font-weight:600;">Subcategory</label>
+                        <div class="taxon-combobox" data-level="2">
+                            <input type="text" id="taxonInput2" class="taxon-input" placeholder="Select or type subcategory" autocomplete="off" disabled>
+                            <button type="button" class="taxon-add-btn" id="taxonAdd2" title="Add new subcategory" disabled>+</button>
+                            <div class="taxon-dropdown" id="taxonDropdown2"></div>
+                        </div>
                     </div>
-                    <div class="invoice-form-field" style="max-width:120px;">
-                        <label>Min Threshold</label>
-                        <input type="number" id="materialThreshold" min="0" step="0.01" value="0">
+                    <div>
+                        <label style="display:block;margin-bottom:4px;font-size:0.85rem;font-weight:600;">Subtype</label>
+                        <div class="taxon-combobox" data-level="3">
+                            <input type="text" id="taxonInput3" class="taxon-input" placeholder="Select or type subtype" autocomplete="off" disabled>
+                            <button type="button" class="taxon-add-btn" id="taxonAdd3" title="Add new subtype" disabled>+</button>
+                            <div class="taxon-dropdown" id="taxonDropdown3"></div>
+                        </div>
+                    </div>
+                    <div style="display:flex;gap:10px;">
+                        <div style="flex:1;">
+                            <label style="display:block;margin-bottom:4px;font-size:0.85rem;font-weight:600;">Unit <span class="req">*</span></label>
+                            <input type="text" id="materialUnit" class="taxon-input" placeholder="bag" style="width:100%;">
+                        </div>
+                        <div style="flex:1;">
+                            <label style="display:block;margin-bottom:4px;font-size:0.85rem;font-weight:600;">Min Threshold</label>
+                            <input type="number" id="materialThreshold" class="taxon-input" min="0" step="0.01" value="0" style="width:100%;">
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1621,16 +1650,16 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    <script src="/static/js/app.js?v=61"></script>
-    <script src="/static/js/features.js?v=3"></script>
-    <script src="/static/js/daily_report.js?v=2"></script>
+    <script src="/static/js/app.js?v=63"></script>
+    <script src="/static/js/features.js?v=4"></script>
+    <script src="/static/js/daily_report.js?v=3"></script>
     <script src="/static/js/cells.js?v=35"></script>
     <script src="/static/js/invoices.js?v=20"></script>
     <script src="/static/js/payroll.js?v=27"></script>
-    <script src="/static/js/inventory.js?v=32"></script>
-    <script src="/static/js/venture_analysis.js?v=3"></script>
+    <script src="/static/js/inventory.js?v=34"></script>
+    <script src="/static/js/venture_analysis.js?v=4"></script>
     <script src="/static/js/reports.js?v=1"></script>
-    <script src="/static/js/contractor_payments.js?v=5"></script>
+    <script src="/static/js/contractor_payments.js?v=6"></script>
     <script src="/static/js/inventory_purchase.js?v=14"></script>
     <script src="/static/js/inventory_register.js?v=15"></script>
     <script src="/static/js/vendor_directory.js?v=2"></script>

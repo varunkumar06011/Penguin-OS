@@ -1310,6 +1310,9 @@ document.getElementById('vendorDirModal').addEventListener('click', e => {
 });
 document.getElementById('addVendorBtn').addEventListener('click', () => openVendorForm(null));
 
+var _vdAddVendorBtn = document.getElementById('vdAddVendorBtn');
+if (_vdAddVendorBtn) _vdAddVendorBtn.addEventListener('click', () => openVendorForm(null));
+
 function openVendorForm(vendorId, fromPOForm) {
     vendorEditingId = vendorId;
     _vendorFromPOForm = fromPOForm || false;
@@ -1390,6 +1393,12 @@ document.getElementById('saveVendorBtn').addEventListener('click', async () => {
     closeVendorForm();
     renderVendorDirList();
     populatePOFilters();
+
+    // Refresh vendor directory panel if visible
+    var vdPanel = document.getElementById('vendorDirPanel');
+    if (vdPanel && vdPanel.style.display !== 'none' && typeof renderVendorDirectoryView === 'function') {
+        renderVendorDirectoryView();
+    }
 
     if (_vendorFromPOForm) {
         populatePOVendorSelect(vendorData.id);

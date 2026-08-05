@@ -2236,7 +2236,10 @@ def api_materials():
         allowed_with_wh = allowed | {'WAREHOUSE'}
         if venture_id not in allowed_with_wh:
             return jsonify({'error': 'Forbidden'}), 403
-        q = q.or_(f'venture_id.eq.{venture_id},venture_id.is.null')
+        if venture_id == 'WAREHOUSE':
+            q = q.or_(f'venture_id.eq.WAREHOUSE,venture_id.is.null')
+        else:
+            q = q.or_(f'venture_id.eq.{venture_id},venture_id.is.null,venture_id.eq.WAREHOUSE')
     res = q.execute()
     return jsonify(res.data or [])
 
@@ -2254,7 +2257,10 @@ def api_material_categories():
     if venture_id:
         if venture_id not in allowed_with_wh:
             return jsonify({'error': 'Forbidden'}), 403
-        q = q.or_(f'venture_id.eq.{venture_id},venture_id.is.null')
+        if venture_id == 'WAREHOUSE':
+            q = q.or_(f'venture_id.eq.WAREHOUSE,venture_id.is.null')
+        else:
+            q = q.or_(f'venture_id.eq.{venture_id},venture_id.is.null,venture_id.eq.WAREHOUSE')
     else:
         q = q.in_('venture_id', list(allowed_with_wh))
     res = q.execute()
@@ -2999,9 +3005,17 @@ def api_inventory_categories():
     org_id = session['user'].get('org_id')
     res = supabase.table('inventory_categories').select('*').eq('org_id', org_id).order('name').execute()
     rows = res.data or []
-    cats = [r for r in rows if r.get('parent_id') is None]
-    for c in cats:
-        c['types'] = [r for r in rows if r.get('parent_id') == c['id']]
+    # Build full tree: categories → types → subcategories → subtypes
+    by_parent = {}
+    for r in rows:
+        pid = r.get('parent_id')
+        by_parent.setdefault(pid, []).append(r)
+    def build_children(parent_id):
+        children = by_parent.get(parent_id, [])
+        for c in children:
+            c['children'] = build_children(c['id'])
+        return children
+    cats = build_children(None)
     return jsonify(cats)
 
 
@@ -7830,32 +7844,57 @@ def api_venture_analysis():
             venture_work[vid]['total'] = total_possible
             venture_work[vid]['none'] = venture_work[vid].get('none', 0) + untouched
 
-    # Fetch stock_ledger OUT entries and group by purpose_venture_id
+    # Fetch stock_ledger entries and group by purpose_venture_id
+    # First compute average purchase rate per material from IN entries
+    material_avg_rate = {}
     venture_inventory = {}
     try:
-        all_out_entries = []
+        all_entries = []
         offset = 0
         page_size = 1000
         while True:
-            page = supabase.table('stock_ledger').select('*').eq('entry_type', 'OUT').order('created_at', desc=True).range(offset, offset + page_size - 1).execute()
+            page = supabase.table('stock_ledger').select('*').order('created_at', desc=True).range(offset, offset + page_size - 1).execute()
             rows = page.data or []
-            all_out_entries.extend(rows)
+            all_entries.extend(rows)
             if len(rows) < page_size:
                 break
             offset += page_size
-        logger.info(f'Venture analysis: fetched {len(all_out_entries)} OUT entries from stock_ledger')
-        for entry in all_out_entries:
+        logger.info(f'Venture analysis: fetched {len(all_entries)} entries from stock_ledger')
+
+        # First pass: compute average rate per material from IN entries
+        material_in_totals = {}
+        for entry in all_entries:
+            if entry.get('entry_type') != 'IN' or entry.get('is_deleted'):
+                continue
+            mid = entry.get('material_id', 'unknown')
+            qty = float(entry.get('qty') or 0)
+            rate = float(entry.get('rate') or 0)
+            if qty > 0:
+                if mid not in material_in_totals:
+                    material_in_totals[mid] = {'total_qty': 0.0, 'total_cost': 0.0}
+                material_in_totals[mid]['total_qty'] += qty
+                material_in_totals[mid]['total_cost'] += qty * rate
+        for mid, t in material_in_totals.items():
+            if t['total_qty'] > 0:
+                material_avg_rate[mid] = t['total_cost'] / t['total_qty']
+
+        # Second pass: process OUT entries for venture inventory
+        for entry in all_entries:
+            if entry.get('entry_type') != 'OUT' or entry.get('is_deleted'):
+                continue
             pvid = entry.get('purpose_venture_id') or entry.get('venture_id')
             if not pvid:
                 continue
             if pvid not in venture_inventory:
                 venture_inventory[pvid] = {'total_qty': 0.0, 'total_cost': 0.0, 'materials': {}, 'by_flat': {}}
             qty = float(entry.get('qty') or 0)
+            mid = entry.get('material_id', 'unknown')
             rate = float(entry.get('rate') or 0)
-            cost = qty * rate if rate > 0 else 0
+            if rate <= 0:
+                rate = material_avg_rate.get(mid, 0)
+            cost = qty * rate
             venture_inventory[pvid]['total_qty'] += qty
             venture_inventory[pvid]['total_cost'] += cost
-            mid = entry.get('material_id', 'unknown')
             if mid not in venture_inventory[pvid]['materials']:
                 venture_inventory[pvid]['materials'][mid] = {'qty': 0.0, 'cost': 0.0}
             venture_inventory[pvid]['materials'][mid]['qty'] += qty
@@ -7879,9 +7918,9 @@ def api_venture_analysis():
     # Fetch materials for names
     materials_map = {}
     try:
-        mat_res = supabase.table('materials').select('id,name,unit').execute()
+        mat_res = supabase.table('materials').select('id,name,unit,category').execute()
         for m in (mat_res.data or []):
-            materials_map[m['id']] = {'name': m.get('name', m['id']), 'unit': m.get('unit', '')}
+            materials_map[m['id']] = {'name': m.get('name', m['id']), 'unit': m.get('unit', ''), 'category': m.get('category', '')}
     except Exception as e:
         logger.error(f'Error fetching materials for venture analysis: {e}')
 
@@ -7900,10 +7939,11 @@ def api_venture_analysis():
         # Top materials used
         top_materials = []
         for mid, mdata in sorted(inv['materials'].items(), key=lambda x: -x[1]['qty'])[:10]:
-            mat_info = materials_map.get(mid, {'name': mid, 'unit': ''})
+            mat_info = materials_map.get(mid, {'name': mid, 'unit': '', 'category': ''})
             top_materials.append({
                 'name': mat_info['name'],
-                'unit': mat_info['unit'],
+                'unit': mat_info.get('unit', ''),
+                'category': mat_info.get('category', ''),
                 'qty': round(mdata['qty'], 2),
                 'cost': round(mdata['cost'], 2),
             })
@@ -7913,7 +7953,7 @@ def api_venture_analysis():
         for flat_key, fdata in sorted(inv['by_flat'].items()):
             flat_materials = []
             for mid, mqty in sorted(fdata.get('materials', {}).items(), key=lambda x: -x[1])[:5]:
-                mat_info = materials_map.get(mid, {'name': mid, 'unit': ''})
+                mat_info = materials_map.get(mid, {'name': mid, 'unit': '', 'category': ''})
                 flat_materials.append({'name': mat_info['name'], 'qty': round(mqty, 2)})
             flat_usage.append({
                 'flat': flat_key,
@@ -7946,10 +7986,11 @@ def api_venture_analysis():
     if wh_inv and wh_inv['total_qty'] > 0:
         wh_top = []
         for mid, mdata in sorted(wh_inv['materials'].items(), key=lambda x: -x[1]['qty'])[:10]:
-            mat_info = materials_map.get(mid, {'name': mid, 'unit': ''})
+            mat_info = materials_map.get(mid, {'name': mid, 'unit': '', 'category': ''})
             wh_top.append({
                 'name': mat_info['name'],
-                'unit': mat_info['unit'],
+                'unit': mat_info.get('unit', ''),
+                'category': mat_info.get('category', ''),
                 'qty': round(mdata['qty'], 2),
                 'cost': round(mdata['cost'], 2),
             })
