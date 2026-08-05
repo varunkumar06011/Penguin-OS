@@ -25,12 +25,20 @@ jobs:
           api-level: 34
           build-tools-version: '34.0.0'
 
-      - name: Generate Gradle Wrapper
+      - name: Generate Gradle Wrapper files
         working-directory: android
-        run: gradle wrapper --gradle-version 8.1
-
-      - name: Grant execute permission for gradlew
-        run: chmod +x android/gradlew
+        run: |
+          mkdir -p gradle/wrapper
+          cat > gradle/wrapper/gradle-wrapper.properties << 'EOF'
+          distributionBase=GRADLE_USER_HOME
+          distributionPath=wrapper/dists
+          distributionUrl=https\://services.gradle.org/distributions/gradle-8.1-bin.zip
+          zipStoreBase=GRADLE_USER_HOME
+          zipStorePath=wrapper/dists
+          EOF
+          curl -sL https://raw.githubusercontent.com/gradle/gradle/v8.1.0/gradlew -o gradlew
+          curl -sL https://raw.githubusercontent.com/gradle/gradle/v8.1.0/gradlew.bat -o gradlew.bat
+          chmod +x gradlew
 
       - name: Build Debug APK
         working-directory: android
