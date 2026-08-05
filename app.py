@@ -1,10 +1,10 @@
-from flask import Flask, render_template, request, jsonify, session, redirect, url_for
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for, send_from_directory
 import os
 import json
 import re
 import base64
 
-APP_VERSION = 'v1.0.1'
+APP_VERSION = 'v1.0.5'
 import io
 import logging
 from collections import defaultdict, deque
@@ -96,6 +96,71 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 app = Flask(__name__, static_folder=os.path.join(BASE_DIR, 'static'), template_folder=os.path.join(BASE_DIR, 'templates'))
 app.secret_key = _secret
 app.permanent_session_lifetime = timedelta(days=30)
+
+# Add gzip compression and cache-friendly headers for static files
+class GzipMiddleware:
+    def __init__(self, app, minimum_size=500):
+        self.app = app
+        self.minimum_size = minimum_size
+
+    def __call__(self, environ, start_response):
+        if 'gzip' not in environ.get('HTTP_ACCEPT_ENCODING', ''):
+            return self.app(environ, start_response)
+        status, headers, body = self._get_response(environ, start_response)
+        if not self._should_gzip(status, headers, body):
+            return self.app(environ, start_response)
+        compressed = self._gzip(body)
+        if len(compressed) >= len(body):
+            return self.app(environ, start_response)
+        headers = [(k, v) for k, v in headers if k.lower() not in ('content-length', 'content-encoding')]
+        headers.append(('Content-Encoding', 'gzip'))
+        headers.append(('Content-Length', str(len(compressed))))
+        def new_start_response(status, headers, exc_info=None):
+            return start_response(status, headers, exc_info)
+        return [compressed]
+
+    def _get_response(self, environ, start_response):
+        response = self.app(environ, lambda s, h: None)
+        body = b''.join(response)
+        return '200 OK', [], body
+
+    def _should_gzip(self, status, headers, body):
+        if not status.startswith('200'):
+            return False
+        if len(body) < self.minimum_size:
+            return False
+        return True
+
+    def _gzip(self, data):
+        import gzip
+        buf = io.BytesIO()
+        with gzip.GzipFile(fileobj=buf, mode='wb') as f:
+            f.write(data)
+        return buf.getvalue()
+
+app.wsgi_app = GzipMiddleware(app.wsgi_app)
+
+@app.after_request
+def set_cache_headers(response):
+    """Set cache headers: static files get long cache, HTML gets revalidate."""
+    if request.path.startswith('/static/'):
+        # Static files with ?v= query params — cache for 1 year
+        response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+        response.headers['Vary'] = 'Accept-Encoding'
+    elif response.content_type and 'text/html' in response.content_type:
+        # HTML pages — revalidate to get latest version but allow 304
+        response.headers['Cache-Control'] = 'no-cache, must-revalidate'
+    return response
+
+@app.route('/static/<path:filename>')
+def static_files(filename):
+    """Serve static files with long cache headers."""
+    cache_timeout = 31536000  # 1 year
+    response = send_from_directory(app.static_folder, filename)
+    response.headers['Cache-Control'] = f'public, max-age={cache_timeout}, immutable'
+    response.headers['Vary'] = 'Accept-Encoding'
+    return response
+
 app.config.update(
     SESSION_COOKIE_SAMESITE='Lax',
     SESSION_COOKIE_HTTPONLY=True,
@@ -130,8 +195,6 @@ else:
 # ============================================================
 DATABASE_URL = os.environ.get('DATABASE_URL', '')
 
-_MIGRATION_LOCK_KEY = 7839456120345  # fixed arbitrary bigint for advisory lock
-
 def _run_migrations():
     """Run all pending migration SQL files in order."""
     if not DATABASE_URL:
@@ -154,53 +217,39 @@ def _run_migrations():
         conn.autocommit = True
         cur = conn.cursor()
 
-        # Try to acquire an advisory lock so only one worker runs migrations
-        cur.execute("SELECT pg_try_advisory_lock(%s)", (_MIGRATION_LOCK_KEY,))
-        acquired = cur.fetchone()[0]
-        if not acquired:
-            logger.info('Migrations already in progress on another worker.')
-            return
+        # Ensure schema_migrations tracking table exists
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS _schema_migrations (
+                filename TEXT PRIMARY KEY,
+                applied_at TIMESTAMPTZ DEFAULT now()
+            )
+        """)
 
-        try:
-            # Ensure schema_migrations tracking table exists
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS _schema_migrations (
-                    filename TEXT PRIMARY KEY,
-                    applied_at TIMESTAMPTZ DEFAULT now()
-                )
-            """)
+        # Get already-applied migrations
+        cur.execute("SELECT filename FROM _schema_migrations")
+        applied = {row[0] for row in cur.fetchall()}
 
-            # Get already-applied migrations
-            cur.execute("SELECT filename FROM _schema_migrations")
-            applied = {row[0] for row in cur.fetchall()}
-
-            # Run pending migrations in sorted order
-            sql_files = sorted(f for f in os.listdir(migrations_dir) if f.endswith('.sql'))
-            for fname in sql_files:
-                if fname in applied:
-                    continue
-                fpath = os.path.join(migrations_dir, fname)
-                logger.info(f'Applying migration: {fname}')
-                with open(fpath, 'r', encoding='utf-8') as f:
-                    sql_content = f.read()
-                try:
-                    cur.execute(sql_content)
-                    cur.execute(
-                        "INSERT INTO _schema_migrations (filename) VALUES (%s) ON CONFLICT DO NOTHING",
-                        (fname,)
-                    )
-                    logger.info(f'Migration applied: {fname}')
-                except Exception as e:
-                    logger.error(f'Migration failed {fname}: {e}')
-                    # Continue with next migration - some may depend on later ones
-
-            logger.info('Auto-migration complete.')
-        finally:
-            # Always release the advisory lock
+        # Run pending migrations in sorted order
+        sql_files = sorted(f for f in os.listdir(migrations_dir) if f.endswith('.sql'))
+        for fname in sql_files:
+            if fname in applied:
+                continue
+            fpath = os.path.join(migrations_dir, fname)
+            logger.info(f'Applying migration: {fname}')
+            with open(fpath, 'r', encoding='utf-8') as f:
+                sql_content = f.read()
             try:
-                cur.execute("SELECT pg_advisory_unlock(%s)", (_MIGRATION_LOCK_KEY,))
-            except Exception:
-                pass
+                cur.execute(sql_content)
+                cur.execute(
+                    "INSERT INTO _schema_migrations (filename) VALUES (%s) ON CONFLICT DO NOTHING",
+                    (fname,)
+                )
+                logger.info(f'Migration applied: {fname}')
+            except Exception as e:
+                logger.error(f'Migration failed {fname}: {e}')
+                # Continue with next migration - some may depend on later ones
+
+        logger.info('Auto-migration complete.')
     except Exception as e:
         logger.error(f'Auto-migration error: {e}')
     finally:

@@ -15,13 +15,33 @@ function togglePasswordVisibility(inputId, eyeEl) {
 // API Persistence
 // ========================
 
-async function apiGet(path) {
+// Short-lived in-memory cache for GET requests to prevent duplicate fetches
+// when switching panels rapidly. TTL: 3 seconds (polling refreshes every 15s).
+const _apiCache = new Map();
+const _API_CACHE_TTL = 3000; // ms
+
+async function apiGet(path, opts = {}) {
+    // Bypass cache for cell-related endpoints (they need fresh data for color updates)
+    const isCellEndpoint = path.startsWith('/api/cell') || path.startsWith('/api/cells');
+    const bypassCache = opts.bypassCache || isCellEndpoint;
+
+    if (!bypassCache) {
+        const cached = _apiCache.get(path);
+        if (cached && Date.now() - cached.t < _API_CACHE_TTL) {
+            return cached.v;
+        }
+    }
+
     const res = await fetch(path);
     if (!res.ok) {
         const text = await res.text().catch(() => '');
         throw new Error(`HTTP ${res.status}: ${text}`);
     }
-    return res.json();
+    const json = await res.json();
+    if (!bypassCache) {
+        _apiCache.set(path, { v: json, t: Date.now() });
+    }
+    return json;
 }
 
 async function apiPost(path, data) {
@@ -34,6 +54,8 @@ async function apiPost(path, data) {
         const text = await res.text().catch(() => '');
         throw new Error(`HTTP ${res.status}: ${text}`);
     }
+    // Invalidate cache on mutations
+    _apiCache.clear();
     return res.json();
 }
 
@@ -46,6 +68,8 @@ async function apiUpload(path, formData) {
         const text = await res.text().catch(() => '');
         throw new Error(`HTTP ${res.status}: ${text}`);
     }
+    // Invalidate cache on mutations
+    _apiCache.clear();
     return res.json();
 }
 
@@ -55,6 +79,8 @@ async function apiDelete(path) {
         const text = await res.text().catch(() => '');
         throw new Error(`HTTP ${res.status}: ${text}`);
     }
+    // Invalidate cache on mutations
+    _apiCache.clear();
     return res.json().catch(() => ({}));
 }
 
@@ -1055,9 +1081,20 @@ async function init() {
         })
     ]);
 
-    // loadVenturesFromLS already seeds defaults on a confirmed empty list.
-    // Do not fall back to defaults here, because a failed fetch and an empty
-    // database would be indistinguishable.
+    // Preload commonly used data in parallel (non-blocking — panels will have data ready instantly)
+    // Only preload if user has permissions
+    if (currentUserPermissions) {
+        const preloadTasks = [];
+        if (currentUserPermissions.viewInvoices) {
+            preloadTasks.push(ensureInvoicesLoaded().catch(() => {}));
+            preloadTasks.push(ensureCategoriesLoaded().catch(() => {}));
+        }
+        if (currentUserPermissions.viewPOs) {
+            preloadTasks.push(ensurePOsLoaded().catch(() => {}));
+        }
+        // Fire and forget — don't block init
+        Promise.all(preloadTasks).catch(() => {});
+    }
 
     await applyHashRoute();
     applyRoleBasedUI();
@@ -1624,11 +1661,81 @@ function initSidebarToggle() {
     }
 
     if (sidebarToggle && app) {
-        sidebarToggle.addEventListener('click', () => app.classList.add('sidebar-open'));
+        sidebarToggle.addEventListener('click', () => {
+            app.classList.add('sidebar-open');
+            // Ensure sidebar is visible (override any inline display:none)
+            if (appSidebar) {
+                appSidebar.style.display = 'flex';
+            }
+        });
     }
     if (sidebarScrim && app) {
         sidebarScrim.addEventListener('click', () => app.classList.remove('sidebar-open'));
     }
+    // Close sidebar when clicking a nav item on mobile
+    if (appSidebar && app) {
+        appSidebar.addEventListener('click', (e) => {
+            if (window.innerWidth <= 900 && e.target.closest('.sidebar-nav-item')) {
+                app.classList.remove('sidebar-open');
+            }
+        });
+    }
+
+    // Clean up desktop/mobile state on viewport change
+    let _prevMobile = window.innerWidth <= 900;
+    window.addEventListener('resize', () => {
+        const isMobile = window.innerWidth <= 900;
+        if (isMobile !== _prevMobile) {
+            _prevMobile = isMobile;
+            if (isMobile) {
+                // Switching to mobile: remove desktop sidebar state
+                if (app) app.classList.remove('sidebar-open');
+                if (appSidebar) {
+                    appSidebar.classList.remove('collapsed');
+                    appSidebar.style.width = '';
+                    appSidebar.style.display = '';
+                    appSidebar.style.visibility = '';
+                    appSidebar.style.opacity = '';
+                    appSidebar.style.zIndex = '';
+                }
+                if (appMain) {
+                    appMain.classList.remove('sidebar-collapsed');
+                    appMain.style.marginLeft = '';
+                }
+            } else {
+                // Switching to desktop: restore sidebar
+                if (app) app.classList.add('sidebar-open');
+                if (appSidebar) {
+                    appSidebar.style.display = 'flex';
+                    appSidebar.style.visibility = 'visible';
+                    appSidebar.style.opacity = '1';
+                    appSidebar.style.zIndex = '99999';
+                    try {
+                        const saved = localStorage.getItem('sidebarCollapsed');
+                        if (saved === '1') {
+                            appSidebar.classList.add('collapsed');
+                            appSidebar.style.width = '';
+                        } else {
+                            appSidebar.classList.remove('collapsed');
+                            appSidebar.style.width = '248px';
+                        }
+                    } catch (e) {}
+                }
+                if (appMain) {
+                    try {
+                        const saved = localStorage.getItem('sidebarCollapsed');
+                        if (saved === '1') {
+                            appMain.classList.add('sidebar-collapsed');
+                            appMain.style.marginLeft = '';
+                        } else {
+                            appMain.classList.remove('sidebar-collapsed');
+                            appMain.style.marginLeft = '248px';
+                        }
+                    } catch (e) {}
+                }
+            }
+        }
+    });
 }
 initSidebarToggle();
 

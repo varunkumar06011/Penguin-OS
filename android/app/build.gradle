@@ -10,14 +10,38 @@ android {
         applicationId "com.vgrand.app"
         minSdk 24
         targetSdk 34
-        versionCode 4
-        versionName "1.0.4"
+        versionCode 5
+        versionName "1.0.5"
+    }
+
+    // Read keystore from keystore.properties if available; fall back to debug signing
+    def keystoreProps = new Properties()
+    def keystoreFile = rootProject.file('keystore.properties')
+    if (keystoreFile.exists()) {
+        keystoreProps.load(new FileInputStream(keystoreFile))
+    }
+
+    signingConfigs {
+        release {
+            if (keystoreFile.exists()) {
+                storeFile file(keystoreProps['storeFile'])
+                storePassword keystoreProps['storePassword']
+                keyAlias keystoreProps['keyAlias']
+                keyPassword keystoreProps['keyPassword']
+            }
+        }
     }
 
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            // Use custom keystore if available, otherwise reuse debug signing for consistency
+            if (keystoreFile.exists()) {
+                signingConfig signingConfigs.release
+            } else {
+                signingConfig signingConfigs.debug
+            }
         }
     }
 

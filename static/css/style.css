@@ -10,6 +10,12 @@ body {
     color: #1a1a1a;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* Eliminate 300ms tap delay on mobile — instant button response */
+button, a, input, select, textarea {
+    touch-action: manipulation;
 }
 
 /* Login */
@@ -4360,6 +4366,7 @@ body {
     overflow: hidden;
     border-right: 1px solid rgba(255,255,255,0.08);
     box-shadow: 4px 0 16px rgba(0,0,0,0.15);
+    will-change: transform, width;
 }
 
 .app-sidebar.collapsed {
@@ -4639,11 +4646,27 @@ body {
     .sidebar-collapse-btn {
         display: none;
     }
-    #appMain {
-        margin-left: 0;
+    #appMain,
+    #appMain.sidebar-collapsed {
+        margin-left: 0 !important;
     }
     #app.sidebar-open #appMain {
         margin-left: 0;
+    }
+    /* Ensure sidebar is off-screen by default on mobile */
+    .app-sidebar {
+        transform: translateX(-100%);
+    }
+    /* Override any inline display/visibility from desktop */
+    .app-sidebar:not(.sidebar-open) {
+        transform: translateX(-100%);
+    }
+    /* Make sure hamburger is always visible on mobile unless sidebar is open */
+    .sidebar-toggle {
+        display: flex !important;
+    }
+    #app.sidebar-open .sidebar-toggle {
+        display: none !important;
     }
 }
 
@@ -7266,6 +7289,21 @@ body {
 #designGeneratorPanel {
     max-width: 100%;
     overflow-x: clip;
+}
+
+/* Skip rendering of hidden panels for faster initial paint */
+#invoicesPanel[style*="display:none"],
+#poPanel[style*="display:none"],
+#inventoryPanel[style*="display:none"],
+#reportsPanel[style*="display:none"],
+#payrollPanel[style*="display:none"],
+#expenditurePanel[style*="display:none"],
+#instantReportsPanel[style*="display:none"],
+#inventoryAuditPanel[style*="display:none"],
+#designGeneratorPanel[style*="display:none"],
+#trackerView[style*="display:none"],
+#contractorPaymentsPanel[style*="display:none"] {
+    content-visibility: hidden;
 }
 
 /* Tables: allow horizontal scroll within their containers */

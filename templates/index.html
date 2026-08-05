@@ -2,15 +2,13 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-    <meta http-equiv="Pragma" content="no-cache">
-    <meta http-equiv="Expires" content="0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+    <meta name="format-detection" content="telephone=no">
     <title>Penguin OS</title>
     <link rel="icon" href="/static/images/favicon.jpg" type="image/jpeg">
     <link rel="stylesheet" href="/static/css/fonts.css?v=15">
     <link rel="stylesheet" href="/static/css/theme.css?v=15">
-    <link rel="stylesheet" href="/static/css/style.css?v=56">
+    <link rel="stylesheet" href="/static/css/style.css?v=58">
     <style>
         /* Fallback: ensure sidebar is always dark and readable */
         #app #appSidebar.app-sidebar {
@@ -1619,7 +1617,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    <script src="/static/js/app.js?v=56"></script>
+    <script src="/static/js/app.js?v=58"></script>
     <script src="/static/js/features.js?v=2"></script>
     <script src="/static/js/daily_report.js?v=2"></script>
     <script src="/static/js/cells.js?v=35"></script>
@@ -1639,8 +1637,8 @@
             var main = document.getElementById('appMain');
             var collapsed = false;
             try { collapsed = localStorage.getItem('sidebarCollapsed') === '1'; } catch (e) {}
-            // Only force sidebar visible on desktop (> 900px)
             if (window.innerWidth > 900) {
+                // Desktop: force sidebar visible
                 if (sb) {
                     sb.style.position = 'fixed';
                     sb.style.top = '0';
@@ -1670,6 +1668,21 @@
                         main.classList.remove('sidebar-collapsed');
                         main.style.marginLeft = '248px';
                     }
+                }
+            } else {
+                // Mobile: ensure clean state — remove desktop classes and inline styles
+                if (app) app.classList.remove('sidebar-open');
+                if (sb) {
+                    sb.classList.remove('collapsed');
+                    sb.style.width = '';
+                    sb.style.display = '';
+                    sb.style.visibility = '';
+                    sb.style.opacity = '';
+                    sb.style.zIndex = '';
+                }
+                if (main) {
+                    main.classList.remove('sidebar-collapsed');
+                    main.style.marginLeft = '';
                 }
             }
             // Expand all sidebar accordion sections by default

@@ -12,3 +12,8 @@ dist/
 build/
 backend_err.log
 
+# Android signing — never commit keystore files
+keystore.properties
+*.keystore
+*.jks
+local.properties

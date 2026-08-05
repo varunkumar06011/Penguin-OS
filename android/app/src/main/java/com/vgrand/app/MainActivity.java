@@ -9,17 +9,20 @@ import android.os.Build;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.webkit.WebSettings;
+import android.webkit.WebChromeClient;
 import android.view.KeyEvent;
+import android.view.View;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.io.File;
 import org.json.JSONObject;
 
 public class MainActivity extends Activity {
     private WebView webView;
     private static final String GITHUB_API = "https://api.github.com/repos/varunkumar06011/Penguin-OS/releases/latest";
-    private static final String CURRENT_VERSION = "v1.0.4";
+    private static final String CURRENT_VERSION = "v1.0.5";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -27,6 +30,11 @@ public class MainActivity extends Activity {
 
         webView = new WebView(this);
         setContentView(webView);
+
+        // Enable hardware acceleration for smoother scrolling and rendering
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+            webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        }
 
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
@@ -36,6 +44,26 @@ public class MainActivity extends Activity {
         settings.setMediaPlaybackRequiresUserGesture(false);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
         settings.setUserAgentString(settings.getUserAgentString() + " VGrandApp/" + CURRENT_VERSION);
+
+        // Caching: use WebView cache for static resources (CSS/JS with ?v= params)
+        settings.setCacheMode(WebSettings.LOAD_DEFAULT);
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.KITKAT) {
+            settings.setAppCacheEnabled(true);
+            File cacheDir = getCacheDir();
+            if (cacheDir != null) {
+                settings.setAppCachePath(cacheDir.getAbsolutePath());
+                settings.setAppCacheMaxSize(10 * 1024 * 1024); // 10 MB
+            }
+        }
+
+        // Enable smooth scrolling and better rendering on mobile
+        settings.setRenderPriority(WebSettings.RenderPriority.HIGH);
+        settings.setEnableSmoothTransition(true);
+        settings.setLoadWithOverviewMode(true);
+        settings.setUseWideViewPort(true);
+
+        // Allow JS dialogs (alert, confirm, prompt) to work in WebView
+        webView.setWebChromeClient(new WebChromeClient());
 
         webView.setWebViewClient(new WebViewClient() {
             @Override
@@ -55,6 +83,22 @@ public class MainActivity extends Activity {
                 }
                 view.loadUrl(url);
                 return true;
+            }
+
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                super.onPageFinished(view, url);
+                // Inject a small CSS snippet to prevent white flash on load
+                view.evaluateJavascript(
+                    "(function(){" +
+                    "  var s=document.createElement('style');" +
+                    "  s.textContent='body{background:#f4f5f7;-webkit-tap-highlight-color:transparent;}' +" +
+                    "    'button,a,input,select{touch-action:manipulation;}' +" +
+                    "    '*{-webkit-touch-callout:none;}' ;" +
+                    "  document.head.appendChild(s);" +
+                    "})();",
+                    null
+                );
             }
         });
 
