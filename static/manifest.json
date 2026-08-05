@@ -1,0 +1,18 @@
+{
+  "name": "Penguin OS - VGrand Infra",
+  "short_name": "Penguin OS",
+  "description": "Construction Site Progress Tracker",
+  "start_url": "/login",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#2563eb",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/static/images/penguin-os-logo.jpg",
+      "sizes": "192x192",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    }
+  ]
+}

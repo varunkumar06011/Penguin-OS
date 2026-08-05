@@ -8,6 +8,8 @@
     <link rel="stylesheet" href="/static/css/fonts.css?v=23">
     <link rel="stylesheet" href="/static/css/theme.css?v=23">
     <link rel="stylesheet" href="/static/css/style.css?v=23">
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#2563eb">
 </head>
 <body class="login-body">
 <div class="login-wrapper">
@@ -253,41 +255,81 @@
             eyeEl.innerHTML = isHidden ? '&#128065;&#65038;' : '&#128065;';
         }
 
+        // Register PWA service worker
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/static/js/service-worker.js').catch(() => {});
+        }
+
+        let pwaInstallEvent = null;
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            pwaInstallEvent = e;
+        });
+
         document.getElementById('downloadAppBtn').addEventListener('click', async () => {
             const btn = document.getElementById('downloadAppBtn');
             const msg = document.getElementById('downloadAppMsg');
             msg.textContent = '';
 
-            if (GITHUB_OWNER === 'YOUR_GITHUB_USERNAME' || GITHUB_REPO === 'YOUR_REPO_NAME') {
-                msg.textContent = 'App download is not configured yet. Please set GitHub owner and repo.';
+            const isAndroid = /Android/i.test(navigator.userAgent);
+            const isIOS = /iPad|iPhone|iPod/i.test(navigator.userAgent);
+            const isStandalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+
+            // If already installed as PWA, just open the app
+            if (isStandalone) {
+                msg.style.color = '#27ae60';
+                msg.textContent = 'App is already installed.';
                 return;
             }
 
-            btn.disabled = true;
-            btn.textContent = 'Getting latest app...';
-            try {
-                const r = await fetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`);
-                if (!r.ok) throw new Error('Could not fetch latest release.');
-                const release = await r.json();
-                const asset = release.assets && release.assets.find(a => a.name === APK_ASSET_NAME);
-                if (!asset) throw new Error(`APK asset "${APK_ASSET_NAME}" not found in release ${release.tag_name}.`);
-
-                const link = document.createElement('a');
-                link.href = asset.browser_download_url;
-                link.download = asset.name;
-                document.body.appendChild(link);
-                link.click();
-                link.remove();
-
-                msg.style.color = '#27ae60';
-                msg.textContent = `Downloading ${asset.name} (${release.tag_name})...`;
-            } catch (err) {
-                msg.style.color = '#c0392b';
-                msg.textContent = err.message || 'Download failed. Please try again later.';
-            } finally {
-                btn.disabled = false;
-                btn.innerHTML = '&#8659; Download App';
+            // Android: download APK
+            if (isAndroid) {
+                btn.disabled = true;
+                btn.textContent = 'Getting latest app...';
+                try {
+                    const r = await fetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`);
+                    if (!r.ok) throw new Error('Could not fetch latest release.');
+                    const release = await r.json();
+                    const asset = release.assets && release.assets.find(a => a.name === APK_ASSET_NAME);
+                    if (!asset) throw new Error(`APK asset "${APK_ASSET_NAME}" not found in release ${release.tag_name}.`);
+                    window.location.href = asset.browser_download_url;
+                    msg.style.color = '#27ae60';
+                    msg.innerHTML = `Download started: <strong>${asset.name}</strong> (${release.tag_name}).<br>After download, pull down your notifications and tap the file to install.`;
+                } catch (err) {
+                    msg.style.color = '#c0392b';
+                    msg.textContent = err.message || 'Download failed. Please try again later.';
+                } finally {
+                    btn.disabled = false;
+                    btn.innerHTML = '&#8659; Download App';
+                }
+                return;
             }
+
+            // iOS: show instructions for Add to Home Screen
+            if (isIOS) {
+                msg.style.color = '#2563eb';
+                msg.innerHTML = 'To install on iPhone/iPad: tap the <strong>Share</strong> button, then tap <strong>Add to Home Screen</strong>.';
+                return;
+            }
+
+            // Desktop / other: try PWA install prompt, or show instructions
+            if (pwaInstallEvent) {
+                pwaInstallEvent.prompt();
+                const { outcome } = await pwaInstallEvent.userChoice;
+                if (outcome === 'accepted') {
+                    msg.style.color = '#27ae60';
+                    msg.textContent = 'App installed successfully.';
+                } else {
+                    msg.style.color = '#c0392b';
+                    msg.textContent = 'Install cancelled.';
+                }
+                pwaInstallEvent = null;
+                return;
+            }
+
+            // Fallback: browser install not available
+            msg.style.color = '#2563eb';
+            msg.innerHTML = 'To install this app:<br>Chrome/Edge: click the <strong>install icon</strong> in the address bar.<br>Safari: use <strong>Share → Add to Home Screen</strong>.';
         });
     </script>
 </body>
