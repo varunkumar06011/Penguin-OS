@@ -1692,11 +1692,6 @@ function initSidebarToggle() {
                 if (app) app.classList.remove('sidebar-open');
                 if (appSidebar) {
                     appSidebar.classList.remove('collapsed');
-                    appSidebar.style.width = '';
-                    appSidebar.style.display = '';
-                    appSidebar.style.visibility = '';
-                    appSidebar.style.opacity = '';
-                    appSidebar.style.zIndex = '';
                 }
                 if (appMain) {
                     appMain.classList.remove('sidebar-collapsed');
@@ -1706,18 +1701,12 @@ function initSidebarToggle() {
                 // Switching to desktop: restore sidebar
                 if (app) app.classList.add('sidebar-open');
                 if (appSidebar) {
-                    appSidebar.style.display = 'flex';
-                    appSidebar.style.visibility = 'visible';
-                    appSidebar.style.opacity = '1';
-                    appSidebar.style.zIndex = '99999';
                     try {
                         const saved = localStorage.getItem('sidebarCollapsed');
                         if (saved === '1') {
                             appSidebar.classList.add('collapsed');
-                            appSidebar.style.width = '';
                         } else {
                             appSidebar.classList.remove('collapsed');
-                            appSidebar.style.width = '248px';
                         }
                     } catch (e) {}
                 }
