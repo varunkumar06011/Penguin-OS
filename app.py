@@ -3,6 +3,8 @@ import os
 import json
 import re
 import base64
+
+APP_VERSION = 'v1.0.1'
 import io
 import logging
 from collections import defaultdict, deque
@@ -128,6 +130,8 @@ else:
 # ============================================================
 DATABASE_URL = os.environ.get('DATABASE_URL', '')
 
+_MIGRATION_LOCK_KEY = 7839456120345  # fixed arbitrary bigint for advisory lock
+
 def _run_migrations():
     """Run all pending migration SQL files in order."""
     if not DATABASE_URL:
@@ -143,48 +147,73 @@ def _run_migrations():
         logger.warning(f'Migrations directory not found: {migrations_dir}')
         return
 
+    conn = None
+    cur = None
     try:
         conn = psycopg2.connect(DATABASE_URL)
         conn.autocommit = True
         cur = conn.cursor()
 
-        # Ensure schema_migrations tracking table exists
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS _schema_migrations (
-                filename TEXT PRIMARY KEY,
-                applied_at TIMESTAMPTZ DEFAULT now()
-            )
-        """)
+        # Try to acquire an advisory lock so only one worker runs migrations
+        cur.execute("SELECT pg_try_advisory_lock(%s)", (_MIGRATION_LOCK_KEY,))
+        acquired = cur.fetchone()[0]
+        if not acquired:
+            logger.info('Migrations already in progress on another worker.')
+            return
 
-        # Get already-applied migrations
-        cur.execute("SELECT filename FROM _schema_migrations")
-        applied = {row[0] for row in cur.fetchall()}
-
-        # Run pending migrations in sorted order
-        sql_files = sorted(f for f in os.listdir(migrations_dir) if f.endswith('.sql'))
-        for fname in sql_files:
-            if fname in applied:
-                continue
-            fpath = os.path.join(migrations_dir, fname)
-            logger.info(f'Applying migration: {fname}')
-            with open(fpath, 'r', encoding='utf-8') as f:
-                sql_content = f.read()
-            try:
-                cur.execute(sql_content)
-                cur.execute(
-                    "INSERT INTO _schema_migrations (filename) VALUES (%s) ON CONFLICT DO NOTHING",
-                    (fname,)
+        try:
+            # Ensure schema_migrations tracking table exists
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS _schema_migrations (
+                    filename TEXT PRIMARY KEY,
+                    applied_at TIMESTAMPTZ DEFAULT now()
                 )
-                logger.info(f'Migration applied: {fname}')
-            except Exception as e:
-                logger.error(f'Migration failed {fname}: {e}')
-                # Continue with next migration - some may depend on later ones
+            """)
 
-        cur.close()
-        conn.close()
-        logger.info('Auto-migration complete.')
+            # Get already-applied migrations
+            cur.execute("SELECT filename FROM _schema_migrations")
+            applied = {row[0] for row in cur.fetchall()}
+
+            # Run pending migrations in sorted order
+            sql_files = sorted(f for f in os.listdir(migrations_dir) if f.endswith('.sql'))
+            for fname in sql_files:
+                if fname in applied:
+                    continue
+                fpath = os.path.join(migrations_dir, fname)
+                logger.info(f'Applying migration: {fname}')
+                with open(fpath, 'r', encoding='utf-8') as f:
+                    sql_content = f.read()
+                try:
+                    cur.execute(sql_content)
+                    cur.execute(
+                        "INSERT INTO _schema_migrations (filename) VALUES (%s) ON CONFLICT DO NOTHING",
+                        (fname,)
+                    )
+                    logger.info(f'Migration applied: {fname}')
+                except Exception as e:
+                    logger.error(f'Migration failed {fname}: {e}')
+                    # Continue with next migration - some may depend on later ones
+
+            logger.info('Auto-migration complete.')
+        finally:
+            # Always release the advisory lock
+            try:
+                cur.execute("SELECT pg_advisory_unlock(%s)", (_MIGRATION_LOCK_KEY,))
+            except Exception:
+                pass
     except Exception as e:
         logger.error(f'Auto-migration error: {e}')
+    finally:
+        if cur:
+            try:
+                cur.close()
+            except Exception:
+                pass
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 _run_migrations()
 
@@ -1630,6 +1659,109 @@ def api_ventures_apply_settings():
         return jsonify({'error': str(e)}), 500
 
 
+# ============================================================
+# Phase 2: Dual-write helpers (best-effort writes to v2 tables)
+# Source of truth remains the original JSONB tables in this phase.
+# ============================================================
+_DEFAULT_ORG_ID = '11111111-1111-1111-1111-111111111111'
+
+def _dual_write_vendor_v2(vendor):
+    """Best-effort upsert of a vendor JSONB row into vendors_v2."""
+    try:
+        bank_details = {}
+        for k in ('accountHolder', 'accountNo', 'bankName', 'ifsc'):
+            if vendor.get(k):
+                bank_details[k] = vendor.get(k)
+        row = {
+            'org_id': _DEFAULT_ORG_ID,
+            'legacy_id': vendor.get('id') or None,
+            'venture_id': vendor.get('ventureId') or vendor.get('venture_id'),
+            'name': vendor.get('name', ''),
+            'gstin': vendor.get('gstin') or None,
+            'contact_phone': vendor.get('phone') or vendor.get('contact') or None,
+            'contact_email': vendor.get('email') or None,
+            'bank_details': bank_details if bank_details else None,
+            'remarks': vendor.get('notes') or None,
+            'status': 'active',
+            'updated_at': 'now()',
+        }
+        existing = supabase.table('vendors_v2').select('id').eq('legacy_id', vendor.get('id') or '').execute()
+        matches = existing.data or []
+        if not matches and vendor.get('name'):
+            existing = supabase.table('vendors_v2').select('id').eq('org_id', _DEFAULT_ORG_ID).ilike('name', vendor.get('name', '')).execute()
+            matches = existing.data or []
+        if matches:
+            row_id = matches[0]['id']
+            supabase.table('vendors_v2').update(row).eq('id', row_id).execute()
+        else:
+            import uuid as _uuid
+            row_id = str(_uuid.uuid4())
+            row['id'] = row_id
+            supabase.table('vendors_v2').insert(row).execute()
+    except Exception as e:
+        logger.error(f'Dual-write vendor_v2 failed for vendor id={vendor.get("id")}: {e}')
+
+def _dual_write_po_v2(po):
+    """Best-effort upsert of a purchase order JSONB row into purchase_orders_v2."""
+    try:
+        total = po.get('billAmount') or po.get('quotedAmount') or 0
+        row = {
+            'org_id': _DEFAULT_ORG_ID,
+            'legacy_id': po.get('id') or None,
+            'venture_id': po.get('ventureId') or po.get('venture_id') or None,
+            'po_number': po.get('poNumber') or None,
+            'status': po.get('status') or 'draft',
+            'total_amount': float(total) if total else None,
+            'received_status': 'not_received',
+            'created_by': po.get('createdBy') or None,
+            'updated_at': 'now()',
+        }
+        existing = supabase.table('purchase_orders_v2').select('id').eq('legacy_id', po.get('id') or '').execute()
+        matches = existing.data or []
+        if not matches and po.get('poNumber'):
+            existing = supabase.table('purchase_orders_v2').select('id').eq('org_id', _DEFAULT_ORG_ID).eq('po_number', po.get('poNumber') or '').execute()
+            matches = existing.data or []
+        if matches:
+            row_id = matches[0]['id']
+            supabase.table('purchase_orders_v2').update(row).eq('id', row_id).execute()
+        else:
+            import uuid as _uuid
+            row_id = str(_uuid.uuid4())
+            row['id'] = row_id
+            supabase.table('purchase_orders_v2').insert(row).execute()
+    except Exception as e:
+        logger.error(f'Dual-write po_v2 failed for PO id={po.get("id")}: {e}')
+
+def _dual_write_invoice_v2(inv):
+    """Best-effort upsert of an invoice JSONB row into invoices_v2."""
+    try:
+        row = {
+            'org_id': _DEFAULT_ORG_ID,
+            'legacy_id': inv.get('id') or None,
+            'venture_id': inv.get('ventureId') or inv.get('venture_id') or None,
+            'invoice_number': inv.get('id') or None,
+            'total_amount': float(inv.get('amount') or 0) or None,
+            'paid_amount': 0,
+            'status': inv.get('paymentMode') and 'paid' or 'pending',
+            'due_date': inv.get('purchaseDate') or None,
+        }
+        existing = supabase.table('invoices_v2').select('id').eq('legacy_id', inv.get('id') or '').execute()
+        matches = existing.data or []
+        if not matches and inv.get('id'):
+            existing = supabase.table('invoices_v2').select('id').eq('org_id', _DEFAULT_ORG_ID).eq('invoice_number', inv.get('id') or '').execute()
+            matches = existing.data or []
+        if matches:
+            row_id = matches[0]['id']
+            supabase.table('invoices_v2').update(row).eq('id', row_id).execute()
+        else:
+            import uuid as _uuid
+            row_id = str(_uuid.uuid4())
+            row['id'] = row_id
+            supabase.table('invoices_v2').insert(row).execute()
+    except Exception as e:
+        logger.error(f'Dual-write invoice_v2 failed for invoice id={inv.get("id")}: {e}')
+
+
 # ========================
 # Invoices API
 # ========================
@@ -1664,6 +1796,7 @@ def api_invoice_post():
             'id': inv['id'],
             'data': inv
         }, on_conflict='id').execute()
+        _dual_write_invoice_v2(inv)
         return jsonify({'success': True})
     except Exception as e:
         logger.error(f'Error saving invoice: {e}')
@@ -1725,6 +1858,7 @@ def api_po_post():
             'id': po['id'],
             'data': po
         }, on_conflict='id').execute()
+        _dual_write_po_v2(po)
         return jsonify({'success': True})
     except Exception as e:
         logger.error(f'Error saving PO: {e}')
@@ -1782,6 +1916,7 @@ def api_vendor_post():
             'id': vendor['id'],
             'data': vendor
         }, on_conflict='id').execute()
+        _dual_write_vendor_v2(vendor)
         return jsonify({'success': True})
     except Exception as e:
         logger.error(f'Error saving vendor: {e}')
@@ -2457,7 +2592,9 @@ def _ensure_vendor(org_id, name):
         if ((r.get('data') or {}).get('name') or '').strip().lower() == name.strip().lower():
             return r['id']
     vid = str(__import__('uuid').uuid4())
-    supabase.table('vendors').upsert({'id': vid, 'data': {'id': vid, 'name': name}, 'name': name, 'org_id': org_id}, on_conflict='id').execute()
+    vendor_data = {'id': vid, 'name': name}
+    supabase.table('vendors').upsert({'id': vid, 'data': vendor_data, 'name': name, 'org_id': org_id}, on_conflict='id').execute()
+    _dual_write_vendor_v2(vendor_data)
     return vid
 
 
