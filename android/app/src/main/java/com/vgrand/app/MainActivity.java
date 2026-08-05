@@ -19,7 +19,7 @@ import org.json.JSONObject;
 public class MainActivity extends Activity {
     private WebView webView;
     private static final String GITHUB_API = "https://api.github.com/repos/varunkumar06011/Penguin-OS/releases/latest";
-    private static final String CURRENT_VERSION = "v1.0.2";
+    private static final String CURRENT_VERSION = "v1.0.4";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -40,8 +40,30 @@ public class MainActivity extends Activity {
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
+                // Open WhatsApp, phone, email, and external download links outside the WebView
+                if (url.startsWith("https://wa.me/") || url.startsWith("whatsapp://") ||
+                    url.startsWith("tel:") || url.startsWith("mailto:") ||
+                    url.startsWith("https://github.com/") || url.endsWith(".apk")) {
+                    try {
+                        Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                        startActivity(intent);
+                    } catch (Exception e) {
+                        // If no app can handle it, load in WebView
+                        view.loadUrl(url);
+                    }
+                    return true;
+                }
                 view.loadUrl(url);
                 return true;
+            }
+        });
+
+        webView.setDownloadListener((url, userAgent, contentDisposition, mimetype, contentLength) -> {
+            Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+            try {
+                startActivity(intent);
+            } catch (Exception e) {
+                // ignore
             }
         });
 
