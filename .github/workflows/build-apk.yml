@@ -29,15 +29,16 @@ jobs:
         working-directory: android
         run: |
           mkdir -p gradle/wrapper
-          cat > gradle/wrapper/gradle-wrapper.properties << 'EOF'
+          cat > gradle/wrapper/gradle-wrapper.properties << 'PROPS'
           distributionBase=GRADLE_USER_HOME
           distributionPath=wrapper/dists
           distributionUrl=https\://services.gradle.org/distributions/gradle-8.1-bin.zip
           zipStoreBase=GRADLE_USER_HOME
           zipStorePath=wrapper/dists
-          EOF
+          PROPS
           curl -sL https://raw.githubusercontent.com/gradle/gradle/v8.1.0/gradlew -o gradlew
           curl -sL https://raw.githubusercontent.com/gradle/gradle/v8.1.0/gradlew.bat -o gradlew.bat
+          curl -sL https://raw.githubusercontent.com/gradle/gradle/v8.1.0/gradle/wrapper/gradle-wrapper.jar -o gradle/wrapper/gradle-wrapper.jar
           chmod +x gradlew
 
       - name: Build Debug APK
