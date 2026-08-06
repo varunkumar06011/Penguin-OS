@@ -332,6 +332,8 @@ let bulkMode = false;
 let bulkSelectedColor = null; // when set, clicking a cell instantly applies this color (paint mode)
 let bulkIsDragging = false; // when true, mouse drag applies paint color to cells
 const bulkSelected = new Set(); // set of cacheKeys selected in bulk mode
+const bulkPendingChanges = new Map(); // paint mode: ck -> {oldData, newData} for deferred save
+const bulkOriginalData = new Map(); // paint mode: ck -> original cellsCache value for cancel/revert
 let selectedCellId = null;
 let selectedWorkItem = null;
 let selectedFlat = null;
@@ -1287,6 +1289,8 @@ function patchCellsInDOM(changedKeys) {
     buttons.forEach(btn => {
         const ck = btn.dataset.cellId;
         if (!changedSet.has(ck)) return;
+        // Don't patch cells with pending bulk paint changes
+        if (bulkPendingChanges.has(ck)) return;
         const cellData = cellsCache[ck];
         const color = cellData?.color || null;
         btn.className = 'cell-btn ' + (color || 'red');
@@ -1429,11 +1433,11 @@ async function pollData() {
         tasks.push({ key: 'vendors', fn: () => apiGet('/api/vendors') });
     }
 
-    // Cells — only if tracker or overview visible and no pending saves
+    // Cells — only if tracker or overview visible and no pending saves or bulk mode
     const tracker = document.getElementById('trackerView');
     const trackerVisible = tracker && tracker.style.display !== 'none';
     const overviewVisible = document.getElementById('overviewPage')?.style.display !== 'none';
-    const skipCells = pendingSaves.size > 0 || inFlightSaves > 0;
+    const skipCells = pendingSaves.size > 0 || inFlightSaves > 0 || bulkMode;
     if ((trackerVisible || overviewVisible) && !skipCells) {
         let cellsUrl = '/api/cells';
         if (currentVenture && currentVenture.id) {
@@ -1532,6 +1536,8 @@ async function pollData() {
         let cellsChanged = false;
         const changedKeys = [];
         for (const key in fresh) {
+            // Don't overwrite cells with pending bulk paint changes
+            if (bulkPendingChanges.has(key)) continue;
             const oldCell = cellsCache[key];
             const newCell = fresh[key];
             if (!oldCell || oldCell.__notFound) {

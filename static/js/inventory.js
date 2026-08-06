@@ -83,7 +83,10 @@ async function loadInventorySummary(ventureId) {
 async function loadInventoryCategories(ventureId) {
     try {
         const params = ventureId ? '?venture_id=' + encodeURIComponent(ventureId) : '';
-        return await apiGet('/api/materials/categories' + params) || [];
+        const matCats = await apiGet('/api/materials/categories' + params) || [];
+        const tree = await apiGet('/api/inventory-categories') || [];
+        const treeCats = tree.map(c => c.name);
+        return Array.from(new Set([...matCats, ...treeCats])).sort();
     } catch (e) { return []; }
 }
 
@@ -1610,6 +1613,7 @@ async function openMaterialModal(materialId) {
                 try {
                     await apiDelete('/api/material/' + encodeURIComponent(mat.id));
                     inventoryMaterials = inventoryMaterials.filter(m => m.id !== mat.id);
+                    _inventoryCache = { ventureId: null, ts: 0 };
                     openMaterialModal(null);
                     renderInventoryView();
                     showToast('Material deleted');
@@ -2059,6 +2063,7 @@ document.getElementById('saveMaterial').addEventListener('click', async () => {
         await apiPost('/api/material', material);
         closeMaterialModal();
         showToast('Material saved');
+        _inventoryCache = { ventureId: null, ts: 0 };
         renderInventoryView();
     } catch (err) {
         console.error('Failed to save material:', err);

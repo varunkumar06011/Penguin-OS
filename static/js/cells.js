@@ -152,6 +152,60 @@ async function submitWorkAddDialog() {
     await addWorkItem(_workAddCategory, val, scopeAll && scopeAll.checked);
 }
 
+// Deferred paint-mode cell update — optimistic DOM only, no API save until Save button clicked
+function bulkPaintCell(cellId, color, workItem, flat) {
+    const today = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+    const statusLabel = color ? COLOR_LABELS[color] : 'Cleared';
+    let autoRemark = '';
+    if (color === 'blue') autoRemark = `Patch work started on ${today}`;
+    else if (color === 'green') autoRemark = `Completed on ${today}`;
+    else if (color === 'yellow') autoRemark = `Work started on ${today}`;
+
+    const autoRemarkPatterns = [/^Patch work started on .+$/m, /^Completed on .+$/m, /^Work started on .+$/m];
+    const timelineEntry = { color: color || null, status_label: statusLabel, date: today, changed_by: currentUser };
+
+    const ck = cacheKey(cellId);
+    const existing = (cellsCache[ck] && !cellsCache[ck]?.__notFound) ? cellsCache[ck] : null;
+
+    // Skip if same color as last timeline entry
+    if (existing && existing.timeline && existing.timeline.length > 0) {
+        const lastEntry = existing.timeline[existing.timeline.length - 1];
+        if (lastEntry && lastEntry.color === color) return;
+    }
+
+    let data;
+    if (existing) {
+        const timeline = [...(existing.timeline || []), timelineEntry];
+        let remarks = existing.remarks || '';
+        autoRemarkPatterns.forEach(p => { remarks = remarks.replace(p, '').trim(); });
+        if (autoRemark) remarks = remarks ? remarks + '\n' + autoRemark : autoRemark;
+        data = { ...existing, color: color || null, remarks, timeline,
+            updated_at: new Date().toISOString(), updated_by: currentUser };
+    } else {
+        data = { color: color || null, remarks: autoRemark, timeline: [timelineEntry],
+            updated_at: new Date().toISOString(), updated_by: currentUser };
+    }
+    if (currentVenture && currentVenture.id) data.venture_id = currentVenture.id;
+    if (currentBlock) data.block = currentBlock;
+    if (currentFloor !== null && currentFloor !== undefined) data.floor = String(currentFloor);
+
+    // Store original data for cancel/revert (only first time)
+    if (!bulkOriginalData.has(ck)) {
+        bulkOriginalData.set(ck, existing || CELL_NOT_FOUND);
+    }
+    // Track pending change
+    bulkPendingChanges.set(ck, { oldData: existing, newData: data });
+
+    // Optimistic DOM update only — no API save
+    cellsCache[ck] = data;
+    const cellBtn = document.querySelector(`[data-cell-id="${ck}"]`);
+    if (cellBtn) cellBtn.className = 'cell-btn ' + (color || 'red');
+
+    // Update count display
+    document.getElementById('bulkCount').textContent =
+        `${bulkPendingChanges.size} cell${bulkPendingChanges.size !== 1 ? 's' : ''} painted — click Save to commit`;
+}
+
 async function updateCellColor(cellId, color, workItem, flat) {
     const today = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
     const statusLabel = color ? COLOR_LABELS[color] : 'Cleared';
@@ -1002,7 +1056,7 @@ function renderMobileFlatContent(container, workCategories, flatNumbers, flat) {
                 if (bulkMode) {
                     const ck = cacheKey(cellId);
                     if (bulkSelectedColor) {
-                        updateCellColor(cellId, bulkSelectedColor, itemObj.label, flat);
+                        bulkPaintCell(cellId, bulkSelectedColor, itemObj.label, flat);
                         // Update status label after paint
                         statusLabel.textContent = bulkSelectedColor ? COLOR_LABELS[bulkSelectedColor] : 'Not set';
                     } else {
@@ -1025,7 +1079,7 @@ function renderMobileFlatContent(container, workCategories, flatNumbers, flat) {
                 if (bulkMode && bulkSelectedColor) {
                     if (e.cancelable) e.preventDefault();
                     bulkIsDragging = true;
-                    updateCellColor(cellId, bulkSelectedColor, itemObj.label, flat);
+                    bulkPaintCell(cellId, bulkSelectedColor, itemObj.label, flat);
                     statusLabel.textContent = bulkSelectedColor ? COLOR_LABELS[bulkSelectedColor] : 'Not set';
                 }
             }, { passive: false });
@@ -1186,7 +1240,7 @@ function createSectionTable(category, items, flats) {
                     if (bulkMode) {
                         const ck = cacheKey(cellId);
                         if (bulkSelectedColor) {
-                            updateCellColor(cellId, bulkSelectedColor, itemObj.label, flat);
+                            bulkPaintCell(cellId, bulkSelectedColor, itemObj.label, flat);
                         } else {
                             if (bulkSelected.has(ck)) {
                                 bulkSelected.delete(ck);
@@ -1207,12 +1261,12 @@ function createSectionTable(category, items, flats) {
                     if (bulkMode && bulkSelectedColor) {
                         e.preventDefault();
                         bulkIsDragging = true;
-                        updateCellColor(cellId, bulkSelectedColor, itemObj.label, flat);
+                        bulkPaintCell(cellId, bulkSelectedColor, itemObj.label, flat);
                     }
                 });
                 btn.addEventListener('mouseover', () => {
                     if (bulkMode && bulkIsDragging && bulkSelectedColor) {
-                        updateCellColor(cellId, bulkSelectedColor, itemObj.label, flat);
+                        bulkPaintCell(cellId, bulkSelectedColor, itemObj.label, flat);
                     }
                 });
                 // Touch support for mobile drag-paint
@@ -1220,7 +1274,7 @@ function createSectionTable(category, items, flats) {
                     if (bulkMode && bulkSelectedColor) {
                         if (e.cancelable) e.preventDefault();
                         bulkIsDragging = true;
-                        updateCellColor(cellId, bulkSelectedColor, itemObj.label, flat);
+                        bulkPaintCell(cellId, bulkSelectedColor, itemObj.label, flat);
                     }
                 }, { passive: false });
             }
@@ -1554,12 +1608,24 @@ els.statusPopup.addEventListener('click', (e) => {
 // Bulk Select
 // ========================
 function exitBulkMode() {
+    // Revert any pending paint-mode changes
+    if (bulkOriginalData.size > 0) {
+        bulkOriginalData.forEach((oldData, ck) => {
+            cellsCache[ck] = oldData;
+            const cellBtn = document.querySelector(`[data-cell-id="${ck}"]`);
+            if (cellBtn) cellBtn.className = 'cell-btn ' + (oldData?.color || 'red');
+        });
+    }
     bulkMode = false;
     bulkSelectedColor = null;
     bulkIsDragging = false;
     bulkSelected.clear();
+    bulkPendingChanges.clear();
+    bulkOriginalData.clear();
     document.getElementById('bulkSelectBtn').classList.remove('active');
     document.getElementById('bulkActionBar').style.display = 'none';
+    const bulkSaveBtn = document.getElementById('bulkSaveBtn');
+    if (bulkSaveBtn) bulkSaveBtn.style.display = 'none';
     // Sync mobile sticky toolbar bulk button
     const mstBulk = document.getElementById('mstBulkBtn');
     if (mstBulk) mstBulk.classList.remove('active');
@@ -1594,6 +1660,42 @@ document.getElementById('bulkSelectBtn').addEventListener('click', () => {
 });
 
 document.getElementById('bulkCancelBtn').addEventListener('click', exitBulkMode);
+
+// Save button: commit all pending paint-mode changes
+document.getElementById('bulkSaveBtn').addEventListener('click', async () => {
+    if (bulkPendingChanges.size === 0) {
+        exitBulkMode();
+        return;
+    }
+    const batch = [];
+    bulkPendingChanges.forEach((change, ck) => {
+        batch.push({ id: ck, data: change.newData });
+    });
+    const count = batch.length;
+    showToast(`Saving ${count} cells…`);
+    try {
+        inFlightSaves++;
+        let allDowngraded = [];
+        for (let i = 0; i < batch.length; i += 50) {
+            const resp = await apiPost('/api/cells/batch', { cells: batch.slice(i, i + 50) });
+            if (resp && resp.downgraded) {
+                allDowngraded = allDowngraded.concat(resp.downgraded);
+            }
+        }
+        showToast(`${count} cells saved`);
+        if (allDowngraded.length > 0) {
+            showToast(`${allDowngraded.length} cell(s) downgraded from green — check usage reversal`, true);
+        }
+    } catch (err) {
+        console.error('Bulk save failed:', err);
+        showToast('Bulk save failed — please retry', true);
+    } finally {
+        inFlightSaves--;
+    }
+    bulkPendingChanges.clear();
+    bulkOriginalData.clear();
+    exitBulkMode();
+});
 
 document.querySelectorAll('.bulk-color-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
@@ -1662,13 +1764,16 @@ document.querySelectorAll('.bulk-color-btn').forEach(btn => {
                 inFlightSaves--;
             }
         } else {
-            // Paint mode: set the active color so clicking cells applies it instantly
+            // Paint mode: set the active color so clicking cells applies it (deferred save)
             bulkSelectedColor = color;
             // Highlight the selected color button
             document.querySelectorAll('.bulk-color-btn.selected').forEach(b => b.classList.remove('selected'));
             btn.classList.add('selected');
             const colorName = color ? COLOR_LABELS[color] : 'No status color';
-            document.getElementById('bulkCount').textContent = `Paint mode: ${colorName} — click cells to apply`;
+            document.getElementById('bulkCount').textContent = `Paint mode: ${colorName} — click cells, then Save`;
+            // Show Save button
+            const bulkSaveBtn = document.getElementById('bulkSaveBtn');
+            if (bulkSaveBtn) bulkSaveBtn.style.display = '';
         }
     });
 });
