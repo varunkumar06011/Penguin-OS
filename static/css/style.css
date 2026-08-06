@@ -729,6 +729,15 @@ button, a, input, select, textarea {
     opacity: 0.5;
 }
 
+/* Drag-and-drop for work description rows in edit mode */
+.tracker-table tbody tr.dragging {
+    opacity: 0.5;
+    background: #e6f0ff;
+}
+.tracker-table tbody tr[draggable="true"]:active {
+    cursor: grabbing;
+}
+
 .drag-handle {
     color: #999;
     cursor: grab;

@@ -1207,11 +1207,14 @@ function renderSidebar() {
     });
 
     // Bind nav item clicks for mobile sidebar close + active state
+    const MODAL_OPENING_ITEMS = new Set(['settingsBtn', 'editModeBtn', 'manageUsersBtn']);
     nav.querySelectorAll('.sidebar-nav-item').forEach(item => {
         item.addEventListener('click', () => {
             setActiveNav(item.id);
-            // Close all open modals when navigating via sidebar
-            document.querySelectorAll('.modal.show').forEach(m => m.classList.remove('show'));
+            // Close all open modals when navigating via sidebar — except for items that open modals
+            if (!MODAL_OPENING_ITEMS.has(item.id)) {
+                document.querySelectorAll('.modal.show').forEach(m => m.classList.remove('show'));
+            }
             if (window.innerWidth <= 900) {
                 const app = document.getElementById('app');
                 if (app) app.classList.remove('sidebar-open');

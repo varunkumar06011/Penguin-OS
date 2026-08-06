@@ -1194,11 +1194,51 @@ function createSectionTable(category, items, flats) {
     // Table body
     const tbody = document.createElement('tbody');
 
+    // Enable drag-and-drop reordering of work description rows (both edit and view modes)
+    let draggedRow = null;
+    tbody.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        if (!draggedRow) return;
+        const rows = [...tbody.querySelectorAll('tr:not(.dragging)')];
+        const next = rows.find(r => {
+            const rect = r.getBoundingClientRect();
+            return e.clientY <= rect.top + rect.height / 2;
+        });
+        if (next) {
+            tbody.insertBefore(draggedRow, next);
+        } else {
+            tbody.appendChild(draggedRow);
+        }
+    });
+    tbody.addEventListener('drop', () => {
+        if (!draggedRow) return;
+        draggedRow.classList.remove('dragging');
+        // Build new order of item IDs from DOM
+        const newOrder = [...tbody.querySelectorAll('tr')].map(r => r.dataset.itemId).filter(Boolean);
+        reorderWorkItemsByList(category, newOrder);
+        draggedRow = null;
+    });
+
     items.forEach((itemObj, wi) => {
         const row = document.createElement('tr');
+        row.dataset.itemId = itemObj.id;
 
         const tdSNo = document.createElement('td');
-        tdSNo.textContent = wi + 1;
+        tdSNo.style.cursor = 'grab';
+        tdSNo.style.userSelect = 'none';
+        tdSNo.draggable = true;
+        tdSNo.innerHTML = '<span class="drag-handle" style="font-size:1rem;margin-right:4px;">\u2261</span>' + (wi + 1);
+        // Drag starts only from the S.No cell handle
+        tdSNo.addEventListener('dragstart', (e) => {
+            draggedRow = row;
+            row.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', itemObj.id);
+        });
+        tdSNo.addEventListener('dragend', () => {
+            row.classList.remove('dragging');
+            draggedRow = null;
+        });
         row.appendChild(tdSNo);
 
         const tdWork = document.createElement('td');
@@ -1208,9 +1248,9 @@ function createSectionTable(category, items, flats) {
             const controls = document.createElement('div');
             controls.className = 'edit-controls';
             controls.style.marginTop = '4px';
-            controls.innerHTML = `<button class="edit-btn" title="Rename">&#9998;</button><button class="edit-btn" title="Delete">&#10006;</button>`;
-            if (wi > 0) controls.innerHTML += `<button class="edit-btn" title="Move up">&#9650;</button>`;
-            if (wi < items.length - 1) controls.innerHTML += `<button class="edit-btn" title="Move down">&#9660;</button>`;
+            controls.innerHTML = `<button class="edit-btn" title="Rename" draggable="false">&#9998;</button><button class="edit-btn" title="Delete" draggable="false">&#10006;</button>`;
+            if (wi > 0) controls.innerHTML += `<button class="edit-btn" title="Move up" draggable="false">&#9650;</button>`;
+            if (wi < items.length - 1) controls.innerHTML += `<button class="edit-btn" title="Move down" draggable="false">&#9660;</button>`;
             tdWork.appendChild(controls);
 
             controls.querySelector('[title="Rename"]').addEventListener('click', () => startInlineEdit(tdWork, itemObj.label, (newLabel) => renameWorkItem(category, itemObj.id, newLabel)));
@@ -2599,6 +2639,23 @@ async function reorderWorkItem(category, itemId, direction) {
     await logEdit('reorder', 'work_item', itemId, idx, newIdx);
     await saveVentureConfig();
     renderWorkView(true);
+    _refreshSettingsIfOpen();
+}
+
+async function reorderWorkItemsByList(category, newOrderIds) {
+    const cats = ensureWorkCategories(currentVenture.work_categories || WORK_CATEGORIES);
+    const resolvedCategory = _resolveCategoryKey(cats, category);
+    if (!resolvedCategory) return;
+    const items = cats[resolvedCategory];
+    const reordered = [];
+    newOrderIds.forEach(id => {
+        const found = items.find(i => i.id === id);
+        if (found) reordered.push(found);
+    });
+    if (reordered.length !== items.length) return;
+    cats[resolvedCategory] = reordered;
+    currentVenture.work_categories = cats;
+    await saveVentureConfig();
     _refreshSettingsIfOpen();
 }
 
