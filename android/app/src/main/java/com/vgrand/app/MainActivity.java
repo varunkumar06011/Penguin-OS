@@ -16,7 +16,6 @@ import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.io.File;
 import org.json.JSONObject;
 
 public class MainActivity extends Activity {
@@ -47,18 +46,6 @@ public class MainActivity extends Activity {
 
         // Caching: use WebView cache for static resources (CSS/JS with ?v= params)
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.KITKAT) {
-            settings.setAppCacheEnabled(true);
-            File cacheDir = getCacheDir();
-            if (cacheDir != null) {
-                settings.setAppCachePath(cacheDir.getAbsolutePath());
-                settings.setAppCacheMaxSize(10 * 1024 * 1024); // 10 MB
-            }
-        }
-
-        // Enable smooth scrolling and better rendering on mobile
-        settings.setRenderPriority(WebSettings.RenderPriority.HIGH);
-        settings.setEnableSmoothTransition(true);
         settings.setLoadWithOverviewMode(true);
         settings.setUseWideViewPort(true);
 
