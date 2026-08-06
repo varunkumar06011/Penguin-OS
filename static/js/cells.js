@@ -85,6 +85,7 @@ async function ensureCellsInCache(requiredKeys) {
    Add Work Description — Compact FAB + Dialog
    ============================================================ */
 let _workAddCategory = null;
+let _activeWorkCategory = null; // tracks which category chip is currently selected
 
 function ensureWorkAddDialog() {
     if (document.getElementById('workAddDialogOverlay')) return;
@@ -94,7 +95,7 @@ function ensureWorkAddDialog() {
     overlay.innerHTML = `
         <div id="workAddDialog" role="dialog" aria-modal="true" aria-labelledby="workAddDialogTitle">
             <h3 class="work-add-title" id="workAddDialogTitle">Add Work Description</h3>
-            <form class="work-add-form" id="workAddForm" onsubmit="return false;">
+            <form class="work-add-form" id="workAddForm">
                 <label>
                     Work Description Name
                     <input type="text" id="workAddInput" placeholder="e.g. Lintel" autocomplete="off">
@@ -120,8 +121,16 @@ function ensureWorkAddDialog() {
         e.preventDefault();
         submitWorkAddDialog();
     });
+    document.getElementById('workAddSubmit').addEventListener('click', (e) => {
+        e.preventDefault();
+        submitWorkAddDialog();
+    });
     document.getElementById('workAddInput').addEventListener('keydown', (e) => {
         if (e.key === 'Escape') closeWorkAddDialog();
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            submitWorkAddDialog();
+        }
     });
 }
 
@@ -148,8 +157,10 @@ async function submitWorkAddDialog() {
     if (!input || !_workAddCategory) return;
     const val = input.value.trim();
     if (!val) return;
+    const category = _workAddCategory;
+    const applyAll = scopeAll && scopeAll.checked;
     closeWorkAddDialog();
-    await addWorkItem(_workAddCategory, val, scopeAll && scopeAll.checked);
+    await addWorkItem(category, val, applyAll);
 }
 
 // Deferred paint-mode cell update — optimistic DOM only, no API save until Save button clicked
@@ -382,7 +393,7 @@ function refreshCurrentVentureFromList() {
 
     const tracker = document.getElementById('trackerView');
     if (tracker && tracker.style.display !== 'none') {
-        if (currentView === 'work') renderWorkView();
+        if (currentView === 'work') renderWorkView(true);
         else if (currentView === 'super') renderSuperStructure();
         else if (currentView === 'pending') renderPendingView();
     }
@@ -430,6 +441,11 @@ async function renderWorkView(force) {
     }
     container._renderKey = renderKey;
     container._rendered = true;
+
+    // Preserve active category and scroll position across re-renders
+    const savedActiveCategory = _activeWorkCategory;
+    const scrollContainer = container.closest('.main-content') || container;
+    const savedScrollTop = scrollContainer.scrollTop;
 
     container.style.display = '';
     container.innerHTML = '';
@@ -487,6 +503,7 @@ async function renderWorkView(force) {
             const chip = e.target.closest('.category-chip');
             if (!chip) return;
             const cat = chip.dataset.category;
+            _activeWorkCategory = cat;
             chipBar.querySelectorAll('.category-chip').forEach(c => {
                 if (c.dataset.category === cat) {
                     c.style.background = '#1a1a1a';
@@ -581,6 +598,17 @@ async function renderWorkView(force) {
     }
 
     if (window.updateTrackerStickyOffset) window.updateTrackerStickyOffset();
+
+    // Restore active category chip and scroll position
+    if (savedActiveCategory && chipBar) {
+        const chipToActivate = [...chipBar.querySelectorAll('.category-chip')].find(c => c.dataset.category === savedActiveCategory);
+        if (chipToActivate) {
+            chipToActivate.click();
+        }
+    }
+    if (savedScrollTop > 0) {
+        scrollContainer.scrollTop = savedScrollTop;
+    }
 }
 
 // ========================
@@ -2427,6 +2455,20 @@ async function reorderFlatItem(itemId, direction) {
 }
 
 // Work View Editing
+function _refreshSettingsIfOpen() {
+    const modal = document.getElementById('settingsModal');
+    if (modal && modal.classList.contains('show') && typeof renderWorkCategoriesSettings === 'function') {
+        renderWorkCategoriesSettings();
+    }
+}
+
+// Case-insensitive category key resolver — venture DB may store "Painting" while UI passes "PAINTING"
+function _resolveCategoryKey(cats, category) {
+    if (cats[category]) return category;
+    const matchKey = Object.keys(cats).find(k => k.toLowerCase() === category.toLowerCase());
+    return matchKey || null;
+}
+
 async function renameWorkCategory(oldName, newName) {
     const cats = ensureWorkCategories(currentVenture.work_categories || WORK_CATEGORIES);
     if (cats[newName]) {
@@ -2439,11 +2481,17 @@ async function renameWorkCategory(oldName, newName) {
     await logEdit('rename', 'work_category', oldName, oldName, newName);
     await saveVentureConfig();
     renderWorkView(true);
+    _refreshSettingsIfOpen();
 }
 
 async function renameWorkItem(category, itemId, newLabel) {
     const cats = ensureWorkCategories(currentVenture.work_categories || WORK_CATEGORIES);
-    const item = cats[category].find(i => i.id === itemId);
+    const resolvedCategory = _resolveCategoryKey(cats, category);
+    if (!resolvedCategory) {
+        console.warn('renameWorkItem: category not found:', category, 'Available:', Object.keys(cats));
+        return;
+    }
+    const item = cats[resolvedCategory].find(i => i.id === itemId);
     if (!item) return;
     const old = item.label;
     item.label = newLabel;
@@ -2461,23 +2509,26 @@ async function renameWorkItem(category, itemId, newLabel) {
     await logEdit('rename', 'work_item', itemId, old, newLabel);
     await saveVentureConfig();
     renderWorkView(true);
+    _refreshSettingsIfOpen();
 }
 
 async function addWorkItem(category, label, applyAll) {
     const cats = ensureWorkCategories(currentVenture.work_categories || WORK_CATEGORIES);
-    if (!cats[category]) {
-        showToast('Category not found', true);
+    const resolvedCategory = _resolveCategoryKey(cats, category);
+    if (!resolvedCategory) {
+        console.warn('addWorkItem: category not found. Available:', Object.keys(cats), 'Requested:', category);
+        showToast('Category not found: ' + category, true);
         return;
     }
-    const existing = cats[category].find(i => i.label.toLowerCase() === label.toLowerCase());
+    const existing = cats[resolvedCategory].find(i => i.label.toLowerCase() === label.toLowerCase());
     if (existing) {
-        showToast(`'${label}' already exists in ${category}`, true);
+        showToast(`'${label}' already exists in ${resolvedCategory}`, true);
         return;
     }
-    const newId = `item_${slugId(category)}_${slugId(label)}_${Date.now()}`;
-    cats[category].push({ id: newId, label });
+    const newId = `item_${slugId(resolvedCategory)}_${slugId(label)}_${Date.now()}`;
+    cats[resolvedCategory].push({ id: newId, label });
     currentVenture.work_categories = cats;
-    await logEdit('add', 'work_item', newId, null, label);
+    try { await logEdit('add', 'work_item', newId, null, label); } catch (e) { console.error('logEdit failed:', e); }
     await saveVentureConfig();
 
     if (applyAll) {
@@ -2486,12 +2537,13 @@ async function addWorkItem(category, label, applyAll) {
             await apiPost('/api/ventures/apply-settings', { scope: 'all', settings });
             const fresh = await apiGet('/api/ventures');
             if (fresh) venturesList = fresh;
-            showToast(`Added to ${category} in all ventures`);
+            showToast(`Added to ${resolvedCategory} in all ventures`);
         } catch (err) {
             showToast('Saved here, but failed to apply to all ventures: ' + (err.message || ''), true);
         }
     }
     renderWorkView(true);
+    _refreshSettingsIfOpen();
 }
 
 async function addWorkCategory(categoryName) {
@@ -2508,6 +2560,7 @@ async function addWorkCategory(categoryName) {
         try { await apiPost('/api/category', { venture_id: currentVenture.id, name: categoryName }); } catch (e) {}
     }
     renderWorkView(true);
+    _refreshSettingsIfOpen();
 }
 
 async function deleteWorkCategory(categoryName) {
@@ -2517,20 +2570,26 @@ async function deleteWorkCategory(categoryName) {
     await logEdit('delete', 'work_category', categoryName, null, null);
     await saveVentureConfig();
     renderWorkView(true);
+    _refreshSettingsIfOpen();
 }
 
 async function deleteWorkItem(category, itemId) {
     const cats = ensureWorkCategories(currentVenture.work_categories || WORK_CATEGORIES);
-    cats[category] = cats[category].filter(i => i.id !== itemId);
+    const resolvedCategory = _resolveCategoryKey(cats, category);
+    if (!resolvedCategory) return;
+    cats[resolvedCategory] = cats[resolvedCategory].filter(i => i.id !== itemId);
     currentVenture.work_categories = cats;
     await logEdit('delete', 'work_item', itemId, null, null);
     await saveVentureConfig();
     renderWorkView(true);
+    _refreshSettingsIfOpen();
 }
 
 async function reorderWorkItem(category, itemId, direction) {
     const cats = ensureWorkCategories(currentVenture.work_categories || WORK_CATEGORIES);
-    const items = cats[category];
+    const resolvedCategory = _resolveCategoryKey(cats, category);
+    if (!resolvedCategory) return;
+    const items = cats[resolvedCategory];
     const idx = items.findIndex(i => i.id === itemId);
     if (idx < 0) return;
     const newIdx = idx + direction;
@@ -2539,7 +2598,8 @@ async function reorderWorkItem(category, itemId, direction) {
     currentVenture.work_categories = cats;
     await logEdit('reorder', 'work_item', itemId, idx, newIdx);
     await saveVentureConfig();
-    renderWorkView();
+    renderWorkView(true);
+    _refreshSettingsIfOpen();
 }
 
 // Super Structure Editing

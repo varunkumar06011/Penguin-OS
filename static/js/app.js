@@ -843,8 +843,13 @@ function ensureWorkCategories(cats) {
     if (!cats || Object.keys(cats).length === 0) return JSON.parse(JSON.stringify(WORK_CATEGORIES));
     const result = {}
     Object.entries(cats).forEach(([catLabel, items]) => {
+        // Defensive: ensure items is an array
+        if (!Array.isArray(items)) {
+            result[catLabel] = [];
+            return;
+        }
         // Use existing items if they already have IDs; otherwise generate IDs
-        if (items && items.length > 0 && typeof items[0] === 'object' && items[0].id) {
+        if (items.length > 0 && typeof items[0] === 'object' && items[0].id) {
             result[catLabel] = items;
         } else {
             result[catLabel] = items.map((label, i) => ({ id: `item_${slugId(catLabel)}_${slugId(label)}_${i}`, label }));

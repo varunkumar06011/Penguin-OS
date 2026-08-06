@@ -159,7 +159,7 @@ function renderWorkCategoriesSettings() {
             itemRemove.title = 'Remove item';
             itemRemove.style.fontSize = '0.8rem';
             itemRemove.addEventListener('click', () => {
-                deleteWorkItem(category, item.id);
+                deleteWorkItemFromSettings(category, item.id);
             });
 
             itemLi.appendChild(itemHandle);
@@ -245,24 +245,35 @@ function syncWorkCategoryItemsFromDOM(category, subList) {
     cats[category] = newItems;
     if (currentVenture) {
         currentVenture.work_categories = cats;
+        saveVentureConfig();
     }
 }
 
 // Add a new work item to a category
 async function addWorkItemToCategory(category, label) {
     const cats = ensureWorkCategories(currentVenture && currentVenture.work_categories ? currentVenture.work_categories : WORK_CATEGORIES);
-    if (!cats[category]) return;
-    const newItem = { id: `item_${slugId(category)}_${slugId(label)}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label };
-    cats[category].push(newItem);
+    const resolvedCategory = _resolveCategoryKey(cats, category);
+    if (!resolvedCategory) {
+        showToast('Category not found: ' + category, true);
+        return;
+    }
+    const existing = cats[resolvedCategory].find(i => i.label.toLowerCase() === label.toLowerCase());
+    if (existing) {
+        showToast(`'${label}' already exists in ${resolvedCategory}`, true);
+        return;
+    }
+    const newItem = { id: `item_${slugId(resolvedCategory)}_${slugId(label)}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label };
+    cats[resolvedCategory].push(newItem);
     if (currentVenture) {
         currentVenture.work_categories = cats;
     }
+    await saveVentureConfig();
     renderWorkCategoriesSettings();
     // Re-expand the category that was being edited
     setTimeout(() => {
         const list = document.getElementById('workCategoriesList');
         if (list) {
-            const catLi = [...list.querySelectorAll('li')].find(li => li.dataset.category === category);
+            const catLi = [...list.querySelectorAll('li')].find(li => li.dataset.category === resolvedCategory || li.dataset.category === category);
             if (catLi) {
                 const toggle = catLi.querySelector('.work-cat-toggle');
                 if (toggle && toggle.textContent === '\u25B6') toggle.click();
@@ -271,20 +282,22 @@ async function addWorkItemToCategory(category, label) {
     }, 10);
 }
 
-// Delete a work item from a category
-async function deleteWorkItem(category, itemId) {
+// Delete a work item from a category (settings modal version)
+async function deleteWorkItemFromSettings(category, itemId) {
     const cats = ensureWorkCategories(currentVenture && currentVenture.work_categories ? currentVenture.work_categories : WORK_CATEGORIES);
-    if (!cats[category]) return;
-    cats[category] = cats[category].filter(i => i.id !== itemId);
+    const resolvedCategory = _resolveCategoryKey(cats, category);
+    if (!resolvedCategory) return;
+    cats[resolvedCategory] = cats[resolvedCategory].filter(i => i.id !== itemId);
     if (currentVenture) {
         currentVenture.work_categories = cats;
     }
+    await saveVentureConfig();
     renderWorkCategoriesSettings();
     // Re-expand the category
     setTimeout(() => {
         const list = document.getElementById('workCategoriesList');
         if (list) {
-            const catLi = [...list.querySelectorAll('li')].find(li => li.dataset.category === category);
+            const catLi = [...list.querySelectorAll('li')].find(li => li.dataset.category === resolvedCategory || li.dataset.category === category);
             if (catLi) {
                 const toggle = catLi.querySelector('.work-cat-toggle');
                 if (toggle && toggle.textContent === '\u25B6') toggle.click();
