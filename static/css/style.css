@@ -2476,9 +2476,6 @@ button, a, input, select, textarea {
         box-shadow: none;
     }
     #bulkStickyBar {
-        position: relative !important;
-        top: auto !important;
-        z-index: auto;
         padding: 6px 12px;
     }
     #bulkActionBar {
@@ -6907,10 +6904,10 @@ button, a, input, select, textarea {
         overflow-x: hidden;
     }
     #app {
-        overflow-x: hidden;
+        overflow-x: clip;
     }
     #appMain {
-        overflow-x: hidden;
+        overflow-x: clip;
         padding-top: 48px;
     }
 
@@ -7379,10 +7376,12 @@ button, a, input, select, textarea {
 }
 
 /* ---- Global overflow prevention ---- */
+/* Use clip (not hidden) on #app and #appMain so they don't become scroll containers,
+   which would break position:sticky on #bulkStickyBar and section headers. */
 #app,
 #appMain {
     max-width: 100%;
-    overflow-x: hidden;
+    overflow-x: clip;
 }
 .venture-dashboard,
 #overviewPage,

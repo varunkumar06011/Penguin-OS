@@ -912,6 +912,35 @@ async function renderWorkViewMobile(container) {
     renderMobileFlatContent(container, workCategories, flatNumbers, mobileSelectedFlat);
 
     if (window.updateTrackerStickyOffset) window.updateTrackerStickyOffset();
+
+    // DIAGNOSTIC: trace why mobile flat nav appears stuck
+    requestAnimationFrame(() => {
+        const nav = container.querySelector('.mobile-flat-nav');
+        if (!nav) { console.log('[DIAG] No .mobile-flat-nav found'); return; }
+        const navCs = getComputedStyle(nav);
+        console.log('[DIAG] nav position:', navCs.position, 'top:', navCs.top, 'z-index:', navCs.zIndex, 'will-change:', navCs.willChange);
+        console.log('[DIAG] nav rect:', nav.getBoundingClientRect());
+        let el = nav.parentElement;
+        let depth = 0;
+        while (el && el !== document.body && depth < 15) {
+            const cs = getComputedStyle(el);
+            const rect = el.getBoundingClientRect();
+            console.log(`[DIAG] ancestor[${depth}] <${el.tagName.toLowerCase()}>#${el.id}.${el.className.split(' ').join('.')}`,
+                'pos:', cs.position, 'overflow-x:', cs.overflowX, 'overflow-y:', cs.overflowY,
+                'height:', cs.height, 'minH:', cs.minHeight, 'maxH:', cs.maxHeight,
+                'transform:', cs.transform, 'will-change:', cs.willChange,
+                'top:', cs.top, 'z-index:', cs.zIndex,
+                'rect.h:', Math.round(rect.height), 'rect.top:', Math.round(rect.top));
+            el = el.parentElement;
+            depth++;
+        }
+        // Check if body/html can scroll
+        const bodyCs = getComputedStyle(document.body);
+        const htmlCs = getComputedStyle(document.documentElement);
+        console.log('[DIAG] body overflow:', bodyCs.overflowX, bodyCs.overflowY, 'height:', bodyCs.height);
+        console.log('[DIAG] html overflow:', htmlCs.overflowX, htmlCs.overflowY, 'height:', htmlCs.height);
+        console.log('[DIAG] scrollY:', window.scrollY, 'innerHeight:', window.innerHeight, 'docHeight:', document.documentElement.scrollHeight);
+    });
 }
 
 function updateMobileFlatNav(container, sortedFlats) {

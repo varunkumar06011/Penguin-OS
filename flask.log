@@ -6,3 +6,230 @@
  * Running on http://127.0.0.1:5000
  * Running on http://192.168.0.104:5000
 2026-08-07 21:18:42 [INFO] werkzeug: [33mPress CTRL+C to quit[0m
+2026-08-07 21:19:00 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:00] "[35m[1mGET /static/images/login-hero.mp4 HTTP/1.1[0m" 206 -
+2026-08-07 21:19:00 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:00] "[35m[1mGET /static/images/login-hero.mp4 HTTP/1.1[0m" 206 -
+2026-08-07 21:19:00 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:00] "GET /login HTTP/1.1" 200 -
+2026-08-07 21:19:01 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:01] "GET /static/css/fonts.css?v=23 HTTP/1.1" 200 -
+2026-08-07 21:19:01 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:01] "GET /static/css/theme.css?v=23 HTTP/1.1" 200 -
+2026-08-07 21:19:01 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:01] "GET /static/manifest.json HTTP/1.1" 200 -
+2026-08-07 21:19:01 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:01] "[35m[1mGET /static/images/login-hero.mp4 HTTP/1.1[0m" 206 -
+2026-08-07 21:19:01 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:01] "GET /static/images/penguin-os-logo.jpg HTTP/1.1" 200 -
+2026-08-07 21:19:01 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:01] "GET /static/css/style.css?v=23 HTTP/1.1" 200 -
+2026-08-07 21:19:01 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:01] "GET /static/images/favicon.jpg HTTP/1.1" 200 -
+2026-08-07 21:19:09 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=%2A&email=ilike.vgrand03&active=eq.True "HTTP/2 200 OK"
+2026-08-07 21:19:10 [WARNING] vgrand: Login failed for "vgrand03": password mismatch
+2026-08-07 21:19:10 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:10] "[31m[1mPOST /login HTTP/1.1[0m" 401 -
+2026-08-07 21:19:15 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.d12a3498-3065-40ef-a274-cb426136f568 "HTTP/2 200 OK"
+2026-08-07 21:19:15 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:15] "GET / HTTP/1.1" 200 -
+2026-08-07 21:19:15 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:15] "[36mGET /static/css/fonts.css?v=15 HTTP/1.1[0m" 304 -
+2026-08-07 21:19:15 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:15] "[36mGET /static/images/penguin-os-logo.jpg HTTP/1.1[0m" 304 -
+2026-08-07 21:19:15 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:15] "[36mGET /static/css/theme.css?v=15 HTTP/1.1[0m" 304 -
+2026-08-07 21:19:15 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:15] "[36mGET /static/js/app.js?v=66 HTTP/1.1[0m" 304 -
+2026-08-07 21:19:15 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:15] "[36mGET /static/js/features.js?v=6 HTTP/1.1[0m" 304 -
+2026-08-07 21:19:15 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:15] "[36mGET /static/js/daily_report.js?v=3 HTTP/1.1[0m" 304 -
+2026-08-07 21:19:15 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:15] "[36mGET /static/js/invoices.js?v=20 HTTP/1.1[0m" 304 -
+2026-08-07 21:19:15 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:15] "[36mGET /static/js/cells.js?v=42 HTTP/1.1[0m" 304 -
+2026-08-07 21:19:15 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:15] "[36mGET /static/js/payroll.js?v=27 HTTP/1.1[0m" 304 -
+2026-08-07 21:19:15 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:15] "[36mGET /static/js/inventory.js?v=35 HTTP/1.1[0m" 304 -
+2026-08-07 21:19:15 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:15] "[36mGET /static/js/venture_analysis.js?v=4 HTTP/1.1[0m" 304 -
+2026-08-07 21:19:15 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:15] "GET /static/css/style.css?v=78 HTTP/1.1" 200 -
+2026-08-07 21:19:15 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:15] "[36mGET /static/js/reports.js?v=1 HTTP/1.1[0m" 304 -
+2026-08-07 21:19:15 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:15] "[36mGET /static/js/contractor_payments.js?v=6 HTTP/1.1[0m" 304 -
+2026-08-07 21:19:15 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:15] "[36mGET /static/js/vendor_directory.js?v=2 HTTP/1.1[0m" 304 -
+2026-08-07 21:19:15 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:15] "[36mGET /static/js/inventory_register.js?v=15 HTTP/1.1[0m" 304 -
+2026-08-07 21:19:15 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:15] "[36mGET /static/js/inventory_purchase.js?v=14 HTTP/1.1[0m" 304 -
+2026-08-07 21:19:15 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:15] "[36mGET /static/js/theme-ui.js?v=11 HTTP/1.1[0m" 304 -
+2026-08-07 21:19:15 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:15] "GET /api/me HTTP/1.1" 200 -
+2026-08-07 21:19:15 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:15] "[36mGET /static/images/favicon.jpg HTTP/1.1[0m" 304 -
+2026-08-07 21:19:15 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/user_prefs?select=pref_value&user_id=eq.d12a3498-3065-40ef-a274-cb426136f568&pref_key=eq.work_view_layout "HTTP/2 200 OK"
+2026-08-07 21:19:15 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:15] "GET /api/user-prefs HTTP/1.1" 200 -
+2026-08-07 21:19:15 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-08-07 21:19:15 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:15] "GET /api/ventures HTTP/1.1" 200 -
+2026-08-07 21:19:16 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/settings?select=%2A&key=eq.invoice_categories "HTTP/2 200 OK"
+2026-08-07 21:19:16 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:16] "GET /api/settings/invoice_categories HTTP/1.1" 200 -
+2026-08-07 21:19:16 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/cell_data?select=%2A&data-%3E%3Eventure_id=eq.elite&data-%3E%3Eblock=eq.A&offset=0&limit=1000 "HTTP/2 200 OK"
+2026-08-07 21:19:16 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/invoices?select=%2A "HTTP/2 200 OK"
+2026-08-07 21:19:16 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/purchase_orders?select=%2A "HTTP/2 200 OK"
+2026-08-07 21:19:16 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:16] "GET /api/invoices HTTP/1.1" 200 -
+2026-08-07 21:19:16 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:16] "GET /api/pos HTTP/1.1" 200 -
+2026-08-07 21:19:16 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:16] "GET /api/cells?venture_id=elite&block=A HTTP/1.1" 200 -
+2026-08-07 21:19:17 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:17] "GET / HTTP/1.1" 200 -
+2026-08-07 21:19:17 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:17] "GET /static/css/fonts.css?v=15 HTTP/1.1" 200 -
+2026-08-07 21:19:17 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:17] "GET /static/css/theme.css?v=15 HTTP/1.1" 200 -
+2026-08-07 21:19:17 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:17] "GET /static/js/daily_report.js?v=3 HTTP/1.1" 200 -
+2026-08-07 21:19:17 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:17] "GET /static/js/app.js?v=66 HTTP/1.1" 200 -
+2026-08-07 21:19:17 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:17] "GET /static/js/features.js?v=6 HTTP/1.1" 200 -
+2026-08-07 21:19:17 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:17] "GET /static/images/penguin-os-logo.jpg HTTP/1.1" 200 -
+2026-08-07 21:19:17 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:17] "GET /static/js/invoices.js?v=20 HTTP/1.1" 200 -
+2026-08-07 21:19:17 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:17] "GET /static/js/payroll.js?v=27 HTTP/1.1" 200 -
+2026-08-07 21:19:17 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:17] "GET /static/js/cells.js?v=42 HTTP/1.1" 200 -
+2026-08-07 21:19:17 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:17] "GET /static/css/style.css?v=78 HTTP/1.1" 200 -
+2026-08-07 21:19:17 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:17] "GET /static/js/inventory.js?v=35 HTTP/1.1" 200 -
+2026-08-07 21:19:17 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:17] "GET /static/js/venture_analysis.js?v=4 HTTP/1.1" 200 -
+2026-08-07 21:19:17 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:17] "GET /static/js/contractor_payments.js?v=6 HTTP/1.1" 200 -
+2026-08-07 21:19:17 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:17] "GET /static/js/inventory_register.js?v=15 HTTP/1.1" 200 -
+2026-08-07 21:19:17 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:17] "GET /static/js/theme-ui.js?v=11 HTTP/1.1" 200 -
+2026-08-07 21:19:17 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:17] "GET /static/js/vendor_directory.js?v=2 HTTP/1.1" 200 -
+2026-08-07 21:19:17 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:17] "GET /static/js/inventory_purchase.js?v=14 HTTP/1.1" 200 -
+2026-08-07 21:19:17 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:17] "GET /static/js/reports.js?v=1 HTTP/1.1" 200 -
+2026-08-07 21:19:17 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:17] "GET /api/me HTTP/1.1" 200 -
+2026-08-07 21:19:17 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-08-07 21:19:17 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/user_prefs?select=pref_value&user_id=eq.d12a3498-3065-40ef-a274-cb426136f568&pref_key=eq.work_view_layout "HTTP/2 200 OK"
+2026-08-07 21:19:17 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:17] "GET /api/user-prefs HTTP/1.1" 200 -
+2026-08-07 21:19:17 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:17] "GET /api/ventures HTTP/1.1" 200 -
+2026-08-07 21:19:17 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:17] "GET /static/images/favicon.jpg HTTP/1.1" 200 -
+2026-08-07 21:19:17 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/invoices?select=%2A "HTTP/2 200 OK"
+2026-08-07 21:19:17 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/settings?select=%2A&key=eq.invoice_categories "HTTP/2 200 OK"
+2026-08-07 21:19:17 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:17] "GET /api/invoices HTTP/1.1" 200 -
+2026-08-07 21:19:17 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:17] "GET /api/settings/invoice_categories HTTP/1.1" 200 -
+2026-08-07 21:19:17 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/purchase_orders?select=%2A "HTTP/2 200 OK"
+2026-08-07 21:19:18 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/cell_data?select=%2A&data-%3E%3Eventure_id=eq.elite&data-%3E%3Eblock=eq.A&offset=0&limit=1000 "HTTP/2 200 OK"
+2026-08-07 21:19:18 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:18] "GET /api/pos HTTP/1.1" 200 -
+2026-08-07 21:19:18 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:18] "GET /api/cells?venture_id=elite&block=A HTTP/1.1" 200 -
+2026-08-07 21:19:20 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:20] "[33mGET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1[0m" 404 -
+2026-08-07 21:19:21 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:21] "GET / HTTP/1.1" 200 -
+2026-08-07 21:19:21 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:21] "[36mGET /static/css/fonts.css?v=15 HTTP/1.1[0m" 304 -
+2026-08-07 21:19:21 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:21] "[36mGET /static/css/theme.css?v=15 HTTP/1.1[0m" 304 -
+2026-08-07 21:19:21 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:21] "[36mGET /static/css/style.css?v=78 HTTP/1.1[0m" 304 -
+2026-08-07 21:19:21 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:21] "[36mGET /static/images/penguin-os-logo.jpg HTTP/1.1[0m" 304 -
+2026-08-07 21:19:21 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:21] "[36mGET /static/js/app.js?v=66 HTTP/1.1[0m" 304 -
+2026-08-07 21:19:21 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:21] "[36mGET /static/js/features.js?v=6 HTTP/1.1[0m" 304 -
+2026-08-07 21:19:21 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:21] "[36mGET /static/js/daily_report.js?v=3 HTTP/1.1[0m" 304 -
+2026-08-07 21:19:21 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:21] "[36mGET /static/js/cells.js?v=42 HTTP/1.1[0m" 304 -
+2026-08-07 21:19:21 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:21] "[36mGET /static/js/invoices.js?v=20 HTTP/1.1[0m" 304 -
+2026-08-07 21:19:21 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:21] "[36mGET /static/js/payroll.js?v=27 HTTP/1.1[0m" 304 -
+2026-08-07 21:19:21 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:21] "[36mGET /static/js/inventory.js?v=35 HTTP/1.1[0m" 304 -
+2026-08-07 21:19:21 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:21] "[36mGET /static/js/reports.js?v=1 HTTP/1.1[0m" 304 -
+2026-08-07 21:19:21 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:21] "[36mGET /static/js/venture_analysis.js?v=4 HTTP/1.1[0m" 304 -
+2026-08-07 21:19:21 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:21] "[36mGET /static/js/contractor_payments.js?v=6 HTTP/1.1[0m" 304 -
+2026-08-07 21:19:21 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:21] "[36mGET /static/js/inventory_purchase.js?v=14 HTTP/1.1[0m" 304 -
+2026-08-07 21:19:21 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:21] "[36mGET /static/js/inventory_register.js?v=15 HTTP/1.1[0m" 304 -
+2026-08-07 21:19:21 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:21] "[36mGET /static/js/vendor_directory.js?v=2 HTTP/1.1[0m" 304 -
+2026-08-07 21:19:21 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:21] "[36mGET /static/js/theme-ui.js?v=11 HTTP/1.1[0m" 304 -
+2026-08-07 21:19:21 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:21] "[33mGET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1[0m" 404 -
+2026-08-07 21:19:21 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:21] "GET /api/me HTTP/1.1" 200 -
+2026-08-07 21:19:21 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:21] "[36mGET /static/images/favicon.jpg HTTP/1.1[0m" 304 -
+2026-08-07 21:19:21 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-08-07 21:19:21 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/user_prefs?select=pref_value&user_id=eq.d12a3498-3065-40ef-a274-cb426136f568&pref_key=eq.work_view_layout "HTTP/2 200 OK"
+2026-08-07 21:19:21 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:21] "GET /api/user-prefs HTTP/1.1" 200 -
+2026-08-07 21:19:21 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:21] "GET /api/ventures HTTP/1.1" 200 -
+2026-08-07 21:19:21 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/settings?select=%2A&key=eq.invoice_categories "HTTP/2 200 OK"
+2026-08-07 21:19:21 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:21] "GET /api/settings/invoice_categories HTTP/1.1" 200 -
+2026-08-07 21:19:21 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/invoices?select=%2A "HTTP/2 200 OK"
+2026-08-07 21:19:21 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:21] "GET /api/invoices HTTP/1.1" 200 -
+2026-08-07 21:19:21 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/purchase_orders?select=%2A "HTTP/2 200 OK"
+2026-08-07 21:19:21 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:21] "GET /api/pos HTTP/1.1" 200 -
+2026-08-07 21:19:21 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/cell_data?select=%2A&data-%3E%3Eventure_id=eq.elite&data-%3E%3Eblock=eq.A&offset=0&limit=1000 "HTTP/2 200 OK"
+2026-08-07 21:19:22 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:22] "GET /api/cells?venture_id=elite&block=A HTTP/1.1" 200 -
+2026-08-07 21:19:31 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/settings?select=%2A&key=eq.invoice_categories "HTTP/2 200 OK"
+2026-08-07 21:19:31 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-08-07 21:19:31 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:31] "GET /api/settings/invoice_categories HTTP/1.1" 200 -
+2026-08-07 21:19:31 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/cell_data?select=%2A&data-%3E%3Eventure_id=eq.elite&offset=0&limit=1000 "HTTP/2 200 OK"
+2026-08-07 21:19:31 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:31] "GET /api/ventures HTTP/1.1" 200 -
+2026-08-07 21:19:31 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:31] "GET /api/cells?venture_id=elite HTTP/1.1" 200 -
+2026-08-07 21:19:32 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/cell_data?select=%2A&data-%3E%3Eventure_id=eq.elite&offset=0&limit=1000 "HTTP/2 200 OK"
+2026-08-07 21:19:32 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:32] "GET /api/cells?venture_id=elite HTTP/1.1" 200 -
+2026-08-07 21:19:43 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/cell_data?select=%2A&data-%3E%3Eventure_id=eq.elite&offset=0&limit=1000 "HTTP/2 200 OK"
+2026-08-07 21:19:43 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-08-07 21:19:43 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/settings?select=%2A&key=eq.invoice_categories "HTTP/2 200 OK"
+2026-08-07 21:19:43 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:43] "GET /api/settings/invoice_categories HTTP/1.1" 200 -
+2026-08-07 21:19:43 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:43] "GET /api/ventures HTTP/1.1" 200 -
+2026-08-07 21:19:43 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:43] "GET /api/cells?venture_id=elite HTTP/1.1" 200 -
+2026-08-07 21:19:53 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-08-07 21:19:53 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/cell_data?select=%2A&data-%3E%3Eventure_id=eq.elite&offset=0&limit=1000 "HTTP/2 200 OK"
+2026-08-07 21:19:53 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/settings?select=%2A&key=eq.invoice_categories "HTTP/2 200 OK"
+2026-08-07 21:19:53 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:53] "GET /api/settings/invoice_categories HTTP/1.1" 200 -
+2026-08-07 21:19:53 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:53] "GET /api/cells?venture_id=elite HTTP/1.1" 200 -
+2026-08-07 21:19:53 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:19:53] "GET /api/ventures HTTP/1.1" 200 -
+2026-08-07 21:20:01 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-08-07 21:20:01 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/cell_data?select=%2A&data-%3E%3Eventure_id=eq.elite&offset=0&limit=1000 "HTTP/2 200 OK"
+2026-08-07 21:20:01 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/settings?select=%2A&key=eq.invoice_categories "HTTP/2 200 OK"
+2026-08-07 21:20:01 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:20:01] "GET /api/settings/invoice_categories HTTP/1.1" 200 -
+2026-08-07 21:20:01 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:20:01] "GET /api/ventures HTTP/1.1" 200 -
+2026-08-07 21:20:01 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:20:01] "GET /api/cells?venture_id=elite HTTP/1.1" 200 -
+2026-08-07 21:20:01 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/settings?select=%2A&key=eq.invoice_categories "HTTP/2 200 OK"
+2026-08-07 21:20:01 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:20:01] "GET /api/settings/invoice_categories HTTP/1.1" 200 -
+2026-08-07 21:20:01 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-08-07 21:20:01 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/cell_data?select=%2A&data-%3E%3Eventure_id=eq.elite&offset=0&limit=1000 "HTTP/2 200 OK"
+2026-08-07 21:20:01 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:20:01] "GET /api/ventures HTTP/1.1" 200 -
+2026-08-07 21:20:01 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:20:01] "GET /api/cells?venture_id=elite HTTP/1.1" 200 -
+2026-08-07 21:20:02 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/cell_data?select=%2A&data-%3E%3Eventure_id=eq.elite&offset=0&limit=1000 "HTTP/2 200 OK"
+2026-08-07 21:20:02 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:20:02] "GET /api/cells?venture_id=elite HTTP/1.1" 200 -
+2026-08-07 21:20:13 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/settings?select=%2A&key=eq.invoice_categories "HTTP/2 200 OK"
+2026-08-07 21:20:13 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:20:13] "GET /api/settings/invoice_categories HTTP/1.1" 200 -
+2026-08-07 21:20:13 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/cell_data?select=%2A&data-%3E%3Eventure_id=eq.elite&offset=0&limit=1000 "HTTP/2 200 OK"
+2026-08-07 21:20:13 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-08-07 21:20:13 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:20:13] "GET /api/ventures HTTP/1.1" 200 -
+2026-08-07 21:20:13 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:20:13] "GET /api/cells?venture_id=elite HTTP/1.1" 200 -
+2026-08-07 21:20:23 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.d12a3498-3065-40ef-a274-cb426136f568 "HTTP/2 200 OK"
+2026-08-07 21:20:23 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.d12a3498-3065-40ef-a274-cb426136f568 "HTTP/2 200 OK"
+2026-08-07 21:20:23 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.d12a3498-3065-40ef-a274-cb426136f568 "HTTP/2 200 OK"
+2026-08-07 21:20:23 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-08-07 21:20:23 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/settings?select=%2A&key=eq.invoice_categories "HTTP/2 200 OK"
+2026-08-07 21:20:23 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:20:23] "GET /api/settings/invoice_categories HTTP/1.1" 200 -
+2026-08-07 21:20:23 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/cell_data?select=%2A&data-%3E%3Eventure_id=eq.elite&offset=0&limit=1000 "HTTP/2 200 OK"
+2026-08-07 21:20:23 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:20:23] "GET /api/ventures HTTP/1.1" 200 -
+2026-08-07 21:20:23 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:20:23] "GET /api/cells?venture_id=elite HTTP/1.1" 200 -
+2026-08-07 21:20:33 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/settings?select=%2A&key=eq.invoice_categories "HTTP/2 200 OK"
+2026-08-07 21:20:33 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/cell_data?select=%2A&data-%3E%3Eventure_id=eq.elite&offset=0&limit=1000 "HTTP/2 200 OK"
+2026-08-07 21:20:33 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-08-07 21:20:33 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:20:33] "GET /api/settings/invoice_categories HTTP/1.1" 200 -
+2026-08-07 21:20:33 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:20:33] "GET /api/ventures HTTP/1.1" 200 -
+2026-08-07 21:20:33 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:20:33] "GET /api/cells?venture_id=elite HTTP/1.1" 200 -
+2026-08-07 21:20:43 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/settings?select=%2A&key=eq.invoice_categories "HTTP/2 200 OK"
+2026-08-07 21:20:43 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:20:43] "GET /api/settings/invoice_categories HTTP/1.1" 200 -
+2026-08-07 21:20:43 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/cell_data?select=%2A&data-%3E%3Eventure_id=eq.elite&offset=0&limit=1000 "HTTP/2 200 OK"
+2026-08-07 21:20:43 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-08-07 21:20:43 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:20:43] "GET /api/ventures HTTP/1.1" 200 -
+2026-08-07 21:20:43 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:20:43] "GET /api/cells?venture_id=elite HTTP/1.1" 200 -
+2026-08-07 21:20:53 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-08-07 21:20:53 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/cell_data?select=%2A&data-%3E%3Eventure_id=eq.elite&offset=0&limit=1000 "HTTP/2 200 OK"
+2026-08-07 21:20:53 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/settings?select=%2A&key=eq.invoice_categories "HTTP/2 200 OK"
+2026-08-07 21:20:53 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:20:53] "GET /api/settings/invoice_categories HTTP/1.1" 200 -
+2026-08-07 21:20:53 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:20:53] "GET /api/ventures HTTP/1.1" 200 -
+2026-08-07 21:20:53 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:20:53] "GET /api/cells?venture_id=elite HTTP/1.1" 200 -
+2026-08-07 21:21:03 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-08-07 21:21:03 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/settings?select=%2A&key=eq.invoice_categories "HTTP/2 200 OK"
+2026-08-07 21:21:03 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/cell_data?select=%2A&data-%3E%3Eventure_id=eq.elite&offset=0&limit=1000 "HTTP/2 200 OK"
+2026-08-07 21:21:03 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:21:03] "GET /api/settings/invoice_categories HTTP/1.1" 200 -
+2026-08-07 21:21:03 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:21:03] "GET /api/ventures HTTP/1.1" 200 -
+2026-08-07 21:21:03 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:21:03] "GET /api/cells?venture_id=elite HTTP/1.1" 200 -
+2026-08-07 21:21:13 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-08-07 21:21:13 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/cell_data?select=%2A&data-%3E%3Eventure_id=eq.elite&offset=0&limit=1000 "HTTP/2 200 OK"
+2026-08-07 21:21:13 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/settings?select=%2A&key=eq.invoice_categories "HTTP/2 200 OK"
+2026-08-07 21:21:13 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:21:13] "GET /api/settings/invoice_categories HTTP/1.1" 200 -
+2026-08-07 21:21:13 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:21:13] "GET /api/ventures HTTP/1.1" 200 -
+2026-08-07 21:21:13 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:21:13] "GET /api/cells?venture_id=elite HTTP/1.1" 200 -
+2026-08-07 21:21:39 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.d12a3498-3065-40ef-a274-cb426136f568 "HTTP/2 200 OK"
+2026-08-07 21:21:39 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.d12a3498-3065-40ef-a274-cb426136f568 "HTTP/2 200 OK"
+2026-08-07 21:21:39 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.d12a3498-3065-40ef-a274-cb426136f568 "HTTP/2 200 OK"
+2026-08-07 21:21:39 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-08-07 21:21:39 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/cell_data?select=%2A&data-%3E%3Eventure_id=eq.elite&offset=0&limit=1000 "HTTP/2 200 OK"
+2026-08-07 21:21:39 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/settings?select=%2A&key=eq.invoice_categories "HTTP/2 200 OK"
+2026-08-07 21:21:39 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:21:39] "GET /api/ventures HTTP/1.1" 200 -
+2026-08-07 21:21:39 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:21:39] "GET /api/settings/invoice_categories HTTP/1.1" 200 -
+2026-08-07 21:21:39 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:21:39] "GET /api/cells?venture_id=elite HTTP/1.1" 200 -
+2026-08-07 21:22:39 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/cell_data?select=%2A&data-%3E%3Eventure_id=eq.elite&offset=0&limit=1000 "HTTP/2 200 OK"
+2026-08-07 21:22:39 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/settings?select=%2A&key=eq.invoice_categories "HTTP/2 200 OK"
+2026-08-07 21:22:39 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:22:39] "GET /api/settings/invoice_categories HTTP/1.1" 200 -
+2026-08-07 21:22:39 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-08-07 21:22:39 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:22:39] "GET /api/cells?venture_id=elite HTTP/1.1" 200 -
+2026-08-07 21:22:39 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:22:39] "GET /api/ventures HTTP/1.1" 200 -
+2026-08-07 21:23:39 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.d12a3498-3065-40ef-a274-cb426136f568 "HTTP/2 200 OK"
+2026-08-07 21:23:39 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.d12a3498-3065-40ef-a274-cb426136f568 "HTTP/2 200 OK"
+2026-08-07 21:23:39 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.d12a3498-3065-40ef-a274-cb426136f568 "HTTP/2 200 OK"
+2026-08-07 21:23:39 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/settings?select=%2A&key=eq.invoice_categories "HTTP/2 200 OK"
+2026-08-07 21:23:39 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-08-07 21:23:39 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:23:39] "GET /api/settings/invoice_categories HTTP/1.1" 200 -
+2026-08-07 21:23:39 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/cell_data?select=%2A&data-%3E%3Eventure_id=eq.elite&offset=0&limit=1000 "HTTP/2 200 OK"
+2026-08-07 21:23:39 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:23:39] "GET /api/ventures HTTP/1.1" 200 -
+2026-08-07 21:23:39 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:23:39] "GET /api/cells?venture_id=elite HTTP/1.1" 200 -
+2026-08-07 21:24:39 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.d12a3498-3065-40ef-a274-cb426136f568 "HTTP/2 200 OK"
+2026-08-07 21:24:39 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.d12a3498-3065-40ef-a274-cb426136f568 "HTTP/2 200 OK"
+2026-08-07 21:24:39 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/users?select=active&id=eq.d12a3498-3065-40ef-a274-cb426136f568 "HTTP/2 200 OK"
+2026-08-07 21:24:39 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/settings?select=%2A&key=eq.invoice_categories "HTTP/2 200 OK"
+2026-08-07 21:24:39 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:24:39] "GET /api/settings/invoice_categories HTTP/1.1" 200 -
+2026-08-07 21:24:39 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/cell_data?select=%2A&data-%3E%3Eventure_id=eq.elite&offset=0&limit=1000 "HTTP/2 200 OK"
+2026-08-07 21:24:39 [INFO] httpx: HTTP Request: GET https://manhjhtmtqsckfgaycny.supabase.co/rest/v1/ventures?select=%2A&or=%28org_id.eq.11111111-1111-1111-1111-111111111111%2Corg_id.is.null%29 "HTTP/2 200 OK"
+2026-08-07 21:24:39 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:24:39] "GET /api/cells?venture_id=elite HTTP/1.1" 200 -
+2026-08-07 21:24:39 [INFO] werkzeug: 127.0.0.1 - - [07/Aug/2026 21:24:39] "GET /api/ventures HTTP/1.1" 200 -
