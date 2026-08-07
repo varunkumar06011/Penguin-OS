@@ -72,6 +72,12 @@
     /* ============================================================
        Sticky tracker header — measure height and set CSS variable
        so table thead th sticks at the correct offset.
+
+       Sticky stack: bulk bar (top:0) → section header (top:--bulk-bar-h)
+       → table thead (top:--bulk-bar-h + --section-h + 1px buffer)
+
+       The +1px buffer in CSS accounts for sub-pixel rounding so the
+       thead never overlaps the section header's bottom edge.
        ============================================================ */
     function updateTrackerStickyOffset() {
         var trackerView = document.getElementById('trackerView');
@@ -80,19 +86,42 @@
         var bulkBar = document.getElementById('bulkStickyBar');
         if (!bulkBar) return;
 
-        var bulkHeight = bulkBar.offsetHeight;
+        // Use getBoundingClientRect for sub-pixel-accurate height
+        var bulkRect = bulkBar.getBoundingClientRect();
+        var bulkHeight = Math.ceil(bulkRect.height);
         trackerView.style.setProperty('--bulk-bar-h', bulkHeight + 'px');
 
-        // Measure section header height for thead th sticky offset
-        var sectionHeader = document.querySelector('.work-view-container .section-header');
+        // Measure section header height for thead th sticky offset.
+        // Use the first visible section header (offsetParent !== null means it's in the rendered tree).
+        var sectionHeaders = document.querySelectorAll('.work-view-container .section-header');
+        var sectionHeader = null;
+        for (var i = 0; i < sectionHeaders.length; i++) {
+            if (sectionHeaders[i].offsetParent !== null) {
+                sectionHeader = sectionHeaders[i];
+                break;
+            }
+        }
         if (sectionHeader) {
-            trackerView.style.setProperty('--section-h', sectionHeader.offsetHeight + 'px');
+            var secRect = sectionHeader.getBoundingClientRect();
+            // Use ceil to ensure we don't under-measure (which would cause overlap)
+            var sectionHeight = Math.ceil(secRect.height);
+            trackerView.style.setProperty('--section-h', sectionHeight + 'px');
         }
 
         // Measure mobile flat nav height for chip sticky offset
         var mobileNav = document.querySelector('.mobile-flat-nav');
         if (mobileNav) {
             trackerView.style.setProperty('--mobile-nav-h', mobileNav.offsetHeight + 'px');
+        }
+
+        // Set up ResizeObserver on the section header to auto-update --section-h
+        // when its height changes (e.g., font loading, edit mode toggle, responsive layout)
+        if (typeof ResizeObserver !== 'undefined' && sectionHeader && !sectionHeader._stickyResizeObserved) {
+            var ro = new ResizeObserver(function() {
+                scheduleStickyUpdate();
+            });
+            ro.observe(sectionHeader);
+            sectionHeader._stickyResizeObserved = true;
         }
     }
 
@@ -118,6 +147,15 @@
         if (bulkBar) {
             var mo = new MutationObserver(scheduleStickyUpdate);
             mo.observe(bulkBar, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
+        }
+    }
+
+    // Observe work-view-container for added/removed section headers (re-renders)
+    if (typeof MutationObserver !== 'undefined') {
+        var wvc = document.getElementById('workViewContainer');
+        if (wvc) {
+            var wvcMo = new MutationObserver(function() { scheduleStickyUpdate(); });
+            wvcMo.observe(wvc, { childList: true, subtree: true });
         }
     }
 

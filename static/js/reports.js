@@ -252,14 +252,13 @@ async function renderInstantReports() {
         const catSelect = document.getElementById('irCategorySelect');
         if (!catSelect) return;
         catSelect.innerHTML = '<option value="">All Categories</option>';
-        if (venture && venture.work_categories) {
-            Object.keys(venture.work_categories).forEach(cat => {
-                const opt = document.createElement('option');
-                opt.value = cat;
-                opt.textContent = cat;
-                catSelect.appendChild(opt);
-            });
-        }
+        const cats = ensureWorkCategories(venture && venture.work_categories ? venture.work_categories : WORK_CATEGORIES);
+        Object.keys(cats).forEach(cat => {
+            const opt = document.createElement('option');
+            opt.value = cat;
+            opt.textContent = cat;
+            catSelect.appendChild(opt);
+        });
     }
 
     // --- Event wiring ---
@@ -463,53 +462,40 @@ function renderInstantReportOutput(container, data) {
         html += '</div></div>';
     }
 
-    // --- Work Item Breakdown Cards ---
-    if (data.work_item_breakdown && data.work_item_breakdown.length > 0) {
-        html += '<div class="ir-section"><h3 class="ir-section-title">Work Item-wise Breakdown</h3>';
-        html += '<div class="ir-wi-cards">';
-        data.work_item_breakdown.forEach(w => {
-            const wiPct = w.pct || 0;
-            const barColor = wiPct >= 75 ? '#2ecc71' : wiPct >= 40 ? '#f1c40f' : '#e74c3c';
-            html += `<div class="ir-wi-card">
-                <div class="ir-wi-header">
-                    <h4 class="ir-wi-name">${escapeHtml(w.work_item)}</h4>
-                    <span class="ir-wi-pct-badge" style="background:${barColor};">${wiPct}%</span>
+    // --- Work View Hierarchy (Category -> Work Descriptions) ---
+    if (data.work_view_hierarchy && data.work_view_hierarchy.length > 0) {
+        html += '<div class="ir-section"><h3 class="ir-section-title">Work View Hierarchy</h3>';
+        data.work_view_hierarchy.forEach(cat => {
+            const catPct = cat.pct || 0;
+            const catBarColor = catPct >= 75 ? '#2ecc71' : catPct >= 40 ? '#f1c40f' : '#e74c3c';
+            html += `<div class="ir-wv-category">
+                <div class="ir-wv-cat-header">
+                    <h4 class="ir-wv-cat-name">${escapeHtml(cat.category)}</h4>
+                    <span class="ir-wv-cat-pct-badge" style="background:${catBarColor};">${catPct}%</span>
                 </div>
-                ${w.category ? `<div class="ir-wi-category"><span class="ir-wi-cat-label">Category:</span> ${escapeHtml(w.category)}</div>` : ''}
-                <div class="ir-wi-progress-bar"><div class="ir-wi-progress-fill" style="width:${wiPct}%;background:${barColor};"></div></div>
-                <div class="ir-wi-stats">
-                    <div class="ir-wi-stat-row">
-                        <span class="ir-wi-stat-label">Total Work Items</span>
-                        <span class="ir-wi-stat-value">${w.total}</span>
+                <div class="ir-wv-cat-progress-bar"><div class="ir-wv-cat-progress-fill" style="width:${catPct}%;background:${catBarColor};"></div></div>
+                <div class="ir-wv-items">`;
+            (cat.items || []).forEach(w => {
+                const wiPct = w.pct || 0;
+                const barColor = wiPct >= 75 ? '#2ecc71' : wiPct >= 40 ? '#f1c40f' : '#e74c3c';
+                html += `<div class="ir-wv-item-card">
+                    <div class="ir-wv-item-header">
+                        <span class="ir-wv-item-name">${escapeHtml(w.work_item)}</span>
+                        <span class="ir-wv-item-pct-badge" style="background:${barColor};">${wiPct}%</span>
                     </div>
-                    <div class="ir-wi-stat-row">
-                        <span class="ir-wi-stat-label"><span class="ir-wi-dot" style="background:#2ecc71;"></span>Completed</span>
-                        <span class="ir-wi-stat-value ir-wi-val-green">${w.completed} &#x1F7E2;</span>
+                    <div class="ir-wv-item-progress-bar"><div class="ir-wv-item-progress-fill" style="width:${wiPct}%;background:${barColor};"></div></div>
+                    <div class="ir-wv-item-stats">
+                        <span class="ir-wv-item-stat"><span class="ir-wv-dot" style="background:#2ecc71;"></span>${w.completed}</span>
+                        <span class="ir-wv-item-stat"><span class="ir-wv-dot" style="background:#f1c40f;"></span>${w.in_progress}</span>
+                        <span class="ir-wv-item-stat"><span class="ir-wv-dot" style="background:#3498db;"></span>${w.patch_work}</span>
+                        <span class="ir-wv-item-stat"><span class="ir-wv-dot" style="background:#e74c3c;"></span>${w.yet_to_start}</span>
+                        <span class="ir-wv-item-stat ir-wv-item-total">Total: ${w.total}</span>
                     </div>
-                    <div class="ir-wi-stat-row">
-                        <span class="ir-wi-stat-label"><span class="ir-wi-dot" style="background:#f1c40f;"></span>In Progress</span>
-                        <span class="ir-wi-stat-value ir-wi-val-yellow">${w.in_progress} &#x1F7E1;</span>
-                    </div>
-                    <div class="ir-wi-stat-row">
-                        <span class="ir-wi-stat-label"><span class="ir-wi-dot" style="background:#3498db;"></span>Patch Work</span>
-                        <span class="ir-wi-stat-value ir-wi-val-blue">${w.patch_work} &#x1F535;</span>
-                    </div>
-                    <div class="ir-wi-stat-row">
-                        <span class="ir-wi-stat-label"><span class="ir-wi-dot" style="background:#e74c3c;"></span>Yet to Start</span>
-                        <span class="ir-wi-stat-value ir-wi-val-red">${w.yet_to_start} &#x1F534;</span>
-                    </div>
-                    <div class="ir-wi-stat-row">
-                        <span class="ir-wi-stat-label"><span class="ir-wi-dot" style="background:#ccc;"></span>Not Started</span>
-                        <span class="ir-wi-stat-value">${w.not_started}</span>
-                    </div>
-                    <div class="ir-wi-stat-row">
-                        <span class="ir-wi-stat-label">Pending</span>
-                        <span class="ir-wi-stat-value">${w.pending}</span>
-                    </div>
-                </div>
-            </div>`;
+                </div>`;
+            });
+            html += '</div></div>';
         });
-        html += '</div></div>';
+        html += '</div>';
     }
 
     if (total === 0) {
@@ -689,15 +675,15 @@ function printInstantReport() {
         }
     });
 
-    // Keep: .ir-cards-row (progress cards), .ir-charts-row (pie + bar charts), .ir-section (Category-wise + Work Item-wise)
+    // Keep: .ir-cards-row (progress cards), .ir-charts-row (pie + bar charts), .ir-section (Category-wise + Work View Hierarchy)
     const sectionsToKeep = new Set();
     // Keep chart and card rows
     contentClone.querySelectorAll('.ir-cards-row, .ir-charts-row').forEach(el => sectionsToKeep.add(el));
-    // Keep Category-wise and Work Item-wise sections
+    // Keep Category-wise and Work View Hierarchy sections
     const allSections = contentClone.querySelectorAll('.ir-section');
     allSections.forEach(sec => {
         const title = sec.querySelector('.ir-section-title');
-        if (title && (title.textContent.includes('Category-wise') || title.textContent.includes('Work Item-wise'))) {
+        if (title && (title.textContent.includes('Category-wise') || title.textContent.includes('Work View Hierarchy'))) {
             sectionsToKeep.add(sec);
         }
     });
@@ -765,10 +751,29 @@ function exportInstantReportExcel() {
     const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows);
     XLSX.utils.book_append_sheet(wb, wsSummary, 'Summary');
 
-    // Work item breakdown
-    if (data.work_item_breakdown && data.work_item_breakdown.length > 0) {
-        const wsItems = XLSX.utils.json_to_sheet(data.work_item_breakdown);
-        XLSX.utils.book_append_sheet(wb, wsItems, 'Work Items');
+    // Work view hierarchy (flattened for Excel)
+    if (data.work_view_hierarchy && data.work_view_hierarchy.length > 0) {
+        const flatRows = [];
+        data.work_view_hierarchy.forEach(cat => {
+            (cat.items || []).forEach(w => {
+                flatRows.push({
+                    Category: cat.category,
+                    'Work Description': w.work_item,
+                    Total: w.total,
+                    Completed: w.completed,
+                    'In Progress': w.in_progress,
+                    'Patch Work': w.patch_work,
+                    'Yet to Start': w.yet_to_start,
+                    'Not Started': w.not_started,
+                    Pending: w.pending,
+                    'Pct': w.pct
+                });
+            });
+        });
+        if (flatRows.length > 0) {
+            const wsItems = XLSX.utils.json_to_sheet(flatRows);
+            XLSX.utils.book_append_sheet(wb, wsItems, 'Work View');
+        }
     }
 
     // Category summary

@@ -3252,11 +3252,56 @@ def _ensure_item_ids(items):
     return result
 
 
+DEFAULT_WORK_CATEGORIES = {
+    'CIVIL WORK': [
+        "Brick work", "Lintel", "Lanter", "Mesh", "Mesh & Brickwork NCC",
+        "Connections", "Lift", "Cupboards", "Red Oxide Duraplus Primer",
+        "Red Oxide Duraplus Primer (2nd coat)", "Bathroom Service Chargable"
+    ],
+    'ELECTRICAL & PLUMBING WORK': [
+        "Electrical pipe", "Pipe & GI box", "Wiring",
+        "Bathroom Chipped", "Bathroom Geyser Pipe",
+        "Bathroom Geyser & Pipes", "Sanitary Board & Nand",
+        "GC & Bath Fitting"
+    ],
+    'POP CEILING': [
+        "Pop bolster work", "Pop ready work", "Casing",
+        "Balloon PVC Box Fitting", "Connections / Measurement"
+    ],
+    'PAINTING': [
+        "Colour Primer", "Wall Care Plaster",
+        "Wall Care Slastoat", "Wall Primer", "Primer",
+        "Colour to Edge"
+    ],
+    'FLOORING': [
+        "Bathroom Wall Tiles", "Tile Laying",
+        "Tile Cutting", "Connections", "Window Dhanis",
+        "Colour to Edge", "Wedding Dhanis"
+    ],
+    'CORRIDORS': [
+        {'id': 'corridor_0', 'label': 'Plaster'},
+        {'id': 'corridor_1', 'label': 'Mesh'},
+        {'id': 'corridor_2', 'label': 'Lanter'},
+        {'id': 'corridor_3', 'label': 'Wiring'},
+        {'id': 'corridor_4', 'label': 'Stains & Cleaning'},
+        {'id': 'corridor_5', 'label': 'Flooring'}
+    ],
+    'ELEVATION WORK': [
+        {'id': 'elevation_0', 'label': 'Marka'},
+        {'id': 'elevation_1', 'label': 'Elevation'},
+        {'id': 'elevation_2', 'label': 'Electrics'},
+        {'id': 'elevation_3', 'label': 'Wall Care'},
+        {'id': 'elevation_4', 'label': 'Texture'}
+    ]
+}
+
+
 def _ensure_work_categories(cats):
     """Python equivalent of JS ensureWorkCategories function.
+    Falls back to DEFAULT_WORK_CATEGORIES when cats is empty, matching frontend behavior.
     Generates item IDs matching frontend logic for string items."""
-    if not cats:
-        return {}
+    if not cats or (isinstance(cats, dict) and len(cats) == 0):
+        cats = DEFAULT_WORK_CATEGORIES
     result = {}
     for cat_label, items in cats.items():
         if not items:
@@ -3378,15 +3423,19 @@ def api_instant_reports():
         # Build item_id -> category mapping and item_id -> label mapping
         item_to_category = {}
         item_id_to_label = {}
+        # Track all configured categories and their items (for complete hierarchy)
+        all_configured_categories = {}  # cat_label -> list of {id, label}
 
         # Map work_categories items
         for cat_label, items in work_categories.items():
+            all_configured_categories[cat_label] = []
             for item in items:
                 if isinstance(item, dict):
                     iid = item.get('id', '')
                     if iid:
                         item_to_category[iid] = cat_label
                         item_id_to_label[iid] = item.get('label', iid)
+                        all_configured_categories[cat_label].append(item)
 
         # Map flat_view_items to "Flat View" category if not already in work_categories
         for item in flat_view_items:
@@ -3394,15 +3443,6 @@ def api_instant_reports():
                 iid = item.get('id', '')
                 if iid and iid not in item_to_category:
                     item_to_category[iid] = 'Flat View'
-                if iid:
-                    item_id_to_label[iid] = item.get('label', iid)
-
-        # Map super_structure_items to "Super Structure" category
-        for item in super_structure_items:
-            if isinstance(item, dict):
-                iid = item.get('id', '')
-                if iid and iid not in item_to_category:
-                    item_to_category[iid] = 'Super Structure'
                 if iid:
                     item_id_to_label[iid] = item.get('label', iid)
 
@@ -3415,7 +3455,20 @@ def api_instant_reports():
         block_stats = {}
         floor_stats = {}
         detail_rows = []
+        # Track actual work_categories cells per block/floor (excluding flat_view_items)
+        block_actual_wc = {}
+        floor_actual_wc = {}
 
+        # Pre-initialize category_stats and work_item_stats with ALL configured categories
+        # so that categories with no cell_data rows still appear in the report
+        for cat_label, cat_items in all_configured_categories.items():
+            if filter_category and cat_label != filter_category:
+                continue
+            category_stats[cat_label] = {'total': 0, 'green': 0, 'yellow': 0, 'blue': 0, 'red': 0, 'none': 0}
+            for item in cat_items:
+                iid = item.get('id', '')
+                if iid:
+                    work_item_stats[iid] = {'total': 0, 'green': 0, 'yellow': 0, 'blue': 0, 'red': 0, 'none': 0}
         for row in cells_res.data:
             d = row.get('data') or {}
             cell_id = row.get('id', '')
@@ -3489,6 +3542,11 @@ def api_instant_reports():
             floor_stats[fkey]['total'] += 1
             floor_stats[fkey][color] = (floor_stats[fkey].get(color, 0) or 0) + 1
 
+            # Track work_categories cells per block/floor (for missing cells calculation)
+            if cat and cat in all_configured_categories:
+                block_actual_wc[block] = block_actual_wc.get(block, 0) + 1
+                floor_actual_wc[fkey] = floor_actual_wc.get(fkey, 0) + 1
+
             # Detail row
             detail_rows.append({
                 'block': block, 'floor': floor, 'flat': flat,
@@ -3506,72 +3564,146 @@ def api_instant_reports():
         yet_to_start = status_counts.get('red', 0)
         not_started = status_counts.get('none', 0)
 
-        # Compute total possible cells from venture structure (Req #10 fix)
+        # Compute expected cells per work item from venture structure.
         # Cells default to red ("yet to start") — untouched cells have no DB row
         # but should be counted as red in the report for accurate totals.
-        total_possible_cells = 0
+        # This distributes missing cells to per-item, per-category, per-block,
+        # and per-floor stats so newly added categories/items appear with
+        # correct counts and all summaries add up to the grand total.
+        # Must match frontend CATEGORY_FLATS mapping.
+        CATEGORY_FLATS = {
+            'CORRIDORS': ['P-004'],
+            'ELEVATION WORK': ['P-004'],
+        }
+
+        # Helper: compute expected cell count for a given category in a block
+        def _expected_for_block(cat_label, blk, cat_special_flats):
+            blk_floors = blk.get('floors', 5)
+            blk_flats = blk.get('flats_per_floor', 4)
+            floors_to_count = 1 if filter_floor else blk_floors
+            if cat_special_flats is not None:
+                if filter_flat:
+                    flats_to_count = 1
+                else:
+                    flats_to_count = min(len(cat_special_flats), blk_flats)
+            else:
+                flats_to_count = 1 if filter_flat else blk_flats
+            return floors_to_count * flats_to_count, floors_to_count, flats_to_count
+
         if blocks and isinstance(blocks, list):
-            # Count active flat-view work items (from work_categories)
-            # If category filter is set, only count items in that category
-            num_flat_view_items = 0
-            for cat_label, cat_items in work_categories.items():
+            # Pass 1: per-item and per-category missing cells
+            # Also track per-block expected totals for Pass 2
+            block_expected_totals = {}  # blk_id -> total expected cells across all items
+            block_floor_map = {}  # blk_id -> (floors_to_count, flats_to_count) for floor distribution
+            for cat_label, cat_items in all_configured_categories.items():
                 if filter_category and cat_label != filter_category:
                     continue
-                num_flat_view_items += len(cat_items) if isinstance(cat_items, list) else 0
-            # Count active super-structure items
-            # Super structure is its own category — only count if no filter or filter matches
-            num_ss_items = 0
-            if not filter_category or filter_category == 'Super Structure':
-                num_ss_items = len(super_structure_items) if isinstance(super_structure_items, list) else 0
+                cat_special_flats = CATEGORY_FLATS.get(cat_label)
+                # When filtering by a specific flat, skip categories that use
+                # special flats (e.g. CORRIDORS uses 'P-004') unless the filter
+                # matches one of those special flats.
+                if filter_flat and cat_special_flats:
+                    if str(filter_flat) not in [str(f) for f in cat_special_flats]:
+                        continue
+                for item in cat_items:
+                    iid = item.get('id', '')
+                    if not iid:
+                        continue
+                    expected = 0
+                    for blk in blocks:
+                        if not isinstance(blk, dict):
+                            continue
+                        blk_id = blk.get('id', blk.get('name', ''))
+                        if filter_block and blk_id != filter_block:
+                            continue
+                        block_expected, floors_cnt, flats_cnt = _expected_for_block(cat_label, blk, cat_special_flats)
+                        expected += block_expected
+                        if block_expected > 0:
+                            block_expected_totals[blk_id] = block_expected_totals.get(blk_id, 0) + block_expected
+                            block_floor_map[blk_id] = blk  # keep ref for floor count
+                    actual = work_item_stats.get(iid, {}).get('total', 0)
+                    missing = expected - actual
+                    if missing > 0:
+                        if iid not in work_item_stats:
+                            work_item_stats[iid] = {'total': 0, 'green': 0, 'yellow': 0, 'blue': 0, 'red': 0, 'none': 0}
+                        work_item_stats[iid]['total'] += missing
+                        work_item_stats[iid]['red'] = (work_item_stats[iid].get('red', 0) or 0) + missing
+                        if cat_label not in category_stats:
+                            category_stats[cat_label] = {'total': 0, 'green': 0, 'yellow': 0, 'blue': 0, 'red': 0, 'none': 0}
+                        category_stats[cat_label]['total'] += missing
+                        category_stats[cat_label]['red'] = (category_stats[cat_label].get('red', 0) or 0) + missing
+                        total_cells += missing
+                        yet_to_start += missing
+                        status_counts['red'] = yet_to_start
 
-            for blk in blocks:
-                if not isinstance(blk, dict):
+            # Pass 2: per-block and per-floor missing cells
+            for blk_id, expected_total in block_expected_totals.items():
+                actual_wc = block_actual_wc.get(blk_id, 0)
+                block_missing = expected_total - actual_wc
+                if block_missing <= 0:
                     continue
-                blk_floors = blk.get('floors', 5)
-                blk_flats = blk.get('flats_per_floor', 4)
-                # Apply block filter if set
-                if filter_block and blk.get('id', blk.get('name', '')) != filter_block:
-                    continue
-                # Apply floor filter: only count that floor
-                floors_to_count = 1 if filter_floor else blk_floors
-                # Apply flat filter: only count that flat
-                flats_to_count = 1 if filter_flat else blk_flats
-                # Flat-view cells: floors × flats_per_floor × work_items
-                total_possible_cells += floors_to_count * flats_to_count * num_flat_view_items
-                # Super-structure cells: 1 per block per super-structure item
-                # (super structure is per-block, not per-floor/per-flat — floor/flat filters don't apply)
-                if num_ss_items and not filter_floor and not filter_flat:
-                    total_possible_cells += num_ss_items
-
-        # If we computed a total and it's higher than interacted cells,
-        # the difference is "yet to start" (red) cells with no DB row
-        if total_possible_cells > total_cells:
-            missing_cells = total_possible_cells - total_cells
-            yet_to_start += missing_cells
-            status_counts['red'] = yet_to_start
-            total_cells = total_possible_cells
+                if blk_id not in block_stats:
+                    block_stats[blk_id] = {'total': 0, 'green': 0, 'yellow': 0, 'blue': 0, 'red': 0, 'none': 0}
+                block_stats[blk_id]['total'] += block_missing
+                block_stats[blk_id]['red'] = (block_stats[blk_id].get('red', 0) or 0) + block_missing
+                # Distribute to floor stats
+                blk_obj = block_floor_map.get(blk_id)
+                num_floors = blk_obj.get('floors', 5) if blk_obj else 5
+                if filter_floor:
+                    floors_to_iter = [int(filter_floor)]
+                else:
+                    floors_to_iter = list(range(1, num_floors + 1))
+                per_floor = block_missing // len(floors_to_iter) if floors_to_iter else 0
+                remainder = block_missing - (per_floor * len(floors_to_iter))
+                for idx, fl in enumerate(floors_to_iter):
+                    fkey = f'{blk_id}|{fl}'
+                    if fkey not in floor_stats:
+                        floor_stats[fkey] = {'block': blk_id, 'floor': fl, 'total': 0, 'green': 0, 'yellow': 0, 'blue': 0, 'red': 0, 'none': 0}
+                    add = per_floor + (1 if idx < remainder else 0)
+                    if add > 0:
+                        floor_stats[fkey]['total'] += add
+                        floor_stats[fkey]['red'] = (floor_stats[fkey].get('red', 0) or 0) + add
 
         pending = total_cells - completed
         completion_pct = round((completed / total_cells * 100), 1) if total_cells else 0
 
-        # Build work item breakdown
-        work_item_breakdown = []
-        for item_id, stats in sorted(work_item_stats.items()):
-            t = stats['total']
-            work_item_breakdown.append({
-                'work_item': item_id_to_label.get(item_id, item_id),
-                'work_item_id': item_id,
-                'category': item_to_category.get(item_id, ''),
-                'total': t,
-                'completed': stats.get('green', 0),
-                'in_progress': stats.get('yellow', 0),
-                'patch_work': stats.get('blue', 0),
-                'yet_to_start': stats.get('red', 0),
-                'not_started': stats.get('none', 0),
-                'pending': t - stats.get('green', 0),
-                'pct': round((stats.get('green', 0) / t * 100), 1) if t else 0
+        # Build work view hierarchy (Category -> Work Descriptions)
+        # Mirrors the Work View module structure exactly
+        work_view_hierarchy = []
+        for cat_label, cat_items in all_configured_categories.items():
+            if filter_category and cat_label != filter_category:
+                continue
+            cat_stats = category_stats.get(cat_label, {'total': 0, 'green': 0, 'yellow': 0, 'blue': 0, 'red': 0, 'none': 0})
+            cat_total = cat_stats['total']
+            cat_completed = cat_stats.get('green', 0)
+            item_list = []
+            for item in cat_items:
+                iid = item.get('id', '')
+                stats = work_item_stats.get(iid, {'total': 0, 'green': 0, 'yellow': 0, 'blue': 0, 'red': 0, 'none': 0})
+                t = stats['total']
+                item_list.append({
+                    'work_item': item.get('label', iid),
+                    'work_item_id': iid,
+                    'total': t,
+                    'completed': stats.get('green', 0),
+                    'in_progress': stats.get('yellow', 0),
+                    'patch_work': stats.get('blue', 0),
+                    'yet_to_start': stats.get('red', 0),
+                    'not_started': stats.get('none', 0),
+                    'pending': t - stats.get('green', 0),
+                    'pct': round((stats.get('green', 0) / t * 100), 1) if t else 0
+                })
+            work_view_hierarchy.append({
+                'category': cat_label,
+                'total': cat_total,
+                'completed': cat_completed,
+                'in_progress': cat_stats.get('yellow', 0),
+                'patch_work': cat_stats.get('blue', 0),
+                'yet_to_start': cat_stats.get('red', 0),
+                'not_started': cat_stats.get('none', 0),
+                'pct': round((cat_completed / cat_total * 100), 1) if cat_total else 0,
+                'items': item_list
             })
-
         # Build category summary
         category_summary = []
         for cat, stats in sorted(category_stats.items()):
@@ -3664,7 +3796,7 @@ def api_instant_reports():
                 'completion_pct': completion_pct
             },
             'status_counts': status_counts,
-            'work_item_breakdown': work_item_breakdown,
+            'work_view_hierarchy': work_view_hierarchy,
             'category_summary': category_summary,
             'block_summary': block_summary,
             'floor_summary': floor_summary,

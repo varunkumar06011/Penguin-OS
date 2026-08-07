@@ -307,80 +307,6 @@ async function deleteWorkItemFromSettings(category, itemId) {
 }
 
 function openSettingsModal() {
-    els.workItemsList.innerHTML = '';
-    const items = ensureItemIds(workItems);
-    workItems = items;
-    items.forEach((item, index) => {
-        const li = document.createElement('li');
-        li.draggable = true;
-        li.dataset.index = index;
-        li.dataset.id = item.id;
-
-        const handle = document.createElement('span');
-        handle.className = 'drag-handle';
-        handle.textContent = '≡';
-
-        const input = document.createElement('span');
-        input.className = 'work-item-name';
-        input.contentEditable = true;
-        input.textContent = item.label;
-        input.addEventListener('blur', () => {
-            const newLabel = input.textContent.trim() || item.label;
-            const idx = workItems.findIndex(w => (typeof w === 'object' ? w.id : null) === item.id);
-            if (idx >= 0) {
-                workItems[idx] = { id: item.id, label: newLabel };
-            }
-        });
-        input.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                input.blur();
-            }
-        });
-
-        const remove = document.createElement('button');
-        remove.className = 'remove-btn';
-        remove.innerHTML = '&times;';
-        remove.title = 'Remove';
-        remove.addEventListener('click', () => {
-            workItems = workItems.filter(w => (typeof w === 'object' ? w.id : null) !== item.id);
-            openSettingsModal();
-        });
-
-        li.appendChild(handle);
-        li.appendChild(input);
-        li.appendChild(remove);
-        els.workItemsList.appendChild(li);
-
-        // Drag and drop
-        li.addEventListener('dragstart', () => li.classList.add('dragging'));
-        li.addEventListener('dragend', () => {
-            li.classList.remove('dragging');
-            const newItems = [];
-            els.workItemsList.querySelectorAll('li').forEach(row => {
-                const nameSpan = row.querySelector('.work-item-name');
-                const label = nameSpan.textContent.trim();
-                const rowId = row.dataset.id;
-                if (rowId) {
-                    newItems.push({ id: rowId, label });
-                } else {
-                    newItems.push({ id: `item_${slugId(label)}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label });
-                }
-            });
-            workItems = newItems.filter(w => w.label.length > 0);
-        });
-        li.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            const dragging = els.workItemsList.querySelector('.dragging');
-            if (!dragging || dragging === li) return;
-            const siblings = [...els.workItemsList.querySelectorAll('li:not(.dragging)')];
-            const next = siblings.find(s => {
-                const rect = s.getBoundingClientRect();
-                return e.clientY <= rect.top + rect.height / 2;
-            });
-            els.workItemsList.insertBefore(dragging, next || null);
-        });
-    });
     renderBlocksSettings();
     renderWorkCategoriesSettings();
     renderSuperItemsSettings();
@@ -704,11 +630,6 @@ if (els.manageUsersSave) {
     });
 }
 
-els.addWorkItemBtn.addEventListener('click', () => {
-    workItems.push({ id: `item_new_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label: 'New Work Item' });
-    openSettingsModal();
-});
-
 const addSuperItemBtn = document.getElementById('addSuperItemBtn');
 if (addSuperItemBtn) {
     addSuperItemBtn.addEventListener('click', () => {
@@ -752,21 +673,6 @@ let _pendingSettings = null;
 
 function collectSettingsFromModal() {
     const settings = {};
-
-    // Work Items — preserve existing IDs from DOM
-    const newItems = [];
-    els.workItemsList.querySelectorAll('li').forEach(row => {
-        const nameSpan = row.querySelector('.work-item-name');
-        const label = nameSpan.textContent.trim();
-        if (!label) return;
-        const rowId = row.dataset.id;
-        if (rowId) {
-            newItems.push({ id: rowId, label });
-        } else {
-            newItems.push({ id: `item_${slugId(label)}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label });
-        }
-    });
-    settings.flat_view_items = newItems;
 
     // Super Structure Items — preserve existing IDs from DOM
     const superList = document.getElementById('superItemsList');
@@ -865,23 +771,6 @@ function closeApplyChangesModal() {
 }
 
 els.saveSettingsBtn.addEventListener('click', () => {
-    // Sync work items from DOM into workItems and currentVenture — preserve IDs
-    const newItems = [];
-    els.workItemsList.querySelectorAll('li').forEach(row => {
-        const nameSpan = row.querySelector('.work-item-name');
-        const label = nameSpan.textContent.trim();
-        if (!label) return;
-        const rowId = row.dataset.id;
-        if (rowId) {
-            newItems.push({ id: rowId, label });
-        } else {
-            newItems.push({ id: `item_${slugId(label)}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label });
-        }
-    });
-    workItems = newItems;
-    if (currentVenture) {
-        currentVenture.flat_view_items = workItems;
-    }
     // Sync super structure items from DOM into currentVenture — preserve IDs
     if (currentVenture) {
         const superList = document.getElementById('superItemsList');

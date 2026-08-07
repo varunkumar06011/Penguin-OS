@@ -597,7 +597,11 @@ async function renderWorkView(force) {
         enableCategoryDragReorder(container, chipBar);
     }
 
-    if (window.updateTrackerStickyOffset) window.updateTrackerStickyOffset();
+    if (window.updateTrackerStickyOffset) {
+        window.updateTrackerStickyOffset();
+        // Also measure after layout settles (fonts, responsive adjustments)
+        requestAnimationFrame(() => window.updateTrackerStickyOffset && window.updateTrackerStickyOffset());
+    }
 
     // Restore active category chip and scroll position
     if (savedActiveCategory && chipBar) {
@@ -837,6 +841,9 @@ async function renderWorkViewMobile(container) {
     navBar.appendChild(flatDisplay);
     navBar.appendChild(nextBtn);
     navBar.appendChild(navBulk);
+    // Force position:relative via inline style with !important to override any CSS
+    navBar.style.setProperty('position', 'relative', 'important');
+    navBar.style.setProperty('top', 'auto', 'important');
     container.appendChild(navBar);
 
     // Flat chips (horizontal scroll, quick jump)
@@ -856,6 +863,9 @@ async function renderWorkViewMobile(container) {
         });
         chipBar.appendChild(chip);
     });
+    // Force position:relative via inline style with !important to override any CSS
+    chipBar.style.setProperty('position', 'relative', 'important');
+    chipBar.style.setProperty('top', 'auto', 'important');
     container.appendChild(chipBar);
 
     // Content area
@@ -1198,6 +1208,7 @@ function createSectionTable(category, items, flats) {
     let draggedRow = null;
     tbody.addEventListener('dragover', (e) => {
         e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
         if (!draggedRow) return;
         const rows = [...tbody.querySelectorAll('tr:not(.dragging)')];
         const next = rows.find(r => {
@@ -1210,9 +1221,16 @@ function createSectionTable(category, items, flats) {
             tbody.appendChild(draggedRow);
         }
     });
-    tbody.addEventListener('drop', () => {
+    tbody.addEventListener('dragenter', (e) => { e.preventDefault(); });
+    tbody.addEventListener('drop', (e) => {
+        e.preventDefault();
         if (!draggedRow) return;
         draggedRow.classList.remove('dragging');
+        // Renumber Sr. No. column to be continuous
+        [...tbody.querySelectorAll('tr')].forEach((tr, i) => {
+            const snoCell = tr.querySelector('td:first-child');
+            if (snoCell) snoCell.textContent = (i + 1);
+        });
         // Build new order of item IDs from DOM
         const newOrder = [...tbody.querySelectorAll('tr')].map(r => r.dataset.itemId).filter(Boolean);
         reorderWorkItemsByList(category, newOrder);
@@ -1224,25 +1242,26 @@ function createSectionTable(category, items, flats) {
         row.dataset.itemId = itemObj.id;
 
         const tdSNo = document.createElement('td');
-        tdSNo.style.cursor = 'grab';
         tdSNo.style.userSelect = 'none';
-        tdSNo.draggable = true;
-        tdSNo.innerHTML = '<span class="drag-handle" style="font-size:1rem;margin-right:4px;">\u2261</span>' + (wi + 1);
-        // Drag starts only from the S.No cell handle
-        tdSNo.addEventListener('dragstart', (e) => {
+        tdSNo.textContent = (wi + 1);
+        row.appendChild(tdSNo);
+
+        const tdWork = document.createElement('td');
+        tdWork.className = 'work-cell';
+        tdWork.style.cursor = 'grab';
+        tdWork.style.userSelect = 'none';
+        tdWork.draggable = true;
+        // Drag starts from the work description cell
+        tdWork.addEventListener('dragstart', (e) => {
             draggedRow = row;
             row.classList.add('dragging');
             e.dataTransfer.effectAllowed = 'move';
             e.dataTransfer.setData('text/plain', itemObj.id);
         });
-        tdSNo.addEventListener('dragend', () => {
+        tdWork.addEventListener('dragend', () => {
             row.classList.remove('dragging');
             draggedRow = null;
         });
-        row.appendChild(tdSNo);
-
-        const tdWork = document.createElement('td');
-        tdWork.className = 'work-cell';
         if (editMode) {
             tdWork.innerHTML = `<span class="item-label">${itemObj.label}</span>`;
             const controls = document.createElement('div');
@@ -1701,12 +1720,56 @@ function exitBulkMode() {
     document.querySelectorAll('.cell-btn.bulk-selected').forEach(b => b.classList.remove('bulk-selected'));
     // Remove color button highlights
     document.querySelectorAll('.bulk-color-btn.selected').forEach(b => b.classList.remove('selected'));
+    // Update sticky offsets after bulk bar height changes
+    if (window.updateTrackerStickyOffset) {
+        requestAnimationFrame(() => {
+            window.updateTrackerStickyOffset();
+            requestAnimationFrame(() => window.updateTrackerStickyOffset && window.updateTrackerStickyOffset());
+        });
+    }
 }
 
 // Global mouseup to stop drag-paint
 document.addEventListener('mouseup', () => { bulkIsDragging = false; });
 document.addEventListener('touchend', () => { bulkIsDragging = false; });
 document.addEventListener('touchcancel', () => { bulkIsDragging = false; });
+
+function diagnoseBulkLayout() {
+    const wvc = document.getElementById('workViewContainer');
+    const trackerView = document.getElementById('trackerView');
+    const bulkBar = document.getElementById('bulkStickyBar');
+    const firstTable = wvc && wvc.querySelector('.tracker-table');
+    if (!wvc || !trackerView || !bulkBar) return;
+    console.log('[BulkLayout Debug]');
+    console.log('  window.innerWidth:', window.innerWidth);
+    console.log('  trackerView scrollWidth:', trackerView.scrollWidth, 'clientWidth:', trackerView.clientWidth);
+    console.log('  bulkBar scrollWidth:', bulkBar.scrollWidth, 'clientWidth:', bulkBar.clientWidth, 'offsetWidth:', bulkBar.offsetWidth);
+    console.log('  bulkBar overflow-x:', getComputedStyle(bulkBar).overflowX);
+    console.log('  wvc scrollLeft:', wvc.scrollLeft, 'scrollWidth:', wvc.scrollWidth, 'clientWidth:', wvc.clientWidth, 'offsetWidth:', wvc.offsetWidth);
+    const wvcRect = wvc.getBoundingClientRect();
+    console.log('  wvc rect.left:', wvcRect.left, 'rect.width:', wvcRect.width);
+    const wvcCS = getComputedStyle(wvc);
+    console.log('  wvc margin-left:', wvcCS.marginLeft, 'padding-left:', wvcCS.paddingLeft, 'overflow-x:', wvcCS.overflowX);
+    if (firstTable) {
+        const tRect = firstTable.getBoundingClientRect();
+        const tCS = getComputedStyle(firstTable);
+        console.log('  table rect.left:', tRect.left, 'rect.width:', tRect.width);
+        console.log('  table margin-left:', tCS.marginLeft, 'transform:', tCS.transform, 'min-width:', tCS.minWidth);
+        const grid = firstTable.closest('.grid-container');
+        if (grid) {
+            const gCS = getComputedStyle(grid);
+            const gRect = grid.getBoundingClientRect();
+            console.log('  grid rect.left:', gRect.left, 'margin-left:', gCS.marginLeft, 'padding-left:', gCS.paddingLeft, 'overflow-x:', gCS.overflowX);
+        }
+        const section = firstTable.closest('.work-view-section');
+        if (section) {
+            const sCS = getComputedStyle(section);
+            const sRect = section.getBoundingClientRect();
+            console.log('  section rect.left:', sRect.left, 'margin-left:', sCS.marginLeft, 'padding-left:', sCS.paddingLeft, 'overflow-x:', sCS.overflowX);
+        }
+    }
+    console.log('  body scrollLeft:', document.body.scrollLeft, 'documentElement.scrollLeft:', document.documentElement.scrollLeft);
+}
 
 document.getElementById('bulkSelectBtn').addEventListener('click', () => {
     bulkMode = !bulkMode;
@@ -1724,6 +1787,17 @@ document.getElementById('bulkSelectBtn').addEventListener('click', () => {
         if (mstBulk) mstBulk.classList.add('active');
     } else {
         exitBulkMode();
+    }
+    // Update sticky offsets after bulk bar height changes
+    if (window.updateTrackerStickyOffset) {
+        requestAnimationFrame(() => {
+            window.updateTrackerStickyOffset();
+            // Second pass after layout fully settles
+            requestAnimationFrame(() => {
+                if (window.updateTrackerStickyOffset) window.updateTrackerStickyOffset();
+                diagnoseBulkLayout();
+            });
+        });
     }
 });
 
@@ -2414,11 +2488,12 @@ async function saveVentureConfig() {
     if (idx >= 0) {
         venturesList[idx] = currentVenture;
     }
+    const toast = showSaveToast('Saving...');
     try {
         await saveVenture(currentVenture);
-        showToast('Changes saved');
+        resolveSaveToast(toast, 'Changes saved', false);
     } catch (err) {
-        showToast('Failed to save: ' + (err.message || err), true);
+        resolveSaveToast(toast, 'Failed to save: ' + (err.message || err), true);
     }
 }
 
@@ -2657,6 +2732,7 @@ async function reorderWorkItemsByList(category, newOrderIds) {
     currentVenture.work_categories = cats;
     await saveVentureConfig();
     _refreshSettingsIfOpen();
+    renderWorkView(true);
 }
 
 // Super Structure Editing

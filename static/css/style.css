@@ -729,13 +729,28 @@ button, a, input, select, textarea {
     opacity: 0.5;
 }
 
-/* Drag-and-drop for work description rows in edit mode */
+/* Drag-and-drop for work description rows */
 .tracker-table tbody tr.dragging {
     opacity: 0.5;
     background: #e6f0ff;
 }
 .tracker-table tbody tr[draggable="true"]:active {
     cursor: grabbing;
+}
+.tracker-table td.work-cell[draggable="true"] {
+    cursor: grab;
+    user-select: none;
+}
+.tracker-table td.work-cell[draggable="true"]:active {
+    cursor: grabbing;
+}
+.tracker-table td.work-cell .edit-controls,
+.tracker-table td.work-cell .edit-btn,
+.tracker-table td.work-cell .work-item-edit-btn {
+    -webkit-user-drag: none;
+}
+.tracker-table td.work-cell .item-label {
+    -webkit-user-drag: element;
 }
 
 .drag-handle {
@@ -833,6 +848,28 @@ button, a, input, select, textarea {
     background: #e74c3c;
 }
 
+.toast.saving {
+    background: #2980b9;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.toast-spinner {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: toastSpin 0.6s linear infinite;
+    flex-shrink: 0;
+}
+
+@keyframes toastSpin {
+    to { transform: rotate(360deg); }
+}
+
 @keyframes slideIn {
     from { transform: translateX(100%); opacity: 0; }
     to { transform: translateX(0); opacity: 1; }
@@ -867,9 +904,7 @@ button, a, input, select, textarea {
 /* Work View */
 .work-view-container {
     padding: 24px;
-    overflow-x: auto;
-    overflow-y: clip; /* Don't create a vertical scroll container — preserves position:sticky relative to window */
-    -webkit-overflow-scrolling: touch;
+    overflow: visible; /* Must NOT be a scroll container — preserves position:sticky relative to viewport */
 }
 
 .work-view-section {
@@ -1771,7 +1806,7 @@ button, a, input, select, textarea {
     top: auto;
 }
 
-/* Bulk sticky bar — the ONLY sticky container above the table */
+/* Bulk bar — sticky at top while scrolling */
 #bulkStickyBar {
     position: sticky;
     top: 0;
@@ -1782,22 +1817,15 @@ button, a, input, select, textarea {
     align-items: center;
     gap: 8px;
     padding: 6px 16px;
-    will-change: transform;
 }
 
-/* Table header sticky — sticks below the bulk bar */
+/* Table headers — sticky below bulk bar */
 .tracker-table thead th {
     position: sticky;
     top: var(--bulk-bar-h, 44px);
-    z-index: 95;
+    z-index: 90;
     background: #f8f9fb;
     min-width: 40px;
-}
-
-/* Work column and remarks column need higher z-index to stay above body cells during horizontal scroll */
-.tracker-table thead th.work-col,
-.tracker-table thead th.remarks-col {
-    z-index: 96;
 }
 
 /* Ensure background is opaque so body rows don't show through */
@@ -1806,14 +1834,16 @@ button, a, input, select, textarea {
 }
 
 /* ============================================================
-   WORK VIEW STICKY OVERRIDES
-   Sticky stack: bulk bar → section header → table thead
+   WORK VIEW OVERRIDES
+   Section headers and table headers are sticky below the bulk bar.
    ============================================================ */
 
-/* Remove independent scroll from grid-container inside work view */
+/* grid-container handles horizontal table scroll; work-view-container stays non-scroll for sticky */
 .work-view-container .grid-container {
     max-height: none;
-    overflow: visible;
+    overflow-x: auto;
+    overflow-y: visible;
+    -webkit-overflow-scrolling: touch;
 }
 
 /* Section provides border-radius and shadow; table should not duplicate */
@@ -1822,23 +1852,50 @@ button, a, input, select, textarea {
     box-shadow: none;
 }
 
-/* Section headers stick below the bulk bar */
+/* Section headers sticky below bulk bar */
 .work-view-container .section-header {
     position: sticky;
     top: var(--bulk-bar-h, 44px);
-    z-index: 96;
+    z-index: 95;
     border-radius: var(--card-radius) var(--card-radius) 0 0;
+    background: var(--sidebar-bg);
 }
 
-/* Table headers stick below the section header */
+/* Table headers sticky at top of grid-container scrollport */
 .work-view-container .tracker-table thead th {
-    top: calc(var(--bulk-bar-h, 44px) + var(--section-h, 40px));
+    position: sticky;
+    top: 0;
+    z-index: 90;
 }
 
 .cell-btn.bulk-selected {
     outline: 3px solid #1a1a1a;
     outline-offset: 2px;
     transform: scale(0.92);
+}
+
+/* ============================================================
+   SUPER STRUCTURE: No sticky headers
+   Override the global tracker-table sticky rules so that
+   Sr.No, Work Description, Status, etc. all scroll naturally.
+   ============================================================ */
+#superStructureContainer .section-header,
+#superStructureContainer .ss-subheader {
+    position: static;
+    z-index: auto;
+    box-shadow: none;
+    will-change: auto;
+}
+
+#superStructureContainer .tracker-table thead th {
+    position: static;
+    top: auto;
+    z-index: auto;
+    will-change: auto;
+}
+
+#superStructureContainer .grid-container {
+    overflow: auto;
 }
 
 /* ============================================================
@@ -2411,7 +2468,7 @@ button, a, input, select, textarea {
         top: auto;
     }
 
-    /* Mobile: same behavior as desktop — only bulk bar + table header sticky */
+    /* Mobile: bulk bar scrolls with the page */
     .tracker-sticky-header {
         position: relative;
         top: auto;
@@ -2419,9 +2476,9 @@ button, a, input, select, textarea {
         box-shadow: none;
     }
     #bulkStickyBar {
-        position: sticky;
-        top: 0;
-        z-index: 100;
+        position: relative !important;
+        top: auto !important;
+        z-index: auto;
         padding: 6px 12px;
     }
     #bulkActionBar {
@@ -2433,16 +2490,17 @@ button, a, input, select, textarea {
         width: 36px;
         height: 36px;
     }
-    /* Mobile: same sticky stack as desktop — bulk bar → section header → table thead */
+    /* Mobile: section header sticky below bulk bar (relative to viewport) */
     .work-view-container .section-header {
         position: sticky;
         top: var(--bulk-bar-h, 44px);
-        z-index: 96;
+        z-index: 95;
     }
+    /* Mobile: table headers sticky at top of grid-container scrollport */
     .work-view-container .tracker-table thead th {
         position: sticky;
-        top: calc(var(--bulk-bar-h, 44px) + var(--section-h, 35px));
-        z-index: 95;
+        top: 0;
+        z-index: 90;
     }
 
     /* Venture header */
@@ -2791,16 +2849,23 @@ button, a, input, select, textarea {
    Mobile UX Improvements (Issues #3, #5, #7)
    ======================== */
 @media (max-width: 768px) {
-    /* Work View: ensure horizontal scroll is smooth on touch */
+    /* Work View: must NOT be a scroll container — preserves position:sticky relative to viewport */
     .work-view-container {
-        overflow-x: auto;
-        overflow-y: clip;
-        -webkit-overflow-scrolling: touch;
+        overflow: visible;
         padding: 8px;
     }
+    /* Mobile work view uses flex rows, not tables — no horizontal scroll needed.
+       overflow: visible prevents scroll-container creation that can trap
+       sticky elements and cause the flat nav to appear fixed. */
+    .mobile-work-view {
+        overflow: visible !important;
+        -webkit-overflow-scrolling: auto;
+    }
     .work-view-section .grid-container {
-        overflow: visible;
+        overflow-x: auto;
+        overflow-y: visible;
         padding: 0;
+        -webkit-overflow-scrolling: touch;
     }
     /* Work view tables: smaller min-width for mobile */
     .work-view-section table {
@@ -6839,13 +6904,13 @@ button, a, input, select, textarea {
 @media (max-width: 768px) {
     /* Body: prevent horizontal scroll */
     body {
-        overflow-x: clip;
+        overflow-x: hidden;
     }
     #app {
-        overflow-x: clip;
+        overflow-x: hidden;
     }
     #appMain {
-        overflow-x: clip;
+        overflow-x: hidden;
         padding-top: 48px;
     }
 
@@ -7177,7 +7242,7 @@ button, a, input, select, textarea {
 @media (max-width: 480px) {
     /* Body and html: no horizontal scroll */
     html, body {
-        overflow-x: clip;
+        overflow-x: hidden;
         max-width: 100vw;
     }
     #appMain {
@@ -7315,7 +7380,10 @@ button, a, input, select, textarea {
 
 /* ---- Global overflow prevention ---- */
 #app,
-#appMain,
+#appMain {
+    max-width: 100%;
+    overflow-x: hidden;
+}
 .venture-dashboard,
 #overviewPage,
 #invoicesPanel,
@@ -7867,6 +7935,148 @@ video {
     flex-shrink: 0;
 }
 
+/* Work View Hierarchy */
+.ir-wv-category {
+    background: #fff;
+    border-radius: var(--card-radius, 10px);
+    padding: 18px;
+    margin-bottom: 14px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    border-left: 4px solid #3498db;
+    overflow: hidden;
+}
+
+.ir-wv-cat-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 10px;
+    min-width: 0;
+}
+
+.ir-wv-cat-name {
+    font-size: 1.05rem;
+    font-weight: 800;
+    margin: 0;
+    color: #1a1a1a;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1 1 auto;
+}
+
+.ir-wv-cat-pct-badge {
+    font-size: 0.78rem;
+    font-weight: 800;
+    color: #fff;
+    padding: 3px 10px;
+    border-radius: 20px;
+    white-space: nowrap;
+}
+
+.ir-wv-cat-progress-bar {
+    height: 8px;
+    background: #e8e8e8;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 14px;
+    box-sizing: border-box;
+}
+
+.ir-wv-cat-progress-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.4s ease;
+    max-width: 100%;
+}
+
+.ir-wv-items {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 10px;
+}
+
+.ir-wv-item-card {
+    background: #f8f9fb;
+    border-radius: 8px;
+    padding: 12px 14px;
+    border: 1px solid #e8eaed;
+    box-sizing: border-box;
+}
+
+.ir-wv-item-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    margin-bottom: 8px;
+    min-width: 0;
+}
+
+.ir-wv-item-name {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #333;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1 1 auto;
+}
+
+.ir-wv-item-pct-badge {
+    font-size: 0.72rem;
+    font-weight: 800;
+    color: #fff;
+    padding: 2px 8px;
+    border-radius: 16px;
+    white-space: nowrap;
+}
+
+.ir-wv-item-progress-bar {
+    height: 6px;
+    background: #e0e4e8;
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: 8px;
+    box-sizing: border-box;
+}
+
+.ir-wv-item-progress-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.4s ease;
+    max-width: 100%;
+}
+
+.ir-wv-item-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    font-size: 0.72rem;
+    color: #666;
+}
+
+.ir-wv-item-stat {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-weight: 600;
+}
+
+.ir-wv-item-total {
+    color: #888;
+    margin-left: auto;
+}
+
+.ir-wv-dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
 .ir-table-wrap {
     background: #fff;
     border-radius: var(--card-radius, 10px);
@@ -8245,22 +8455,31 @@ video {
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
     }
-    .ir-print-content .ir-wi-cards {
-        grid-template-columns: repeat(2, 1fr);
-        gap: 10px;
+    .ir-print-content .ir-wv-category {
+        break-inside: avoid;
+        page-break-inside: avoid;
+        box-shadow: none;
+        border: 1px solid #ddd;
+        margin-bottom: 12px;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
     }
-    .ir-print-content .ir-wi-card {
+    .ir-print-content .ir-wv-cat-pct-badge,
+    .ir-print-content .ir-wv-cat-progress-fill,
+    .ir-print-content .ir-wv-item-pct-badge,
+    .ir-print-content .ir-wv-item-progress-fill,
+    .ir-print-content .ir-wv-dot {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+    .ir-print-content .ir-wv-items {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+    }
+    .ir-print-content .ir-wv-item-card {
         break-inside: avoid;
         box-shadow: none;
         border: 1px solid #ddd;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
-    }
-    .ir-print-content .ir-wi-pct-badge,
-    .ir-print-content .ir-wi-progress-fill,
-    .ir-print-content .ir-wi-dot {
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
     }
     .ir-print-content .ir-td-green,
     .ir-print-content .ir-td-yellow,
@@ -8583,14 +8802,13 @@ video {
    ======================== */
 .mobile-work-view {
     padding: 0;
-    overflow-x: clip;
-    overflow-y: visible;
+    overflow: visible !important;
 }
 
-/* Flat navigation bar — sticky below bulk bar */
+/* Flat navigation bar — scrolls with the page */
 .mobile-flat-nav {
-    position: sticky;
-    top: var(--bulk-bar-h, 44px);
+    position: relative !important;
+    top: auto !important;
     z-index: 90;
     display: flex;
     align-items: center;
@@ -8648,10 +8866,10 @@ video {
     color: #999;
 }
 
-/* Flat chips (horizontal scroll, quick jump) — sticky below mobile nav */
+/* Flat chips (horizontal scroll, quick jump) — scrolls with the page */
 .mobile-flat-chips {
-    position: sticky;
-    top: calc(var(--bulk-bar-h, 44px) + var(--mobile-nav-h, 48px));
+    position: relative !important;
+    top: auto !important;
     z-index: 89;
     display: flex;
     gap: 6px;

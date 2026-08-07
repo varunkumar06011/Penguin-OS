@@ -908,8 +908,6 @@ const els = {
     remarksFileDropLabel: document.getElementById('remarksFileDropLabel'),
     remarksFilePreview: document.getElementById('remarksFilePreview'),
     settingsModal: document.getElementById('settingsModal'),
-    workItemsList: document.getElementById('workItemsList'),
-    addWorkItemBtn: document.getElementById('addWorkItemBtn'),
     saveSettingsBtn: document.getElementById('saveSettingsBtn'),
     closeSettings: document.getElementById('closeSettings'),
     blocksSettingsList: document.getElementById('blocksSettingsList'),
@@ -1039,6 +1037,23 @@ function showToast(message, isError = false) {
     toast.textContent = message;
     document.body.appendChild(toast);
     setTimeout(() => toast.remove(), 3000);
+}
+
+function showSaveToast(message) {
+    const existing = document.querySelector('.toast');
+    if (existing) existing.remove();
+    const toast = document.createElement('div');
+    toast.className = 'toast saving';
+    toast.innerHTML = '<span class="toast-spinner"></span>' + message;
+    document.body.appendChild(toast);
+    return toast;
+}
+
+function resolveSaveToast(toast, message, isError) {
+    if (!toast) { showToast(message, isError); return; }
+    toast.className = 'toast' + (isError ? ' error' : '');
+    toast.innerHTML = isError ? ('&#9888; ' + message) : ('&#10003; ' + message);
+    setTimeout(() => toast.remove(), 2500);
 }
 
 // ========================
