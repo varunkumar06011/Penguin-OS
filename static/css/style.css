@@ -8796,9 +8796,90 @@ video {
     .cp-fin-cell:last-child { border-bottom: none; }
 }
 
-/* ========================
-   Mobile Work View
-   ======================== */
+/* ======================== */
+/* Vendor Payments (extends Contractor Payments) */
+/* ======================== */
+.cp-filter-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.85rem;
+    color: #4b5563;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.cp-filter-checkbox input { cursor: pointer; }
+
+.vd-vendor-card {
+    background: #fff;
+    border: 1px solid #e8ecf0;
+    border-radius: 12px;
+    padding: 16px;
+}
+
+.vd-card-materials {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 4px 0;
+}
+.vd-mat-label {
+    font-size: 0.75rem;
+    color: #6b7280;
+    font-weight: 600;
+}
+.vd-mat-chip {
+    display: inline-block;
+    background: #f0f4f8;
+    color: #374151;
+    font-size: 0.72rem;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.vd-card-actions {
+    display: flex;
+    gap: 8px;
+    padding-top: 12px;
+    border-top: 1px solid #e8ecf0;
+}
+.vd-card-actions .btn-primary {
+    background: #f39c12;
+    border-color: #f39c12;
+    color: #fff;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid #f39c12;
+    transition: background 0.15s;
+}
+.vd-card-actions .btn-primary:hover { background: #e67e22; border-color: #e67e22; }
+.vd-card-actions .btn-secondary {
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    background: #fff;
+    border: 1px solid #d0d5dd;
+    color: #4b5563;
+    transition: background 0.15s;
+}
+.vd-card-actions .btn-secondary:hover { background: #f5f7fa; }
+
+@media (max-width: 640px) {
+    .vd-card-actions { flex-direction: column; }
+    .vd-card-actions button { width: 100%; }
+}
+
+/* ======================== */
+/* Mobile Work View */
+/* ======================== */
 .mobile-work-view {
     padding: 0;
     overflow: visible !important;

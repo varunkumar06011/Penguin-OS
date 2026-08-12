@@ -1095,6 +1095,8 @@ def api_visitor_request_create():
             'entry_time': now_ist().isoformat()
         }
         res = supabase.table('visitor_requests').insert(data).execute()
+        if not res.data:
+            return jsonify({'error': 'Failed to create visitor request'}), 500
         visitor_id = res.data[0]['id']
 
         # Get resident mobile to send OTP
@@ -1934,8 +1936,9 @@ def api_vendors():
         fallback = load_json_fallback('vendors.json')
         return jsonify(fallback or [])
     try:
-        res = supabase.table('vendors').select('*').execute()
-        return jsonify([row['data'] for row in res.data])
+        org_id = session['user'].get('org_id')
+        res = supabase.table('vendors').select('*').or_(f'org_id.eq.{org_id},org_id.is.null').execute()
+        return jsonify([row['data'] for row in (res.data or [])])
     except Exception as e:
         logger.error(f'Error fetching vendors: {e}')
         fallback = load_json_fallback('vendors.json')
@@ -1950,17 +1953,22 @@ def api_vendor_post():
     try:
         vendor = request.get_json() or {}
         name = (vendor.get('name') or '').strip()
+        org_id = session['user'].get('org_id')
         if name:
             name_lower = name.lower()
-            existing = supabase.table('vendors').select('id,data').execute()
+            existing = supabase.table('vendors').select('id,data').or_(f'org_id.eq.{org_id},org_id.is.null').execute()
             for row in (existing.data or []):
                 row_name = ((row.get('data') or {}).get('name') or '').strip().lower()
                 if row_name == name_lower and row['id'] != vendor.get('id'):
                     return jsonify({'error': f'Vendor "{name}" already exists'}), 409
         supabase.table('vendors').upsert({
             'id': vendor['id'],
+            'org_id': org_id,
+            'name': name,
+            'contact_phone': vendor.get('phone') or None,
             'data': vendor
         }, on_conflict='id').execute()
+        logger.info(f'[vendor-post] Saved vendor id={vendor["id"]}, name={name}, org_id={org_id}')
         _dual_write_vendor_v2(vendor)
         return jsonify({'success': True})
     except Exception as e:
@@ -2703,6 +2711,170 @@ def api_day_book_upsert():
         allowed = _allowed_ventures(session['user'])
         if venture_id not in allowed:
             return jsonify({'error': 'Forbidden venture'}), 403
+
+    payment_type = body.get('payment_type', 'vendor')
+    if payment_type not in ('vendor', 'contract', 'inventory', 'other'):
+        return jsonify({'error': 'Invalid payment_type. Must be "vendor", "contract", "inventory", or "other".'}), 400
+
+    # --- Contract Payment path ---
+    if payment_type == 'contract':
+        contract_id = body.get('contract_id')
+        contractor_name = (body.get('contractor_name') or '').strip()
+        if not contract_id and not contractor_name:
+            return jsonify({'error': 'contract_id or contractor_name is required for contract payment type'}), 400
+        if not contract_id:
+            # Auto-create a new contract for this contractor
+            new_contract = {
+                'org_id': org_id,
+                'person_name': contractor_name,
+                'work_description': body.get('material_name') or 'From Day Book',
+                'total_amount': qty * rate,
+                'total_units': 1,
+                'completed_units': 0,
+                'unit_label': 'unit',
+                'status': 'active',
+                'notes': 'Auto-created from Day Book',
+                'created_by': user_email,
+            }
+            try:
+                cres = supabase.table('contractor_contracts').insert(new_contract).execute()
+                if cres.data:
+                    contract_id = cres.data[0]['id']
+                else:
+                    return jsonify({'error': 'Failed to auto-create contractor contract'}), 500
+            except Exception as cc_err:
+                logger.error(f'Auto-create contractor contract from Day Book failed: {cc_err}')
+                friendly = _map_pg_check_error(cc_err)
+                return jsonify({'error': friendly or str(cc_err)}), 400
+        contract = _get_org_contract_or_403(contract_id)
+        if not contract:
+            return jsonify({'error': 'Contract not found or does not belong to your org'}), 403
+        if contract.get('status') == 'cancelled':
+            return jsonify({'error': 'Cannot record payments on a cancelled contract.'}), 400
+        # Use contractor name as vendor_name for display in Day Book
+        body['vendor_name'] = contract['person_name']
+        body['vendor_id'] = None
+        body['contract_id'] = contract_id
+        body['payment_type'] = 'contract'
+        if not body.get('id'):
+            body['id'] = str(__import__('uuid').uuid4())
+        body['org_id'] = org_id
+        body['qty'] = qty
+        body['rate'] = rate
+        body['amount'] = qty * rate
+        body['created_by'] = user_email
+        # Upsert into inventory_purchases (Day Book record)
+        supabase.table('inventory_purchases').upsert(body, on_conflict='id').execute()
+        # Also create a contractor_payments record (linked to contract)
+        pay_method = body.get('payment_method', 'cash') or 'cash'
+        valid_methods = ('cash', 'upi', 'cheque', 'bank_transfer')
+        if pay_method not in valid_methods:
+            pay_method = 'cash'
+        try:
+            supabase.table('contractor_payments').insert({
+                'contract_id': contract_id,
+                'amount': qty * rate,
+                'payment_date': body.get('received_date') or body.get('invoice_date') or now_ist().date().isoformat(),
+                'method': pay_method,
+                'reference': body.get('invoice_no') or '',
+                'notes': (body.get('remarks') or 'From Day Book').strip() or 'From Day Book',
+                'recorded_by': user_email,
+            }).execute()
+        except Exception as cp_err:
+            logger.warning(f'Auto-create contractor_payment from Day Book failed (non-fatal): {cp_err}')
+        # Audit log
+        try:
+            supabase.table('audit_log').insert({
+                'org_id': org_id, 'user_email': user_email,
+                'action': 'day_book_upsert_contract', 'target_id': body['id'],
+                'old_data': None, 'new_data': body
+            }).execute()
+        except Exception as audit_err:
+            logger.warning(f'Audit log insert failed (non-fatal): {audit_err}')
+        return jsonify({'success': True})
+
+    # --- Other (miscellaneous expense) path ---
+    if payment_type == 'other':
+        if not body.get('id'):
+            body['id'] = str(__import__('uuid').uuid4())
+        body['org_id'] = org_id
+        body['vendor_id'] = None
+        body['vendor_name'] = None
+        body['contract_id'] = None
+        body['payment_type'] = 'other'
+        # For 'other' entries, amount is sent directly (not qty*rate)
+        direct_amount = float(body.get('amount') or 0)
+        body['qty'] = 1
+        body['rate'] = direct_amount
+        body['amount'] = direct_amount
+        body['created_by'] = user_email
+        if not body.get('material_name'):
+            body['material_name'] = (body.get('remarks') or 'Other Expense')[:200]
+        supabase.table('inventory_purchases').upsert(body, on_conflict='id').execute()
+        try:
+            supabase.table('audit_log').insert({
+                'org_id': org_id, 'user_email': user_email,
+                'action': 'day_book_upsert_other', 'target_id': body['id'],
+                'old_data': None, 'new_data': body
+            }).execute()
+        except Exception as audit_err:
+            logger.warning(f'Audit log insert failed (non-fatal): {audit_err}')
+        return jsonify({'success': True})
+
+    # --- Inventory path (no vendor, routes to stock ledger) ---
+    if payment_type == 'inventory':
+        if not body.get('id'):
+            body['id'] = str(__import__('uuid').uuid4())
+        body['org_id'] = org_id
+        body['vendor_id'] = None
+        body['vendor_name'] = None
+        body['contract_id'] = None
+        body['payment_type'] = 'inventory'
+        body['qty'] = qty
+        body['rate'] = rate
+        body['amount'] = qty * rate
+        body['created_by'] = user_email
+        # auto-create material master entry if new
+        mname = (body.get('material_name') or '').strip()
+        if mname:
+            _ensure_material_master(org_id, mname, body.get('unit'))
+        supabase.table('inventory_purchases').upsert(body, on_conflict='id').execute()
+        try:
+            supabase.table('audit_log').insert({
+                'org_id': org_id, 'user_email': user_email,
+                'action': 'day_book_upsert_inventory', 'target_id': body['id'],
+                'old_data': None, 'new_data': body
+            }).execute()
+        except Exception as audit_err:
+            logger.warning(f'Audit log insert failed (non-fatal): {audit_err}')
+        # Auto-create stock_ledger IN entry
+        received_date = body.get('received_date')
+        if mname and received_date and qty > 0:
+            try:
+                stock_mat = _get_or_create_material_for_stock(mname, venture_id, body.get('category'), body.get('unit'))
+                if stock_mat:
+                    stock_entry = {
+                        'id': str(__import__('uuid').uuid4()),
+                        'venture_id': venture_id or 'WAREHOUSE',
+                        'material_id': stock_mat['id'],
+                        'entry_type': 'IN',
+                        'qty': qty,
+                        'entry_date': received_date,
+                        'vendor_id': None,
+                        'rate': rate,
+                        'amount': qty * rate,
+                        'remarks': (body.get('remarks') or 'From Day Book (Inventory)').strip() or 'From Day Book (Inventory)',
+                        'created_by': user_email
+                    }
+                    supabase.table('stock_ledger').upsert(stock_entry, on_conflict='id').execute()
+            except Exception as e:
+                logger.warning(f'Auto-create stock ledger from day book inventory failed (non-fatal): {e}')
+        # Auto-create daily inventory entry
+        if mname and received_date:
+            _auto_create_daily_entry(org_id, mname, body.get('category_type'), received_date, user_email)
+        return jsonify({'success': True})
+
+    # --- Vendor path (existing logic) ---
     # duplicate-purchase soft check (vendor + invoice_no + invoice_date)
     if not body.get('force') and body.get('invoice_no') and body.get('vendor_id'):
         dup = supabase.table('inventory_purchases').select('id').eq('org_id', org_id)\
@@ -2719,6 +2891,7 @@ def api_day_book_upsert():
     body['rate'] = rate
     body['amount'] = qty * rate
     body['created_by'] = user_email
+    body['payment_type'] = 'vendor'
     # auto-create material master entry if new
     mname = (body.get('material_name') or '').strip()
     if mname:
@@ -2902,61 +3075,75 @@ def api_vendor_directory():
     """Enriched vendor list with materials, categories, totals, outstanding from Day Book."""
     if not supabase:
         return jsonify([]), 500
-    org_id = session['user'].get('org_id')
-    # Get all vendors
-    vres = supabase.table('vendors').select('id,data,name,org_id').or_(f'org_id.eq.{org_id},org_id.is.null').execute()
-    vendors = vres.data or []
-    # Get all purchases for this org
-    pres = supabase.table('inventory_purchases').select('vendor_id,vendor_name,material_name,category,amount').eq('org_id', org_id).execute()
-    purchases = pres.data or []
-    # Get all payments for this org
-    payres = supabase.table('inventory_purchase_payments').select('vendor_id,amount').eq('org_id', org_id).execute()
-    payments = payres.data or []
-    # Build aggregates
-    purchase_map = {}  # vendor_id -> {total, materials, categories}
-    for p in purchases:
-        vid = p.get('vendor_id')
-        if not vid:
-            continue
-        if vid not in purchase_map:
-            purchase_map[vid] = {'total_purchased': 0, 'materials': set(), 'categories': set()}
-        purchase_map[vid]['total_purchased'] += float(p.get('amount') or 0)
-        if p.get('material_name'):
-            purchase_map[vid]['materials'].add(p['material_name'])
-        if p.get('category'):
-            purchase_map[vid]['categories'].add(p['category'])
-    payment_map = {}
-    for p in payments:
-        vid = p.get('vendor_id')
-        if not vid:
-            continue
-        payment_map[vid] = payment_map.get(vid, 0) + float(p.get('amount') or 0)
-    # Build result
-    result = []
-    for v in vendors:
-        vd = v.get('data') or {}
-        vid = v.get('id') or vd.get('id')
-        name = vd.get('name') or v.get('name') or ''
-        if not name:
-            continue
-        pm = purchase_map.get(vid, {})
-        total_purchased = pm.get('total_purchased', 0)
-        total_paid = payment_map.get(vid, 0)
-        result.append({
-            'id': vid,
-            'name': name,
-            'phone': vd.get('phone') or '',
-            'gstin': vd.get('gstin') or '',
-            'type': vd.get('type') or '',
-            'materials': sorted(list(pm.get('materials', set()))),
-            'categories': sorted(list(pm.get('categories', set()))),
-            'total_purchased': round(total_purchased, 2),
-            'total_paid': round(total_paid, 2),
-            'outstanding': round(total_purchased - total_paid, 2),
-        })
-    # Sort by name
-    result.sort(key=lambda r: r['name'].lower())
-    return jsonify(result)
+    try:
+        org_id = session['user'].get('org_id')
+        logger.info(f'[vendor-directory] org_id={org_id}')
+        # Get all vendors
+        vres = supabase.table('vendors').select('id,data,name,org_id').or_(f'org_id.eq.{org_id},org_id.is.null').execute()
+        vendors = vres.data or []
+        logger.info(f'[vendor-directory] Found {len(vendors)} vendors from DB')
+        for v in vendors[:5]:
+            logger.info(f'[vendor-directory] vendor: id={v.get("id")}, name={v.get("name")}, data_name={(v.get("data") or {}).get("name")}, org_id={v.get("org_id")}')
+        # Get all purchases for this org
+        pres = supabase.table('inventory_purchases').select('vendor_id,vendor_name,material_name,category,amount,qty,rate').eq('org_id', org_id).execute()
+        purchases = pres.data or []
+        # Get all payments for this org
+        payres = supabase.table('inventory_purchase_payments').select('vendor_id,amount').eq('org_id', org_id).execute()
+        payments = payres.data or []
+        # Build aggregates
+        purchase_map = {}  # vendor_id -> {total, materials, categories, qty}
+        for p in purchases:
+            vid = p.get('vendor_id')
+            if not vid:
+                continue
+            if vid not in purchase_map:
+                purchase_map[vid] = {'total_purchased': 0, 'materials': set(), 'categories': set(), 'total_qty': 0}
+            purchase_map[vid]['total_purchased'] += float(p.get('amount') or 0)
+            purchase_map[vid]['total_qty'] += float(p.get('qty') or 0)
+            if p.get('material_name'):
+                purchase_map[vid]['materials'].add(p['material_name'])
+            if p.get('category'):
+                purchase_map[vid]['categories'].add(p['category'])
+        payment_map = {}
+        for p in payments:
+            vid = p.get('vendor_id')
+            if not vid:
+                continue
+            payment_map[vid] = payment_map.get(vid, 0) + float(p.get('amount') or 0)
+        # Build result
+        result = []
+        for v in vendors:
+            vd = v.get('data') or {}
+            vid = v.get('id') or vd.get('id')
+            name = vd.get('name') or v.get('name') or ''
+            if not name:
+                continue
+            pm = purchase_map.get(vid, {})
+            total_purchased = pm.get('total_purchased', 0)
+            total_qty = pm.get('total_qty', 0)
+            total_paid = payment_map.get(vid, 0)
+            unit_price = round(total_purchased / total_qty, 2) if total_qty > 0 else 0
+            result.append({
+                'id': vid,
+                'name': name,
+                'phone': vd.get('phone') or '',
+                'gstin': vd.get('gstin') or '',
+                'type': vd.get('type') or '',
+                'venture_id': vd.get('venture_id') or vd.get('ventureId') or '',
+                'materials': sorted(list(pm.get('materials', set()))),
+                'categories': sorted(list(pm.get('categories', set()))),
+                'total_qty': round(total_qty, 2),
+                'unit_price': unit_price,
+                'total_purchased': round(total_purchased, 2),
+                'total_paid': round(total_paid, 2),
+                'outstanding': round(total_purchased - total_paid, 2),
+            })
+        # Sort by name
+        result.sort(key=lambda r: r['name'].lower())
+        return jsonify(result)
+    except Exception as e:
+        logger.error(f'Error in vendor-directory: {e}')
+        return jsonify([]), 500
 
 @app.route('/api/inventory-materials')
 @requires_role_or_override('supervisor')
@@ -3469,7 +3656,7 @@ def api_instant_reports():
                 iid = item.get('id', '')
                 if iid:
                     work_item_stats[iid] = {'total': 0, 'green': 0, 'yellow': 0, 'blue': 0, 'red': 0, 'none': 0}
-        for row in cells_res.data:
+        for row in (cells_res.data or []):
             d = row.get('data') or {}
             cell_id = row.get('id', '')
             color = d.get('color', '') or 'none'
@@ -3752,7 +3939,7 @@ def api_instant_reports():
         # Spend from invoices
         inv_res = supabase.table('invoices').select('*').execute()
         total_invoice = 0
-        for inv in inv_res.data:
+        for inv in (inv_res.data or []):
             d = inv.get('data') or {}
             if d.get('venture_id') == venture_id or inv.get('venture_id') == venture_id:
                 amt = d.get('amount') or inv.get('amount') or 0
@@ -3761,7 +3948,7 @@ def api_instant_reports():
         # Spend from POs
         po_res = supabase.table('purchase_orders').select('*').execute()
         total_po = 0
-        for po in po_res.data:
+        for po in (po_res.data or []):
             d = po.get('data') or {}
             if d.get('venture_id') == venture_id or po.get('venture_id') == venture_id:
                 amt = d.get('billAmount') or d.get('quotedAmount') or po.get('amount') or 0
@@ -3770,7 +3957,7 @@ def api_instant_reports():
         # Consumption from stock_ledger
         stock_res = supabase.table('stock_ledger').select('*').eq('venture_id', venture_id).execute()
         consumption = {}
-        for entry in stock_res.data:
+        for entry in (stock_res.data or []):
             if entry.get('entry_type') == 'OUT':
                 mid = entry.get('material_id', 'unknown')
                 if mid not in consumption:
@@ -3835,7 +4022,7 @@ def _lender_compute_progress(venture_id):
         block_stats = {}
         total_weighted = 0
         total_cells = 0
-        for row in res.data:
+        for row in (res.data or []):
             d = row.get('data') or {}
             if d.get('venture_id') != venture_id:
                 continue
@@ -3920,7 +4107,7 @@ def _lender_latest_photos(venture_id):
     try:
         res = supabase.table('cell_data').select('*').execute()
         seen = {}
-        for row in res.data:
+        for row in (res.data or []):
             d = row.get('data') or {}
             if d.get('venture_id') != venture_id:
                 continue
@@ -4280,6 +4467,26 @@ def _map_pg_check_error(e):
     return None
 
 
+@app.route('/api/contractor-contracts/for-dropdown')
+@requires_role_or_override('supervisor')
+def api_contractor_contracts_for_dropdown():
+    """Lightweight list of active+completed contracts for Day Book dropdown.
+    Accessible by admin, manager, and supervisor."""
+    if not supabase:
+        return jsonify({'error': 'Supabase not connected'}), 500
+    org_id = _contractor_org_filter()
+    if not org_id:
+        return jsonify({'error': 'No org_id in session'}), 403
+    try:
+        res = supabase.table('contractor_contracts').select(
+            'id,person_name,work_description,status,venture_id,total_amount'
+        ).eq('org_id', org_id).neq('status', 'cancelled').order('created_at', desc=True).execute()
+        return jsonify(res.data or [])
+    except Exception as e:
+        logger.error(f'Error fetching contractor contracts for dropdown: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/contractor-contracts')
 @requires_role('admin')
 def api_contractor_contracts_list():
@@ -4287,7 +4494,7 @@ def api_contractor_contracts_list():
         return jsonify({'error': 'Supabase not connected'}), 500
     org_id = _contractor_org_filter()
     if not org_id:
-        return jsonify([]), 200
+        return jsonify({'error': 'No org_id in session'}), 403
     try:
         res = supabase.table('contractor_contracts').select('*').eq('org_id', org_id).order('created_at', desc=True).execute()
         contracts = res.data or []
@@ -4348,22 +4555,32 @@ def api_contractor_contracts_create():
         if venture_id not in allowed:
             return jsonify({'error': 'Forbidden: venture not in your org'}), 403
     try:
-        completed_units = int(body.get('completed_units', 0))
+        total_amount = float(body['total_amount'])
         total_units = int(body['total_units'])
+        completed_units = int(body.get('completed_units', 0))
+        if total_amount <= 0:
+            return jsonify({'error': 'Total amount must be greater than 0.'}), 400
+        if total_units <= 0:
+            return jsonify({'error': 'Total units must be greater than 0.'}), 400
+        if completed_units < 0:
+            return jsonify({'error': 'Completed units cannot be negative.'}), 400
         if completed_units > total_units:
             return jsonify({'error': 'Completed units cannot exceed total units.'}), 400
         user = session.get('user')
         created_by = user.get('email') if isinstance(user, dict) else str(user)
+        status = body.get('status', 'active')
+        if status not in ('active', 'completed', 'cancelled'):
+            return jsonify({'error': 'Invalid contract status.'}), 400
         res = supabase.table('contractor_contracts').insert({
             'org_id': org_id,
             'venture_id': venture_id or None,
             'person_name': body['person_name'].strip(),
             'work_description': body['work_description'].strip(),
-            'total_amount': float(body['total_amount']),
+            'total_amount': total_amount,
             'total_units': total_units,
             'completed_units': completed_units,
             'unit_label': body.get('unit_label', 'units').strip() or 'units',
-            'status': body.get('status', 'active'),
+            'status': status,
             'notes': body.get('notes', ''),
             'created_by': created_by,
         }).execute()
@@ -4397,8 +4614,14 @@ def api_contractor_contracts_update(contract_id):
             return jsonify({'error': 'Forbidden: venture not in your org'}), 403
     if 'completed_units' in allowed_fields:
         total_units = contract['total_units']
-        if int(allowed_fields['completed_units']) > total_units:
+        cu = int(allowed_fields['completed_units'])
+        if cu < 0:
+            return jsonify({'error': 'Completed units cannot be negative.'}), 400
+        if cu > total_units:
             return jsonify({'error': 'Completed units cannot exceed total units.'}), 400
+    if 'status' in allowed_fields:
+        if allowed_fields['status'] not in ('active', 'completed', 'cancelled'):
+            return jsonify({'error': 'Invalid contract status.'}), 400
     try:
         user = session.get('user')
         allowed_fields['updated_by'] = user.get('email') if isinstance(user, dict) else str(user)
@@ -4463,6 +4686,10 @@ def api_contractor_payments_create(contract_id):
         return jsonify({'error': 'Payment amount must be greater than 0.'}), 400
     if not body.get('payment_date'):
         return jsonify({'error': 'payment_date is required'}), 400
+    valid_methods = ('cash', 'upi', 'cheque', 'bank_transfer')
+    method = body.get('method', 'cash')
+    if method not in valid_methods:
+        return jsonify({'error': 'Invalid payment method. Must be one of: ' + ', '.join(valid_methods)}), 400
     try:
         user = session.get('user')
         recorded_by = user.get('email') if isinstance(user, dict) else str(user)
@@ -4470,7 +4697,7 @@ def api_contractor_payments_create(contract_id):
             'contract_id': contract_id,
             'amount': float(body['amount']),
             'payment_date': body['payment_date'],
-            'method': body.get('method', 'cash'),
+            'method': method,
             'reference': body.get('reference', ''),
             'notes': body.get('notes', ''),
             'recorded_by': recorded_by,
@@ -4489,15 +4716,17 @@ def api_contractor_payments_create(contract_id):
 def api_contractor_payments_soft_delete(payment_id):
     if not supabase:
         return jsonify({'error': 'Supabase not connected'}), 500
-    body = request.get_json() or {}
-    if not body.get('deletion_reason') or not body['deletion_reason'].strip():
-        return jsonify({'error': 'deletion_reason is required to delete a payment'}), 400
     try:
         payment = _get_org_payment_or_403(payment_id)
         if not payment:
             return jsonify({'error': 'Payment not found'}), 404
+        body = request.get_json() or {}
+        if not body.get('deletion_reason') or not body['deletion_reason'].strip():
+            return jsonify({'error': 'deletion_reason is required to delete a payment'}), 400
         user = session.get('user')
         deleted_by = user.get('email') if isinstance(user, dict) else str(user)
+        if payment.get('is_deleted'):
+            return jsonify({'error': 'Payment is already deleted.'}), 400
         supabase.table('contractor_payments').update({
             'is_deleted': True,
             'deletion_reason': body['deletion_reason'].strip(),
@@ -4541,7 +4770,7 @@ def api_materials_leakage_check():
         received_qty = {}
         consumed_qty = {}
         wasted_qty = {}
-        for entry in stock_res.data:
+        for entry in (stock_res.data or []):
             mid = entry.get('material_id', 'unknown')
             if entry.get('entry_type') == 'IN':
                 received_qty[mid] = received_qty.get(mid, 0) + float(entry.get('qty', 0))
@@ -4700,6 +4929,8 @@ def api_interior_design_generate():
             'generated_images': [],
             'cost_estimate': None,
         }).execute()
+        if not res.data:
+            return jsonify({'error': 'Failed to create design record'}), 500
         design_id = res.data[0]['id']
     except Exception as e:
         logger.error(f'Error creating interior design record: {e}')
@@ -5621,6 +5852,8 @@ def api_rwa_kids_checkout():
                 'otp_code': code,
             }
             res = supabase.table('kids_checkout').insert(row).execute()
+            if not res.data:
+                return jsonify({'error': 'Failed to create checkout record'}), 500
             kid_id = res.data[0]['id']
             # Send OTP to resident
             r_res = supabase.table('residents').select('mobile').eq('id', body['resident_id']).execute()
@@ -5835,9 +6068,6 @@ def api_rwa_visitor_pass_scan():
 
         if vr.get('status') == 'inside':
             return jsonify({'error': 'Visitor already inside', 'visitor_name': vr.get('visitor_name')}), 409
-
-        if vr.get('status') == 'completed':
-            return jsonify({'error': 'Pass already used / completed'}), 409
 
         # Mark entry
         supabase.table('visitor_requests').update({
@@ -6866,7 +7096,7 @@ def _rera_compute_progress(venture_id, thresholds):
         block_stats = {}
         total_weighted = 0
         total_cells = 0
-        for row in res.data:
+        for row in (res.data or []):
             d = row.get('data') or {}
             if d.get('venture_id') != venture_id:
                 continue
@@ -6953,7 +7183,7 @@ def _rera_compute_milestones(venture_id):
     try:
         res = supabase.table('cell_data').select('*').execute()
         seen = {}
-        for row in res.data:
+        for row in (res.data or []):
             d = row.get('data') or {}
             if d.get('venture_id') != venture_id:
                 continue
@@ -6984,7 +7214,7 @@ def _rera_unit_status(venture_id):
     try:
         res = supabase.table('cell_data').select('*').execute()
         flats = set()
-        for row in res.data:
+        for row in (res.data or []):
             d = row.get('data') or {}
             if d.get('venture_id') != venture_id:
                 continue
@@ -7713,7 +7943,7 @@ def api_material_budgets():
                 'budget_qty': float(body.get('budget_qty', 0)),
                 'budget_value': float(body.get('budget_value', 0)),
                 'alert_threshold_pct': float(body.get('alert_threshold_pct', 80)),
-                'updated_at': datetime.utcnow().isoformat()
+                'updated_at': now_ist().isoformat()
             }, on_conflict='venture_id,material_id').execute()
             return jsonify({'success': True})
         except Exception as e:

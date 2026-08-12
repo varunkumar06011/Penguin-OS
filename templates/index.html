@@ -8,7 +8,7 @@
     <link rel="icon" href="/static/images/favicon.jpg" type="image/jpeg">
     <link rel="stylesheet" href="/static/css/fonts.css?v=15">
     <link rel="stylesheet" href="/static/css/theme.css?v=15">
-    <link rel="stylesheet" href="/static/css/style.css?v=80">
+    <link rel="stylesheet" href="/static/css/style.css?v=81">
     <style>
         /* Fallback: ensure sidebar is always dark and readable */
         #app #appSidebar.app-sidebar {
@@ -363,15 +363,32 @@
             <div id="dayBookContent"></div>
         </div>
 
-        <!-- Vendor Directory Panel -->
+        <!-- Vendor Payments Panel -->
         <div id="vendorDirPanel" style="display:none;">
-            <div class="invoice-panel-header">
-                <button id="backFromVendorDir" class="back-btn">&larr; Back to Ventures</button>
-                <h2 class="invoice-panel-title">Vendor Directory</h2>
-                <button id="vdAddVendorBtn" class="btn-primary" style="margin-left:auto;">+ Add Vendor</button>
+            <div class="cp-panel-header">
+                <div class="cp-panel-header-left">
+                    <button id="backFromVendorDir" class="back-btn">&larr; Back to Ventures</button>
+                    <h2 class="cp-panel-title">Vendor Payments</h2>
+                </div>
+                <div class="cp-panel-header-right">
+                    <div class="cp-search-box">
+                        <span class="cp-search-icon">&#128269;</span>
+                        <input id="vdSearchInput" type="text" placeholder="Search vendors or materials...">
+                    </div>
+                    <select id="vdStatusFilter" class="cp-filter-select">
+                        <option value="all">Active &amp; Retired</option>
+                        <option value="active">Active</option>
+                        <option value="retired">Retired</option>
+                    </select>
+                    <select id="vdMaterialFilter" class="cp-filter-select">
+                        <option value="all">All Materials</option>
+                    </select>
+                    <label class="cp-filter-checkbox"><input type="checkbox" id="vdOutstandingOnly"> Outstanding Only</label>
+                    <button id="vdAddVendorBtn" class="btn-primary">+ Add Vendor</button>
+                </div>
             </div>
-            <div id="vendorDirFilters" class="pending-filter-bar"></div>
-            <div id="vendorDirContent"></div>
+            <div id="vendorSummaryBar" class="cp-summary-bar"></div>
+            <div id="vendorCardsGrid" class="po-cards-grid"></div>
         </div>
 
         <!-- Design Generator Panel -->
@@ -1095,6 +1112,14 @@
                 </div>
                 <div class="invoice-form-row">
                     <div class="invoice-form-field">
+                        <label>Venture</label>
+                        <select id="vendorVentureInput">
+                            <option value="">-- All Ventures --</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="invoice-form-row">
+                    <div class="invoice-form-field">
                         <label>Address</label>
                         <textarea id="vendorAddressInput" rows="2" placeholder="Full address"></textarea>
                     </div>
@@ -1131,6 +1156,51 @@
                 <button id="cancelVendorForm" class="btn-secondary">Cancel</button>
                 <button id="saveVendorBtn" class="btn-primary">Save Vendor</button>
             </div>
+        </div>
+    </div>
+
+    <!-- Vendor Detail & Payment Modal -->
+    <div id="vendorDetailModal" class="modal">
+        <div class="modal-content" style="max-width:860px;">
+            <div class="modal-header">
+                <h3 id="vendorDetailTitle">Vendor Detail</h3>
+                <button class="close-btn" id="closeVendorDetail">&times;</button>
+            </div>
+            <div id="vendorDetailSummary" style="margin-bottom:16px;"></div>
+            <div id="vendorDetailInfo" style="margin-bottom:16px;"></div>
+            <h4 style="margin:16px 0 8px;">Record Payment</h4>
+            <div class="invoice-form-row" style="align-items:flex-end;margin-bottom:16px;">
+                <div class="invoice-form-field">
+                    <label>Amount (&#8377;)</label>
+                    <input type="number" id="vdPayAmount" step="0.01" min="0">
+                </div>
+                <div class="invoice-form-field">
+                    <label>Date</label>
+                    <input type="date" id="vdPayDate">
+                </div>
+                <div class="invoice-form-field">
+                    <label>Method</label>
+                    <select id="vdPayMethod">
+                        <option value="cash">Cash</option>
+                        <option value="bank">Bank</option>
+                        <option value="upi">UPI</option>
+                        <option value="cheque">Cheque</option>
+                    </select>
+                </div>
+                <div class="invoice-form-field">
+                    <label>Reference</label>
+                    <input type="text" id="vdPayRef" placeholder="Cheque/UTR no.">
+                </div>
+                <div class="invoice-form-field" style="flex:2;">
+                    <label>Notes</label>
+                    <input type="text" id="vdPayNotes" placeholder="Optional...">
+                </div>
+                <button id="vdRecordPaymentBtn" class="btn-primary" style="white-space:nowrap;">Save Payment</button>
+            </div>
+            <h4 style="margin:16px 0 8px;">Payment History</h4>
+            <div id="vendorPaymentsList"></div>
+            <h4 style="margin:16px 0 8px;">Purchase History</h4>
+            <div id="vendorPurchasesList"></div>
         </div>
     </div>
 
@@ -1648,15 +1718,15 @@
     <script src="/static/js/features.js?v=6"></script>
     <script src="/static/js/daily_report.js?v=3"></script>
     <script src="/static/js/cells.js?v=43"></script>
-    <script src="/static/js/invoices.js?v=20"></script>
+    <script src="/static/js/invoices.js?v=24"></script>
     <script src="/static/js/payroll.js?v=27"></script>
     <script src="/static/js/inventory.js?v=35"></script>
     <script src="/static/js/venture_analysis.js?v=4"></script>
     <script src="/static/js/reports.js?v=1"></script>
     <script src="/static/js/contractor_payments.js?v=6"></script>
-    <script src="/static/js/inventory_purchase.js?v=14"></script>
+    <script src="/static/js/inventory_purchase.js?v=22"></script>
     <script src="/static/js/inventory_register.js?v=15"></script>
-    <script src="/static/js/vendor_directory.js?v=2"></script>
+    <script src="/static/js/vendor_directory.js?v=7"></script>
     <script src="/static/js/theme-ui.js?v=11"></script>
     <script>
         (function() {

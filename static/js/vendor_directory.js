@@ -1,12 +1,14 @@
 // ============================================================
-// Vendor Directory Module
-// Shows enriched vendor data synced from Day Book purchases.
-// Search by vendor name / category, filter by material, date, outstanding.
+// Vendor Payments Module
+// Card-based UI matching Contractor Payments style.
+// Shows vendor summary, financials, payment progress, and actions.
 // ============================================================
 
 var vdVendors = [];
 var vdMaterials = [];
-var vdFilters = { search: '', material: 'all', outstandingOnly: false };
+var vdFilters = { search: '', status: 'all', material: 'all', outstandingOnly: false };
+var vdDetailVendor = null;
+var vdDetailData = null;
 
 // --- Helpers ---
 
@@ -19,11 +21,29 @@ function vdFmtMoney(amount) {
     return '\u20B9' + (Number(amount) || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
 }
 
+function vdProgressBar(pct) {
+    var cls = pct >= 75 ? 'high' : pct >= 40 ? 'mid' : pct > 0 ? 'low' : 'zero';
+    return '<div class="progress-bar-container"><div class="progress-bar-fill ' + cls + '" style="width:' + Math.min(pct, 100) + '%;">' + pct + '%</div></div>';
+}
+
+function vdStatusBadge(vendor) {
+    var status = (vendor.type || '').toLowerCase();
+    if (status === 'retired') return '<span class="cp-status cancelled">Retired</span>';
+    return '<span class="cp-status active">Active</span>';
+}
+
+function vdVentureName(ventureId) {
+    if (!ventureId) return '';
+    if (typeof venturesList === 'undefined') return '';
+    var v = venturesList.find(function(x) { return x.id === ventureId; });
+    return v ? v.name : '';
+}
+
 // --- Data loading ---
 
 async function vdLoadVendors() {
-    try { vdVendors = await apiGet('/api/vendor-directory') || []; }
-    catch (e) { vdVendors = []; }
+    try { vdVendors = await apiGet('/api/vendor-directory', { bypassCache: true }) || []; }
+    catch (e) { console.error('vdLoadVendors error:', e); vdVendors = []; }
 }
 
 async function vdLoadMaterials() {
@@ -31,208 +51,398 @@ async function vdLoadMaterials() {
     catch (e) { vdMaterials = []; }
 }
 
-// --- Main render ---
+// --- Panel open/close ---
 
 async function renderVendorDirectoryView() {
-    var content = document.getElementById('vendorDirContent');
-    if (!content) return;
-    content.innerHTML = '<div style="padding:24px;color:#999;">Loading...</div>';
+    var grid = document.getElementById('vendorCardsGrid');
+    if (!grid) return;
+    grid.innerHTML = '<div class="att-empty" style="padding:32px 0;text-align:center;color:#999;">Loading...</div>';
 
     await Promise.all([vdLoadVendors(), vdLoadMaterials()]);
-    renderVDFilters();
-    renderVDTable();
+    renderVDMaterialFilter();
+    renderVDSummary();
+    renderVDCards();
 }
 
-function renderVDFilters() {
-    var bar = document.getElementById('vendorDirFilters');
-    if (!bar) return;
-
-    var materialOpts = '<option value="all">All Materials</option>';
+function renderVDMaterialFilter() {
+    var sel = document.getElementById('vdMaterialFilter');
+    if (!sel) return;
+    var current = sel.value || 'all';
+    var html = '<option value="all">All Materials</option>';
     vdMaterials.forEach(function(m) {
-        materialOpts += '<option value="' + vdEscape(m.name) + '">' + vdEscape(m.name) + '</option>';
+        html += '<option value="' + vdEscape(m.name) + '">' + vdEscape(m.name) + '</option>';
     });
-
-    bar.innerHTML =
-        '<div class="pending-filter-group" style="flex:1;min-width:200px;">' +
-            '<label>Search</label>' +
-            '<input type="text" id="vdSearchInput" placeholder="Search by vendor name or category..." style="width:100%;padding:8px 12px;border:1px solid #ccc;border-radius:6px;font-size:0.9rem;" value="' + vdEscape(vdFilters.search) + '">' +
-        '</div>' +
-        '<div class="pending-filter-group">' +
-            '<label>Material</label>' +
-            '<select id="vdFilterMaterial">' + materialOpts + '</select>' +
-        '</div>' +
-        '<div class="pending-filter-group" style="align-self:flex-end;">' +
-            '<label>&nbsp;</label>' +
-            '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:0.85rem;"><input type="checkbox" id="vdFilterOutstanding" ' + (vdFilters.outstandingOnly ? 'checked' : '') + ' style="width:16px;height:16px;"> Outstanding Only</label>' +
-        '</div>' +
-        '<div class="pending-filter-group" style="align-self:flex-end;">' +
-            '<button id="vdFilterClear" class="btn-secondary" style="padding:8px 16px;">Clear</button>' +
-        '</div>';
-
-    document.getElementById('vdFilterMaterial').value = vdFilters.material;
-
-    document.getElementById('vdSearchInput').addEventListener('input', function() {
-        vdFilters.search = this.value;
-        renderVDTable();
-    });
-
-    document.getElementById('vdFilterMaterial').addEventListener('change', function() {
-        vdFilters.material = this.value;
-        renderVDTable();
-    });
-
-    document.getElementById('vdFilterOutstanding').addEventListener('change', function() {
-        vdFilters.outstandingOnly = this.checked;
-        renderVDTable();
-    });
-
-    document.getElementById('vdFilterClear').addEventListener('click', function() {
-        vdFilters = { search: '', material: 'all', outstandingOnly: false };
-        renderVendorDirectoryView();
-    });
+    sel.innerHTML = html;
+    if (current !== 'all') sel.value = current;
 }
 
-function renderVDTable() {
-    var content = document.getElementById('vendorDirContent');
-    if (!content) return;
+// --- Summary cards ---
+
+function renderVDSummary() {
+    var el = document.getElementById('vendorSummaryBar');
+    if (!el) return;
+    var totalVendors = vdVendors.length;
+    var totalPurchased = 0, totalPaid = 0, totalOutstanding = 0;
+    vdVendors.forEach(function(v) {
+        totalPurchased += parseFloat(v.total_purchased) || 0;
+        totalPaid += parseFloat(v.total_paid) || 0;
+        totalOutstanding += parseFloat(v.outstanding) || 0;
+    });
+    el.className = 'cp-summary-bar';
+    el.innerHTML =
+        '<div class="cp-summary-card"><span class="cp-summary-label">Total Vendors</span><span class="cp-summary-value">' + totalVendors + '</span></div>' +
+        '<div class="cp-summary-card"><span class="cp-summary-label">Total Purchased</span><span class="cp-summary-value">' + vdFmtMoney(totalPurchased) + '</span></div>' +
+        '<div class="cp-summary-card"><span class="cp-summary-label">Total Paid</span><span class="cp-summary-value po-fin-paid">' + vdFmtMoney(totalPaid) + '</span></div>' +
+        '<div class="cp-summary-card"><span class="cp-summary-label">Total Outstanding</span><span class="cp-summary-value po-fin-outstanding">' + vdFmtMoney(totalOutstanding) + '</span></div>';
+}
+
+// --- Vendor cards ---
+
+function renderVDCards() {
+    var grid = document.getElementById('vendorCardsGrid');
+    if (!grid) return;
 
     var filtered = vdVendors.filter(function(v) {
-        // Search filter
         if (vdFilters.search) {
             var q = vdFilters.search.toLowerCase();
             var nameMatch = (v.name || '').toLowerCase().indexOf(q) !== -1;
+            var matMatch = (v.materials || []).some(function(m) { return m.toLowerCase().indexOf(q) !== -1; });
             var catMatch = (v.categories || []).some(function(c) { return c.toLowerCase().indexOf(q) !== -1; });
-            if (!nameMatch && !catMatch) return false;
+            if (!nameMatch && !matMatch && !catMatch) return false;
         }
-        // Material filter
+        if (vdFilters.status !== 'all') {
+            var status = (v.type || '').toLowerCase();
+            if (vdFilters.status === 'active' && status === 'retired') return false;
+            if (vdFilters.status === 'retired' && status !== 'retired') return false;
+        }
         if (vdFilters.material && vdFilters.material !== 'all') {
             if (!(v.materials || []).some(function(m) { return m === vdFilters.material; })) return false;
         }
-        // Outstanding only
         if (vdFilters.outstandingOnly && (v.outstanding || 0) <= 0) return false;
         return true;
     });
 
     if (filtered.length === 0) {
-        content.innerHTML = '<div class="att-empty" style="padding:32px 0;text-align:center;color:#999;">No vendors found. Click <strong>+ Add Vendor</strong> above to add one, or vendors are auto-created when you add purchases in Day Book.</div>';
+        grid.innerHTML = '<div class="att-empty" style="padding:32px 0;text-align:center;">' +
+            (vdVendors.length ? 'No vendors match the current filter.' : 'No vendors yet. Click \"+ Add Vendor\" to get started, or vendors are auto-created when you add purchases in Day Book.') +
+            '</div>';
         return;
     }
 
-    var html = '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;"><table class="tracker-table"><thead><tr>' +
-        '<th>Vendor Name</th><th>Materials Supplied</th><th>Categories</th>' +
-        '<th>Total Purchased</th><th>Total Paid</th><th>Outstanding</th><th></th>' +
-        '</tr></thead><tbody>';
-
+    var html = '';
     filtered.forEach(function(v) {
-        var matStr = (v.materials || []).join(', ') || '\u2014';
-        var catStr = (v.categories || []).join(', ') || '\u2014';
-        var outClass = (v.outstanding || 0) > 0 ? 'po-fin-outstanding' : 'po-fin-clear';
-        html += '<tr>' +
-            '<td data-label="Vendor Name" style="font-weight:600;">' + vdEscape(v.name) + '</td>' +
-            '<td data-label="Materials" style="font-size:0.85rem;color:#555;">' + vdEscape(matStr) + '</td>' +
-            '<td data-label="Categories" style="font-size:0.85rem;color:#555;">' + vdEscape(catStr) + '</td>' +
-            '<td data-label="Total Purchased">' + vdFmtMoney(v.total_purchased) + '</td>' +
-            '<td data-label="Total Paid">' + vdFmtMoney(v.total_paid) + '</td>' +
-            '<td data-label="Outstanding" class="' + outClass + '" style="font-weight:600;">' + vdFmtMoney(v.outstanding) + '</td>' +
-            '<td data-label="Actions" style="white-space:nowrap;"><button class="btn-text vd-detail-btn" data-vid="' + vdEscape(v.id) + '" style="font-size:0.75rem;">View Details</button> <button class="btn-text vd-edit-btn" data-vid="' + vdEscape(v.id) + '" style="font-size:0.75rem;">Edit</button></td>' +
-            '</tr>';
+        var totalPurchased = parseFloat(v.total_purchased) || 0;
+        var totalPaid = parseFloat(v.total_paid) || 0;
+        var outstanding = parseFloat(v.outstanding) || 0;
+        var totalQty = parseFloat(v.total_qty) || 0;
+        var unitPrice = parseFloat(v.unit_price) || 0;
+        var payPct = totalPurchased > 0 ? Math.round((totalPaid / totalPurchased) * 100) : 0;
+        var statusLabel = (v.type || '').toLowerCase() === 'retired' ? 'Retired' : 'Active';
+        var statusClass = (v.type || '').toLowerCase() === 'retired' ? 'cancelled' : 'active';
+        var outClass = outstanding > 0 ? 'po-fin-outstanding' : 'po-fin-clear';
+        var materials = (v.materials || []).join(', ') || '';
+        var categories = (v.categories || []).join(', ') || '';
+        var ventureName = vdVentureName(v.venture_id || '');
+        var subtitleParts = [];
+        if (categories) subtitleParts.push(vdEscape(categories));
+        if (ventureName) subtitleParts.push(vdEscape(ventureName));
+        var subtitle = subtitleParts.length ? subtitleParts.join(' &nbsp;&middot;&nbsp; ') : 'No category';
+
+        html +=
+            '<div class="po-card cp-contract-card" data-vid="' + vdEscape(v.id) + '">' +
+                '<div class="cp-card-header">' +
+                    '<div>' +
+                        '<div class="cp-card-title">' + vdEscape(v.name) + '</div>' +
+                        '<div class="cp-card-subtitle">' + subtitle + '</div>' +
+                    '</div>' +
+                    '<div class="cp-card-actions" style="display:flex;align-items:center;gap:6px;">' +
+                        '<span class="cp-status ' + statusClass + '">' + statusLabel + '</span>' +
+                        '<button class="cp-delete-contract-btn vd-retire-btn" data-vid="' + vdEscape(v.id) + '" title="Delete vendor">&#128465;</button>' +
+                    '</div>' +
+                '</div>' +
+                '<div class="cp-card-financials">' +
+                    '<div class="cp-fin-cell"><span class="cp-fin-label">Total</span><span class="cp-fin-value">' + vdFmtMoney(totalPurchased) + '</span></div>' +
+                    '<div class="cp-fin-cell"><span class="cp-fin-label">Paid</span><span class="cp-fin-value po-fin-paid">' + vdFmtMoney(totalPaid) + '</span></div>' +
+                    '<div class="cp-fin-cell"><span class="cp-fin-label">Outstanding</span><span class="cp-fin-value ' + outClass + '">' + (outstanding > 0 ? vdFmtMoney(outstanding) : '&#10003; Clear') + '</span></div>' +
+                '</div>' +
+                '<div class="cp-progress-section">' +
+                    '<div class="cp-progress-block">' +
+                        '<div class="cp-progress-row"><span class="cp-progress-label">Total Purchased</span><span class="cp-progress-detail">' + vdFmtMoney(totalPurchased) + (totalQty > 0 ? ' &middot; ' + totalQty.toLocaleString('en-IN', { maximumFractionDigits: 2 }) + ' qty' : '') + '</span></div>' +
+                    '</div>' +
+                    '<div class="cp-progress-block">' +
+                        '<div class="cp-progress-row"><span class="cp-progress-label">Payment Progress</span><span class="cp-progress-detail">' + vdFmtMoney(totalPaid) + ' / ' + vdFmtMoney(totalPurchased) + '</span></div>' +
+                        vdProgressBar(payPct) +
+                    '</div>' +
+                '</div>' +
+                (materials || unitPrice ? '<div class="cp-card-footer">' +
+                    (materials ? '<span>Materials: ' + vdEscape(materials) + '</span>' : '') +
+                    (unitPrice ? '<span>Unit Price: ' + vdFmtMoney(unitPrice) + '</span>' : '') +
+                '</div>' : '') +
+                '<div style="display:flex;gap:8px;padding-top:8px;border-top:1px solid #e8ecf0;">' +
+                    '<button class="btn-secondary vd-detail-btn" data-vid="' + vdEscape(v.id) + '" style="flex:1;padding:6px 10px;font-size:0.8rem;">View Details</button>' +
+                    '<button class="btn-secondary vd-pay-row-btn" data-vid="' + vdEscape(v.id) + '" style="flex:1;padding:6px 10px;font-size:0.8rem;">+ Payment</button>' +
+                    '<button class="btn-secondary vd-edit-btn" data-vid="' + vdEscape(v.id) + '" style="padding:6px 10px;font-size:0.8rem;">Edit</button>' +
+                '</div>' +
+            '</div>';
+    });
+    grid.innerHTML = html;
+
+    // Wire card click to open detail (but not when clicking action buttons)
+    grid.querySelectorAll('.cp-contract-card[data-vid]').forEach(function(card) {
+        card.addEventListener('click', function(e) {
+            if (e.target.closest('button')) return;
+            openVDDetail(card.dataset.vid);
+        });
     });
 
-    html += '</tbody></table></div>';
-    content.innerHTML = html;
-
-    content.querySelectorAll('.vd-detail-btn').forEach(function(btn) {
-        btn.addEventListener('click', function() { openVDDetail(btn.dataset.vid); });
+    // Wire action buttons
+    grid.querySelectorAll('.vd-pay-row-btn').forEach(function(btn) {
+        btn.addEventListener('click', function(e) { e.stopPropagation(); openVDPayment(btn.dataset.vid); });
     });
-    content.querySelectorAll('.vd-edit-btn').forEach(function(btn) {
-        btn.addEventListener('click', function() {
+    grid.querySelectorAll('.vd-detail-btn').forEach(function(btn) {
+        btn.addEventListener('click', function(e) { e.stopPropagation(); openVDDetail(btn.dataset.vid); });
+    });
+    grid.querySelectorAll('.vd-edit-btn').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
             if (typeof openVendorForm === 'function') openVendorForm(btn.dataset.vid);
         });
     });
+    grid.querySelectorAll('.vd-retire-btn').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            vdRetireVendor(btn.dataset.vid);
+        });
+    });
+}
+
+// --- Retire/delete vendor ---
+
+function vdRetireVendor(vendorId) {
+    var v = vdVendors.find(function(x) { return x.id === vendorId; });
+    if (!v) return;
+    showConfirm('Delete Vendor', 'Delete "' + escapeHtml(v.name) + '"? Purchase orders referencing this vendor will still exist.', async function() {
+        try {
+            await apiDelete('/api/vendor/' + encodeURIComponent(vendorId));
+            showToast('Vendor deleted');
+            await renderVendorDirectoryView();
+        } catch (e) {
+            showToast('Failed to delete vendor', true);
+        }
+    }, null, 'Delete', true);
 }
 
 // --- Vendor Detail Modal ---
 
 async function openVDDetail(vendorId) {
-    var modal = document.createElement('div');
-    modal.className = 'modal-overlay';
-    modal.id = 'vdDetailModal';
-    modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center;';
-    modal.innerHTML =
-        '<div style="background:#fff;border-radius:12px;padding:24px;width:95%;max-width:750px;max-height:90vh;overflow-y:auto;">' +
-            '<div id="vdDetailBody" style="padding:24px;color:#999;">Loading vendor details...</div>' +
-        '</div>';
-    document.body.appendChild(modal);
-    modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
+    var v = vdVendors.find(function(x) { return x.id === vendorId; });
+    if (!v) return;
+    vdDetailVendor = v;
 
-    try {
-        var data = await apiGet('/api/day-book/vendor/' + encodeURIComponent(vendorId));
-        var v = vdVendors.find(function(x) { return x.id === vendorId; }) || {};
-        var s = data.summary || {};
-        var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">' +
-            '<h3 style="margin:0;">' + vdEscape(v.name || (data.purchases[0] || {}).vendor_name || 'Vendor') + '</h3>' +
-            '<button class="btn-secondary" style="padding:6px 16px;" onclick="document.getElementById(\'vdDetailModal\').remove();">Close</button>' +
-        '</div>';
+    document.getElementById('vendorDetailTitle').textContent = v.name;
 
-        // Vendor info
+    var totalPurchased = parseFloat(v.total_purchased) || 0;
+    var totalPaid = parseFloat(v.total_paid) || 0;
+    var outstanding = parseFloat(v.outstanding) || 0;
+    var payPct = totalPurchased > 0 ? Math.round((totalPaid / totalPurchased) * 100) : 0;
+    var outClass = outstanding > 0 ? 'po-fin-outstanding' : 'po-fin-clear';
+
+    var summaryEl = document.getElementById('vendorDetailSummary');
+    if (summaryEl) {
+        summaryEl.innerHTML =
+            '<div class="cp-card-financials">' +
+                '<div class="cp-fin-cell"><span class="cp-fin-label">Total Purchased</span><span class="cp-fin-value">' + vdFmtMoney(totalPurchased) + '</span></div>' +
+                '<div class="cp-fin-cell"><span class="cp-fin-label">Total Paid</span><span class="cp-fin-value po-fin-paid">' + vdFmtMoney(totalPaid) + '</span></div>' +
+                '<div class="cp-fin-cell"><span class="cp-fin-label">Outstanding</span><span class="cp-fin-value ' + outClass + '">' + (outstanding > 0 ? vdFmtMoney(outstanding) : '&#10003; Clear') + '</span></div>' +
+            '</div>' +
+            '<div class="cp-progress-section" style="margin-top:12px;">' +
+                '<div class="cp-progress-block">' +
+                    '<div class="cp-progress-row"><span class="cp-progress-label">Payment Progress</span><span class="cp-progress-detail">' + vdFmtMoney(totalPaid) + ' / ' + vdFmtMoney(totalPurchased) + '</span></div>' +
+                    vdProgressBar(payPct) +
+                '</div>' +
+            '</div>';
+    }
+
+    var infoEl = document.getElementById('vendorDetailInfo');
+    if (infoEl) {
+        var infoHtml = '';
         if (v.phone || v.gstin || v.type) {
-            html += '<div style="display:flex;gap:16px;margin-bottom:16px;flex-wrap:wrap;">';
-            if (v.type) html += '<div><span style="color:#666;font-size:0.8rem;">Type</span><div>' + vdEscape(v.type) + '</div></div>';
-            if (v.phone) html += '<div><span style="color:#666;font-size:0.8rem;">Phone</span><div>' + vdEscape(v.phone) + '</div></div>';
-            if (v.gstin) html += '<div><span style="color:#666;font-size:0.8rem;">GSTIN</span><div>' + vdEscape(v.gstin) + '</div></div>';
-            html += '</div>';
+            infoHtml += '<div style="display:flex;gap:16px;margin-bottom:12px;flex-wrap:wrap;">';
+            if (v.type) infoHtml += '<div><span style="color:#666;font-size:0.8rem;">Type</span><div>' + vdEscape(v.type) + '</div></div>';
+            if (v.phone) infoHtml += '<div><span style="color:#666;font-size:0.8rem;">Phone</span><div>' + vdEscape(v.phone) + '</div></div>';
+            if (v.gstin) infoHtml += '<div><span style="color:#666;font-size:0.8rem;">GSTIN</span><div>' + vdEscape(v.gstin) + '</div></div>';
+            infoHtml += '</div>';
         }
-
-        // Summary cards
-        html += '<div style="display:flex;gap:16px;margin-bottom:20px;flex-wrap:wrap;">' +
-            '<div style="background:#f4f6f8;padding:12px 16px;border-radius:8px;flex:1;min-width:140px;"><span style="color:#666;font-size:0.8rem;">Total Purchased</span><div style="font-weight:600;font-size:1.1rem;">' + vdFmtMoney(s.total_purchased) + '</div></div>' +
-            '<div style="background:#f4f6f8;padding:12px 16px;border-radius:8px;flex:1;min-width:140px;"><span style="color:#666;font-size:0.8rem;">Total Paid</span><div style="font-weight:600;font-size:1.1rem;">' + vdFmtMoney(s.total_paid) + '</div></div>' +
-            '<div style="background:#f4f6f8;padding:12px 16px;border-radius:8px;flex:1;min-width:140px;"><span style="color:#666;font-size:0.8rem;">Outstanding</span><div style="font-weight:600;font-size:1.1rem;color:' + (s.outstanding > 0 ? '#c0392b' : '#27ae60') + ';">' + vdFmtMoney(s.outstanding) + '</div></div>' +
-        '</div>';
-
-        // Materials & Categories
         if (v.materials && v.materials.length > 0) {
-            html += '<div style="margin-bottom:16px;"><span style="color:#666;font-size:0.8rem;">Materials Supplied:</span> ' + v.materials.map(function(m) { return '<span style="background:#e8ecf0;padding:2px 10px;border-radius:12px;font-size:0.8rem;margin:2px;display:inline-block;">' + vdEscape(m) + '</span>'; }).join('') + '</div>';
+            infoHtml += '<div style="margin-bottom:8px;"><span style="color:#666;font-size:0.8rem;">Materials Supplied:</span> ' +
+                v.materials.map(function(m) { return '<span class="vd-mat-chip">' + vdEscape(m) + '</span>'; }).join('') +
+            '</div>';
         }
         if (v.categories && v.categories.length > 0) {
-            html += '<div style="margin-bottom:16px;"><span style="color:#666;font-size:0.8rem;">Categories:</span> ' + v.categories.map(function(c) { return '<span style="background:#e8ecf0;padding:2px 10px;border-radius:12px;font-size:0.8rem;margin:2px;display:inline-block;">' + vdEscape(c) + '</span>'; }).join('') + '</div>';
+            infoHtml += '<div style="margin-bottom:8px;"><span style="color:#666;font-size:0.8rem;">Categories:</span> ' +
+                v.categories.map(function(c) { return '<span class="vd-mat-chip">' + vdEscape(c) + '</span>'; }).join('') +
+            '</div>';
         }
+        infoEl.innerHTML = infoHtml;
+    }
 
-        // Purchase history
-        html += '<h4 style="margin-bottom:8px;">Purchase History (' + (data.purchases || []).length + ')</h4>';
-        html += '<div style="overflow-x:auto;"><table class="tracker-table" style="margin-bottom:20px;"><thead><tr><th>Invoice Date</th><th>Invoice No</th><th>Material</th><th>Qty</th><th>Amount</th></tr></thead><tbody>';
-        (data.purchases || []).forEach(function(p) {
-            html += '<tr><td>' + vdEscape(p.invoice_date || '\u2014') + '</td><td>' + vdEscape(p.invoice_no || '\u2014') + '</td><td>' + vdEscape(p.material_name) + '</td><td>' + (Number(p.qty) || 0) + '</td><td>' + vdFmtMoney(p.amount) + '</td></tr>';
-        });
-        html += '</tbody></table></div>';
+    var payDateInput = document.getElementById('vdPayDate');
+    if (payDateInput) payDateInput.value = new Date().toISOString().split('T')[0];
+    var payAmtInput = document.getElementById('vdPayAmount');
+    if (payAmtInput) payAmtInput.value = '';
+    var payRefInput = document.getElementById('vdPayRef');
+    if (payRefInput) payRefInput.value = '';
+    var payNotesInput = document.getElementById('vdPayNotes');
+    if (payNotesInput) payNotesInput.value = '';
 
-        // Payment history
-        html += '<h4 style="margin-bottom:8px;">Payment History (' + (data.payments || []).length + ')</h4>';
-        if ((data.payments || []).length > 0) {
-            html += '<div style="overflow-x:auto;"><table class="tracker-table"><thead><tr><th>Date</th><th>Amount</th><th>Method</th><th>Reference</th></tr></thead><tbody>';
-            data.payments.forEach(function(p) {
-                var methodLabel = (p.method || '').replace(/_/g, ' ').replace(/\b\w/g, function(c) { return c.toUpperCase(); });
-                html += '<tr><td>' + vdEscape(p.payment_date || '\u2014') + '</td><td>' + vdFmtMoney(p.amount) + '</td><td>' + vdEscape(methodLabel) + '</td><td>' + vdEscape(p.reference || '\u2014') + '</td></tr>';
-            });
-            html += '</tbody></table></div>';
-        } else {
-            html += '<div style="color:#999;padding:12px;">No payments recorded.</div>';
-        }
+    var payBtn = document.getElementById('vdRecordPaymentBtn');
+    if (payBtn) {
+        payBtn.onclick = async function() {
+            var amount = parseFloat(document.getElementById('vdPayAmount').value);
+            var payment_date = document.getElementById('vdPayDate').value;
+            var method = document.getElementById('vdPayMethod').value;
+            var reference = document.getElementById('vdPayRef').value.trim();
+            var notes = document.getElementById('vdPayNotes').value.trim();
+            if (!amount || amount <= 0) { showToast('Please enter a valid amount', true); return; }
+            if (!payment_date) { showToast('Please select a payment date', true); return; }
+            payBtn.disabled = true;
+            payBtn.textContent = 'Saving...';
+            try {
+                await apiPost('/api/day-book/payment', {
+                    vendor_id: vendorId,
+                    vendor_name: v.name,
+                    amount: amount,
+                    payment_date: payment_date,
+                    method: method,
+                    reference: reference,
+                    notes: notes
+                });
+                showToast('Payment of ' + vdFmtMoney(amount) + ' recorded');
+                await renderVendorDirectoryView();
+                vdDetailVendor = vdVendors.find(function(x) { return x.id === vendorId; });
+                openVDDetail(vendorId);
+            } catch (e) {
+                showToast('Failed to record payment: ' + (e.message || ''), true);
+            } finally {
+                payBtn.disabled = false;
+                payBtn.textContent = 'Save Payment';
+            }
+        };
+    }
 
-        // Record payment button (admin/manager)
-        if (currentUserRole === 'admin' || currentUserRole === 'manager') {
-            html += '<div style="margin-top:16px;"><button id="vdRecordPaymentBtn" class="btn-primary" style="padding:8px 20px;">+ Record Payment</button></div>';
-        }
+    document.getElementById('vendorDetailModal').classList.add('show');
+    await vdLoadDetail(vendorId);
+}
 
-        document.getElementById('vdDetailBody').innerHTML = html;
+function closeVDDetail() {
+    document.getElementById('vendorDetailModal').classList.remove('show');
+    vdDetailVendor = null;
+    vdDetailData = null;
+}
 
-        var payBtn = document.getElementById('vdRecordPaymentBtn');
-        if (payBtn) payBtn.addEventListener('click', function() {
-            modal.remove();
-            if (typeof openIPPaymentForm === 'function') openIPPaymentForm(vendorId, v.name);
-        });
-
+async function vdLoadDetail(vendorId) {
+    try {
+        vdDetailData = await apiGet('/api/day-book/vendor/' + encodeURIComponent(vendorId));
+        renderVDPayments();
+        renderVDPurchases();
     } catch (e) {
-        document.getElementById('vdDetailBody').innerHTML = '<div class="att-empty" style="padding:24px;text-align:center;color:#c0392b;">Failed to load vendor details.</div>';
+        vdDetailData = { purchases: [], payments: [], summary: {} };
+        renderVDPayments();
+        renderVDPurchases();
     }
 }
+
+function renderVDPayments() {
+    var el = document.getElementById('vendorPaymentsList');
+    if (!el) return;
+    var payments = (vdDetailData && vdDetailData.payments) || [];
+    if (!payments.length) {
+        el.innerHTML = '<div class="att-empty" style="padding:16px 0;">No payments recorded yet.</div>';
+        return;
+    }
+    var html = '<table class="cp-detail-table"><thead><tr><th class="cp-date-cell">Date</th><th class="cp-amt-cell">Amount</th><th>Method</th><th>Reference</th><th>Notes</th></tr></thead><tbody>';
+    payments.forEach(function(p) {
+        var methodLabel = (p.method || '').replace(/_/g, ' ').replace(/\b\w/g, function(c) { return c.toUpperCase(); });
+        html += '<tr>' +
+            '<td class="cp-date-cell">' + vdEscape(p.payment_date || '\u2014') + '</td>' +
+            '<td class="cp-amt-cell po-fin-paid">' + vdFmtMoney(p.amount) + '</td>' +
+            '<td>' + vdEscape(methodLabel) + '</td>' +
+            '<td>' + vdEscape(p.reference || '\u2014') + '</td>' +
+            '<td>' + vdEscape(p.notes || '\u2014') + '</td>' +
+        '</tr>';
+    });
+    html += '</tbody></table>';
+    el.innerHTML = html;
+}
+
+function renderVDPurchases() {
+    var el = document.getElementById('vendorPurchasesList');
+    if (!el) return;
+    var purchases = (vdDetailData && vdDetailData.purchases) || [];
+    if (!purchases.length) {
+        el.innerHTML = '<div class="att-empty" style="padding:16px 0;">No purchases recorded.</div>';
+        return;
+    }
+    var html = '<table class="cp-detail-table"><thead><tr><th class="cp-date-cell">Invoice Date</th><th>Invoice No</th><th>Material</th><th class="cp-amt-cell">Amount</th></tr></thead><tbody>';
+    purchases.forEach(function(p) {
+        html += '<tr>' +
+            '<td class="cp-date-cell">' + vdEscape(p.invoice_date || '\u2014') + '</td>' +
+            '<td>' + vdEscape(p.invoice_no || '\u2014') + '</td>' +
+            '<td>' + vdEscape(p.material_name || '\u2014') + '</td>' +
+            '<td class="cp-amt-cell">' + vdFmtMoney(p.amount) + '</td>' +
+        '</tr>';
+    });
+    html += '</tbody></table>';
+    el.innerHTML = html;
+}
+
+// --- Quick payment (opens detail modal scrolled to payment section) ---
+
+function openVDPayment(vendorId) {
+    openVDDetail(vendorId);
+    setTimeout(function() {
+        var payInput = document.getElementById('vdPayAmount');
+        if (payInput) payInput.focus();
+    }, 300);
+}
+
+// --- Event wiring ---
+
+(function() {
+    var si = document.getElementById('vdSearchInput');
+    if (si) {
+        si.addEventListener('input', function() {
+            vdFilters.search = this.value.trim();
+            renderVDCards();
+        });
+    }
+    var sf = document.getElementById('vdStatusFilter');
+    if (sf) {
+        sf.addEventListener('change', function() {
+            vdFilters.status = this.value;
+            renderVDCards();
+        });
+    }
+    var mf = document.getElementById('vdMaterialFilter');
+    if (mf) {
+        mf.addEventListener('change', function() {
+            vdFilters.material = this.value;
+            renderVDCards();
+        });
+    }
+    var oo = document.getElementById('vdOutstandingOnly');
+    if (oo) {
+        oo.addEventListener('change', function() {
+            vdFilters.outstandingOnly = this.checked;
+            renderVDCards();
+        });
+    }
+
+    var closeDetail = document.getElementById('closeVendorDetail');
+    if (closeDetail) closeDetail.addEventListener('click', closeVDDetail);
+
+    var detailModal = document.getElementById('vendorDetailModal');
+    if (detailModal) detailModal.addEventListener('click', function(e) {
+        if (e.target === detailModal) closeVDDetail();
+    });
+})();

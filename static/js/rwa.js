@@ -774,7 +774,7 @@
             const items = await rwaGet('/api/rwa/patrol/checkpoints');
             const sel = document.getElementById('rwaPatrolCpSelect');
             if (sel) {
-                sel.innerHTML = '<option value="">Select checkpoint...</option>' + items.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+                sel.innerHTML = '<option value="">Select checkpoint...</option>' + items.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
             }
         } catch (e) { console.error('loadPatrolCheckpoints:', e); }
     }

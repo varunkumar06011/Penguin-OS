@@ -2120,7 +2120,7 @@ function renderWizardStep() {
         body.innerHTML = `
             <div class="wizard-field">
                 <label>Venture Name</label>
-                <input type="text" id="wizName" placeholder="e.g. Greenfield Heights" value="${wizardData.name || ''}">
+                <input type="text" id="wizName" placeholder="e.g. Greenfield Heights" value="${escapeHtml(wizardData.name || '')}">
             </div>
         `;
     } else if (wizardStep === 2) {
@@ -2129,7 +2129,7 @@ function renderWizardStep() {
         wizardData.blocks.forEach((b, i) => {
             blocksHtml += `
                 <div class="wizard-block-row">
-                    <div class="wizard-field"><label>Block Name</label><input type="text" class="wiz-block-name" value="${b.name}"></div>
+                    <div class="wizard-field"><label>Block Name</label><input type="text" class="wiz-block-name" value="${escapeHtml(b.name)}"></div>
                     <div class="wizard-field"><label>Floors</label><input type="number" class="wiz-block-floors" value="${b.floors}" min="1"></div>
                     <div class="wizard-field"><label>Flats/Floor</label><input type="number" class="wiz-block-flats" value="${b.flats_per_floor}" min="1"></div>
                     <button class="remove-block-btn" data-index="${i}">&times;</button>
@@ -2228,15 +2228,15 @@ function renderWizardStep() {
         body.innerHTML = `
             <div class="wizard-summary-card">
                 <h4>Venture Name</h4>
-                <ul><li>${wizardData.name}</li></ul>
+                <ul><li>${escapeHtml(wizardData.name)}</li></ul>
             </div>
             <div class="wizard-summary-card">
                 <h4>Blocks</h4>
-                <ul>${wizardData.blocks.map(b => `<li>${b.name} — ${b.floors} floors, ${b.flats_per_floor} flats/floor</li>`).join('')}</ul>
+                <ul>${wizardData.blocks.map(b => `<li>${escapeHtml(b.name)} — ${b.floors} floors, ${b.flats_per_floor} flats/floor</li>`).join('')}</ul>
             </div>
             <div class="wizard-summary-card">
                 <h4>Work Categories</h4>
-                <ul><li>${catCounts}</li></ul>
+                <ul><li>${escapeHtml(catCounts)}</li></ul>
             </div>
             <div class="wizard-summary-card">
                 <h4>Super Structure</h4>

@@ -1313,7 +1313,7 @@ document.getElementById('addVendorBtn').addEventListener('click', () => openVend
 var _vdAddVendorBtn = document.getElementById('vdAddVendorBtn');
 if (_vdAddVendorBtn) _vdAddVendorBtn.addEventListener('click', () => openVendorForm(null));
 
-function openVendorForm(vendorId, fromPOForm) {
+async function openVendorForm(vendorId, fromPOForm) {
     vendorEditingId = vendorId;
     _vendorFromPOForm = fromPOForm || false;
     document.getElementById('vendorFormTitle').textContent = vendorId ? 'Edit Vendor' : 'Add Vendor';
@@ -1325,7 +1325,25 @@ function openVendorForm(vendorId, fromPOForm) {
     });
     document.getElementById('vendorTypeInput').value = '';
 
+    // Populate venture dropdown
+    var ventureSel = document.getElementById('vendorVentureInput');
+    if (ventureSel) {
+        ventureSel.innerHTML = '<option value="">-- All Ventures --</option>';
+        if (typeof venturesList !== 'undefined') {
+            venturesList.forEach(function(v) {
+                var o = document.createElement('option');
+                o.value = v.id; o.textContent = v.name;
+                ventureSel.appendChild(o);
+            });
+        }
+        ventureSel.value = '';
+    }
+
     if (vendorId) {
+        // Ensure allVendors is loaded from /api/vendors before lookup
+        if (typeof ensureVendorsLoaded === 'function') {
+            await ensureVendorsLoaded();
+        }
         const v = loadVendors().find(x => x.id === vendorId);
         if (v) {
             document.getElementById('vendorNameInput').value = v.name || '';
@@ -1340,6 +1358,7 @@ function openVendorForm(vendorId, fromPOForm) {
             document.getElementById('vendorIFSCInput').value = v.ifsc || '';
             document.getElementById('vendorAccHolderInput').value = v.accountHolder || '';
             document.getElementById('vendorNotesInput').value = v.notes || '';
+            if (ventureSel) ventureSel.value = v.venture_id || v.ventureId || '';
         }
     }
 
@@ -1372,6 +1391,7 @@ document.getElementById('saveVendorBtn').addEventListener('click', async () => {
         email: document.getElementById('vendorEmailInput').value.trim(),
         gstin: document.getElementById('vendorGSTInput').value.trim(),
         type: document.getElementById('vendorTypeInput').value,
+        venture_id: document.getElementById('vendorVentureInput').value || '',
         address: document.getElementById('vendorAddressInput').value.trim(),
         bankName: document.getElementById('vendorBankNameInput').value.trim(),
         accountNo: document.getElementById('vendorAccNoInput').value.trim(),
@@ -1388,19 +1408,32 @@ document.getElementById('saveVendorBtn').addEventListener('click', async () => {
         vendors.push(vendorData);
     }
 
-    await saveVendors(vendors);
-    showToast(vendorEditingId ? 'Vendor updated' : 'Vendor added');
-    closeVendorForm();
-    renderVendorDirList();
-    populatePOFilters();
+    try {
+        await apiPost('/api/vendor', vendorData);
+        showToast(vendorEditingId ? 'Vendor updated' : 'Vendor added');
+        closeVendorForm();
 
-    // Refresh vendor directory panel if visible
-    var vdPanel = document.getElementById('vendorDirPanel');
-    if (vdPanel && vdPanel.style.display !== 'none' && typeof renderVendorDirectoryView === 'function') {
-        renderVendorDirectoryView();
-    }
+        // Refresh cached vendor list from server
+        _vendorsLoaded = false;
+        await ensureVendorsLoaded();
 
-    if (_vendorFromPOForm) {
-        populatePOVendorSelect(vendorData.id);
+        renderVendorDirList();
+        populatePOFilters();
+
+        // Always refresh vendor directory panel
+        if (typeof renderVendorDirectoryView === 'function') {
+            renderVendorDirectoryView();
+        }
+
+        if (_vendorFromPOForm) {
+            populatePOVendorSelect(vendorData.id);
+        }
+    } catch (err) {
+        var errMsg = err.message || '';
+        var match = errMsg.match(/\{.*\}/);
+        if (match) {
+            try { var j = JSON.parse(match[0]); if (j.error) errMsg = j.error; } catch (_) {}
+        }
+        showToast(errMsg || 'Failed to save vendor', true);
     }
 });

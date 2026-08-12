@@ -997,7 +997,7 @@ function renderMobileFlatContent(container, workCategories, flatNumbers, flat) {
 
         const header = document.createElement('div');
         header.className = 'mobile-category-header';
-        header.innerHTML = `<span class="mobile-cat-name">${getWorkCategoryDisplayName(category)}</span><span class="mobile-cat-progress">${doneCount}/${items.length} (${progressPct}%)</span>`;
+        header.innerHTML = `<span class="mobile-cat-name">${escapeHtml(getWorkCategoryDisplayName(category))}</span><span class="mobile-cat-progress">${doneCount}/${items.length} (${progressPct}%)</span>`;
 
         // Up/down reorder buttons for mobile (per-user, saves to userPrefs)
         if (visibleCategories.length > 1) {
@@ -1183,7 +1183,7 @@ function createSectionTable(category, items, flats) {
     const header = document.createElement('div');
     header.className = 'section-header';
     if (editMode) {
-        header.innerHTML = `<span class="cat-label">${category}</span>`;
+        header.innerHTML = `<span class="cat-label">${escapeHtml(category)}</span>`;
         const ctrl = document.createElement('span');
         ctrl.style.marginLeft = '12px';
         ctrl.innerHTML = '<button class="edit-btn" title="Rename category">&#9998;</button><button class="edit-btn" title="Delete category">&#10006;</button>';
@@ -1292,7 +1292,7 @@ function createSectionTable(category, items, flats) {
             draggedRow = null;
         });
         if (editMode) {
-            tdWork.innerHTML = `<span class="item-label">${itemObj.label}</span>`;
+            tdWork.innerHTML = `<span class="item-label">${escapeHtml(itemObj.label)}</span>`;
             const controls = document.createElement('div');
             controls.className = 'edit-controls';
             controls.style.marginTop = '4px';
@@ -1433,7 +1433,7 @@ function createSectionTable(category, items, flats) {
         const addTd = document.createElement('td');
         addTd.colSpan = flats.length + 3;
         const inpId = `addWork_${slugId(category)}`;
-        addTd.innerHTML = `<div class="add-item-row"><input type="text" id="${inpId}" placeholder="New item"><button class="btn-secondary add-work-item-btn" data-cat="${category}">Add</button></div>`;
+        addTd.innerHTML = `<div class="add-item-row"><input type="text" id="${inpId}" placeholder="New item"><button class="btn-secondary add-work-item-btn" data-cat="${escapeHtml(category)}">Add</button></div>`;
         addRow.appendChild(addTd);
         tbody.appendChild(addRow);
         addTd.querySelector('.add-work-item-btn').addEventListener('click', () => {
@@ -1974,7 +1974,7 @@ async function openTimelineModal(cellId, workItem, flat) {
             dot.className = 'dot ' + statusColor;
             if (!statusColor || statusColor === 'empty') dot.style.background = '#ccc';
             const info = document.createElement('div');
-            info.innerHTML = `<strong>${entry.status_label || 'Cleared'}</strong><br><span class="timeline-meta">${entry.date || ''} — changed by: ${entry.changed_by || 'Unknown'}</span>`;
+            info.innerHTML = `<strong>${escapeHtml(entry.status_label || 'Cleared')}</strong><br><span class="timeline-meta">${escapeHtml(entry.date || '')} — changed by: ${escapeHtml(entry.changed_by || 'Unknown')}</span>`;
             item.appendChild(dot);
             item.appendChild(info);
             els.timelineList.appendChild(item);
@@ -2194,7 +2194,7 @@ function renderSuperStructure() {
         const tdWork = document.createElement('td');
         tdWork.className = 'work-cell';
         if (editMode) {
-            tdWork.innerHTML = `<span class="item-label">${itemObj.label}</span>`;
+            tdWork.innerHTML = `<span class="item-label">${escapeHtml(itemObj.label)}</span>`;
             const controls = document.createElement('div');
             controls.className = 'edit-controls';
             controls.style.marginTop = '4px';
@@ -2285,7 +2285,7 @@ function renderSuperStructure() {
             if (found) {
                 const div = document.createElement('div');
                 div.className = 'archived-item';
-                div.innerHTML = `<span>${found.label}</span><button class="btn-secondary" style="padding:4px 10px;font-size:0.75rem;">Restore</button>`;
+                div.innerHTML = `<span>${escapeHtml(found.label)}</span><button class="btn-secondary" style="padding:4px 10px;font-size:0.75rem;">Restore</button>`;
                 div.querySelector('button').addEventListener('click', () => restoreSuperItem(archId));
                 archList.appendChild(div);
             }
@@ -2872,7 +2872,7 @@ async function renderPendingView(targetContainer) {
     // Venture label (read-only)
     const ventureGroup = document.createElement('div');
     ventureGroup.className = 'pending-filter-group';
-    ventureGroup.innerHTML = `<label>Venture</label><div class="pending-readonly">${currentVenture.name}</div>`;
+    ventureGroup.innerHTML = `<label>Venture</label><div class="pending-readonly">${escapeHtml(currentVenture.name)}</div>`;
     filterBar.appendChild(ventureGroup);
 
     // Floor dropdown

@@ -122,7 +122,7 @@ const SIDEBAR_CONFIG = {
                 items: [
                     { id: 'openAttendanceBtn', icon: '\u{1F465}', label: 'Attendance' },
                     { id: 'openVendorsBtn', icon: '\u{1F465}', label: 'Vendors' },
-                    { id: 'openContractorPaymentsBtn', icon: '\u{1F527}', label: 'Payments' },
+                    { id: 'openContractorPaymentsBtn', icon: '\u{1F527}', label: 'Contractor Payments' },
                 ]
             },
             {

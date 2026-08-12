@@ -11,6 +11,7 @@ var ipMaterials = [];
 var ipCategories = [];
 var ipVendors = [];
 var ipOutstanding = [];
+var ipContractorContracts = [];
 var ipFilters = { vendor: 'all', material: 'all', category: 'all', type: 'all', is_gst: 'all', from: '', to: '' };
 var ipEditingId = null;
 
@@ -30,7 +31,10 @@ function ipParseError(e) {
     var msg = e.message || String(e);
     var m = msg.match(/HTTP \d+: (.+)/);
     if (m) {
-        try { var j = JSON.parse(m[1]); if (j.error) return j; } catch (_) {}
+        try {
+            var j = JSON.parse(m[1]);
+            return { error: j.error || m[1], message: j.message || '' };
+        } catch (_) {}
         return { error: m[1] };
     }
     return { error: msg };
@@ -41,6 +45,33 @@ function ipEscape(s) {
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+function ipPayTypeLabel(pt) {
+    var styles = {
+        'vendor': '<span style="color:#666;font-weight:600;">Vendor</span>',
+        'contract': '<span style="color:#6366f1;font-weight:600;">Contract</span>',
+        'inventory': '<span style="color:#e67e22;font-weight:600;">Inventory</span>',
+        'other': '<span style="color:#8e44ad;font-weight:600;">Other</span>'
+    };
+    return styles[pt] || styles['vendor'];
+}
+
+var IP_UNITS = ['kg', 'gram', 'liter', 'ml', 'bag', 'piece', 'box', 'bundle', 'drum', 'roll', 'sheet', 'ton', 'feet', 'sq.ft', 'set', 'lot'];
+
+function ipUnitSelect(selected) {
+    var opts = '';
+    if (!selected) opts += '<option value="">-- Select Unit --</option>';
+    var inList = false;
+    IP_UNITS.forEach(function(u) {
+        var sel = (u === selected) ? ' selected' : '';
+        if (sel) inList = true;
+        opts += '<option value="' + u + '"' + sel + '>' + u + '</option>';
+    });
+    if (selected && !inList) {
+        opts += '<option value="' + ipEscape(selected) + '" selected>' + ipEscape(selected) + '</option>';
+    }
+    return '<select id="ipFormUnit" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:6px;">' + opts + '</select>';
+}
+
 // --- Data loading ---
 
 async function ipLoadMaterials() {
@@ -49,13 +80,31 @@ async function ipLoadMaterials() {
 }
 
 async function ipLoadCategories() {
-    try { ipCategories = await apiGet('/api/inventory-categories') || []; }
-    catch (e) { ipCategories = []; }
+    try {
+        var tree = await apiGet('/api/inventory-categories') || [];
+        var matCats = await apiGet('/api/materials/categories') || [];
+        // Start with tree categories (have types/children)
+        var merged = tree.map(function(c) { return c; });
+        // Merge in material-only categories that aren't in the tree
+        var treeNames = tree.map(function(c) { return (c.name || '').toLowerCase(); });
+        matCats.forEach(function(name) {
+            if (name && treeNames.indexOf(name.toLowerCase()) === -1) {
+                merged.push({ name: name, types: [] });
+            }
+        });
+        merged.sort(function(a, b) {
+            return (a.name || '').localeCompare(b.name || '');
+        });
+        ipCategories = merged;
+    } catch (e) { ipCategories = []; }
 }
 
 async function ipLoadVendors() {
-    try { ipVendors = await apiGet('/api/vendors') || []; }
-    catch (e) { ipVendors = []; }
+    try { ipVendors = await apiGet('/api/vendor-directory') || []; }
+    catch (e) {
+        try { ipVendors = await apiGet('/api/vendors') || []; }
+        catch (e2) { ipVendors = []; }
+    }
 }
 
 async function ipLoadPurchases() {
@@ -77,6 +126,11 @@ async function ipLoadOutstanding() {
     catch (e) { ipOutstanding = []; }
 }
 
+async function ipLoadContractorContracts() {
+    try { ipContractorContracts = await apiGet('/api/contractor-contracts/for-dropdown') || []; }
+    catch (e) { ipContractorContracts = []; }
+}
+
 // --- Main render ---
 
 async function renderDayBookView() {
@@ -84,7 +138,7 @@ async function renderDayBookView() {
     if (!content) return;
     content.innerHTML = '<div style="padding:24px;color:#999;">Loading...</div>';
 
-    await Promise.all([ipLoadMaterials(), ipLoadCategories(), ipLoadVendors(), ipLoadPurchases(), ipLoadOutstanding()]);
+    await Promise.all([ipLoadMaterials(), ipLoadCategories(), ipLoadVendors(), ipLoadPurchases(), ipLoadOutstanding(), ipLoadContractorContracts()]);
     renderIPFilters();
     renderIPSummary();
     renderIPTable();
@@ -189,7 +243,7 @@ function renderIPTable() {
 
     var html = '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;"><table class="tracker-table" id="dayBookTable"><thead><tr>' +
         '<th>Invoice Date</th><th>Invoice No</th><th>GST</th><th>Received</th>' +
-        '<th>Vendor</th><th>Material</th><th>Category</th><th>Type</th>' +
+        '<th>Pay To</th><th>Vendor</th><th>Material</th><th>Category</th><th>Type</th>' +
         '<th>Qty</th><th>Unit</th><th>Rate</th><th>Total Amount</th>' +
         '<th>Payment</th><th>Proof</th><th>Remarks</th><th></th>' +
         '</tr></thead><tbody>';
@@ -202,6 +256,7 @@ function renderIPTable() {
             '<td data-label="Invoice No">' + ipEscape(p.invoice_no || '\u2014') + '</td>' +
             '<td data-label="GST">' + (p.is_gst ? '<span style="color:#27ae60;">GST</span>' : '<span style="color:#999;">Non-GST</span>') + '</td>' +
             '<td data-label="Received">' + ipFmtDate(p.received_date) + '</td>' +
+            '<td data-label="Pay To">' + ipPayTypeLabel(p.payment_type) + '</td>' +
             '<td data-label="Vendor">' + ipEscape(p.vendor_name || '\u2014') + '</td>' +
             '<td data-label="Material">' + ipEscape(p.material_name) + '</td>' +
             '<td data-label="Category">' + ipEscape(p.category || '\u2014') + '</td>' +
@@ -241,6 +296,57 @@ function renderIPTable() {
 
 // --- Add/Edit Purchase form ---
 
+function ipOpenQuickMaterialModal(onCreated) {
+    var matModal = document.createElement('div');
+    matModal.className = 'modal-overlay';
+    matModal.id = 'ipQuickMatModal';
+    matModal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:10001;display:flex;align-items:center;justify-content:center;';
+    matModal.innerHTML =
+        '<div style="background:#fff;border-radius:12px;padding:24px;width:90%;max-width:400px;">' +
+            '<h3 style="margin-bottom:16px;">New Inventory Item</h3>' +
+            '<div style="margin-bottom:12px;"><label style="font-size:0.85rem;color:#666;">Material Name *</label><input type="text" id="ipQmName" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:6px;" placeholder="e.g. Cement, Sand, Wire"></div>' +
+            '<div style="margin-bottom:12px;"><label style="font-size:0.85rem;color:#666;">Unit</label>' + ipUnitSelect('') + '</div>' +
+            '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">' +
+                '<button id="ipQmCancel" class="btn-secondary" style="padding:8px 20px;">Cancel</button>' +
+                '<button id="ipQmSave" class="btn-primary" style="padding:8px 20px;">Create</button>' +
+            '</div>' +
+        '</div>';
+    // Fix unit select ID to avoid collision
+    var unitSelectEl = matModal.querySelector('#ipFormUnit');
+    if (unitSelectEl) unitSelectEl.id = 'ipQmUnit';
+    document.body.appendChild(matModal);
+
+    function closeQuickMat() { matModal.remove(); }
+
+    matModal.addEventListener('click', function(e) { if (e.target === matModal) closeQuickMat(); });
+    document.getElementById('ipQmCancel').addEventListener('click', closeQuickMat);
+
+    document.getElementById('ipQmSave').addEventListener('click', async function() {
+        var name = document.getElementById('ipQmName').value.trim();
+        if (!name) { showToast('Material name is required', true); return; }
+        var unit = '';
+        var unitSel = document.getElementById('ipQmUnit');
+        if (unitSel) unit = unitSel.value.trim() || '';
+
+        var saveBtn = document.getElementById('ipQmSave');
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Creating...';
+        try {
+            await apiPost('/api/inventory-material', { name: name, unit: unit || null });
+            showToast('Material created');
+            closeQuickMat();
+            if (onCreated) onCreated(name, unit);
+        } catch (e) {
+            showToast(ipParseError(e).error || 'Failed to create material', true);
+        } finally {
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Create';
+        }
+    });
+
+    document.getElementById('ipQmName').focus();
+}
+
 function openIPPurchaseForm(editId) {
     ipEditingId = editId || null;
     var editing = editId ? ipPurchases.find(function(p) { return p.id === editId; }) : null;
@@ -248,6 +354,12 @@ function openIPPurchaseForm(editId) {
     var materialOpts = ipMaterials.map(function(m) { return '<option value="' + ipEscape(m.name) + '">' + ipEscape(m.name) + '</option>'; }).join('');
     var categoryOpts = ipCategories.map(function(c) { return '<option value="' + ipEscape(c.name) + '">' + ipEscape(c.name) + '</option>'; }).join('');
     var vendorOpts = ipVendors.map(function(v) { return '<option value="' + ipEscape(v.name) + '">' + ipEscape(v.name) + '</option>'; }).join('');
+    var contractorOpts = ipContractorContracts.map(function(c) {
+        var label = c.person_name + ' — ' + (c.work_description || '').substring(0, 40);
+        if (c.status === 'completed') label += ' (Completed)';
+        return '<option value="' + ipEscape(c.person_name) + '">' + ipEscape(label) + '</option>';
+    }).join('');
+    var currentPaymentType = (editing && editing.payment_type) ? editing.payment_type : 'vendor';
 
     var today = new Date().toISOString().split('T')[0];
 
@@ -257,24 +369,35 @@ function openIPPurchaseForm(editId) {
     modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center;';
     modal.innerHTML =
         '<div style="background:#fff;border-radius:12px;padding:24px;width:90%;max-width:600px;max-height:90vh;overflow-y:auto;">' +
-            '<h3 style="margin-bottom:16px;">' + (editing ? 'Edit Purchase' : 'Add Purchase') + '</h3>' +
+            '<h3 style="margin-bottom:16px;">' + (editing ? 'Edit Entry' : 'Add Entry') + '</h3>' +
             '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">' +
-                '<div><label style="font-size:0.85rem;color:#666;">Invoice Date *</label><input type="date" id="ipFormInvoiceDate" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:6px;" value="' + (editing ? (editing.invoice_date || '') : today) + '"></div>' +
+                '<div><label style="font-size:0.85rem;color:#666;">Entry Type *</label><select id="ipFormPaymentType" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:6px;"><option value="vendor"' + (currentPaymentType === 'vendor' ? ' selected' : '') + '>Vendor</option><option value="contract"' + (currentPaymentType === 'contract' ? ' selected' : '') + '>Contract Payment</option><option value="inventory"' + (currentPaymentType === 'inventory' ? ' selected' : '') + '>Inventory</option><option value="other"' + (currentPaymentType === 'other' ? ' selected' : '') + '>Other</option></select></div>' +
+                '<div><label style="font-size:0.85rem;color:#666;">Date *</label><input type="date" id="ipFormInvoiceDate" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:6px;" value="' + (editing ? (editing.invoice_date || '') : today) + '"></div>' +
+            '</div>' +
+            // --- Vendor / Contract fields ---
+            '<div id="ipSectionVendorContract" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;">' +
+                '<div id="ipVendorFieldWrap"><label style="font-size:0.85rem;color:#666;">Vendor</label><div style="display:flex;gap:4px;"><input type="text" id="ipFormVendor" list="ipVendorList" style="flex:1;padding:8px;border:1px solid #ccc;border-radius:6px;" value="' + ipEscape(editing ? (editing.vendor_name || '') : '') + '" placeholder="Type or select"><datalist id="ipVendorList">' + vendorOpts + '</datalist><button type="button" class="btn-secondary ip-new-vendor-btn" style="padding:8px 10px;font-size:0.8rem;white-space:nowrap;">+ New</button></div></div>' +
+                '<div id="ipContractorFieldWrap" style="display:none;"><label style="font-size:0.85rem;color:#666;">Contractor / Contract</label><div style="display:flex;gap:4px;"><input type="text" id="ipFormContract" list="ipContractList" style="flex:1;padding:8px;border:1px solid #ccc;border-radius:6px;" value="' + ipEscape(editing ? (editing.vendor_name || '') : '') + '" placeholder="Type or select"><datalist id="ipContractList">' + contractorOpts + '</datalist><button type="button" class="btn-secondary ip-new-contract-btn" style="padding:8px 10px;font-size:0.8rem;white-space:nowrap;">+ New</button></div></div>' +
+                '<div></div>' +
+            '</div>' +
+            // --- Invoice/GST section (hidden for Other) ---
+            '<div id="ipSectionInvoiceGst">' +
+            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;">' +
                 '<div><label style="font-size:0.85rem;color:#666;">Invoice Number</label><input type="text" id="ipFormInvoiceNo" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:6px;" value="' + ipEscape(editing ? (editing.invoice_no || '') : '') + '" placeholder="Optional"></div>' +
+                '<div><label style="font-size:0.85rem;color:#666;">Received Date *</label><input type="date" id="ipFormReceivedDate" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:6px;" value="' + (editing ? (editing.received_date || '') : today) + '"></div>' +
             '</div>' +
             '<div class="ip-gst-toggle" style="margin:12px 0;">' +
                 '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="ipFormIsGst" ' + (editing && editing.is_gst ? 'checked' : '') + ' style="width:18px;height:18px;"> <span style="font-weight:600;">GST Invoice</span></label>' +
             '</div>' +
+            '</div>' +
+            // --- Material/Unit section (hidden for Other) ---
+            '<div id="ipSectionMaterial">' +
             '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;">' +
-                '<div><label style="font-size:0.85rem;color:#666;">Received Date *</label><input type="date" id="ipFormReceivedDate" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:6px;" value="' + (editing ? (editing.received_date || '') : today) + '"></div>' +
-                '<div><label style="font-size:0.85rem;color:#666;">Vendor</label><input type="text" id="ipFormVendor" list="ipVendorList" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:6px;" value="' + ipEscape(editing ? (editing.vendor_name || '') : '') + '" placeholder="Type or select"><datalist id="ipVendorList">' + vendorOpts + '</datalist></div>' +
+                '<div><label style="font-size:0.85rem;color:#666;">Material Name</label><div style="display:flex;gap:4px;"><input type="text" id="ipFormMaterial" list="ipMaterialList" style="flex:1;padding:8px;border:1px solid #ccc;border-radius:6px;" value="' + ipEscape(editing ? (editing.material_name || '') : '') + '" placeholder="Type or select"><datalist id="ipMaterialList">' + materialOpts + '</datalist><button type="button" class="btn-secondary ip-new-material-btn" style="padding:8px 10px;font-size:0.8rem;white-space:nowrap;display:none;">+ New</button></div></div>' +
+                '<div><label style="font-size:0.85rem;color:#666;">Unit</label>' + ipUnitSelect(editing ? (editing.unit || '') : '') + '</div>' +
             '</div>' +
             '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;">' +
-                '<div><label style="font-size:0.85rem;color:#666;">Material Name</label><input type="text" id="ipFormMaterial" list="ipMaterialList" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:6px;" value="' + ipEscape(editing ? (editing.material_name || '') : '') + '" placeholder="Type or select"><datalist id="ipMaterialList">' + materialOpts + '</datalist></div>' +
-                '<div><label style="font-size:0.85rem;color:#666;">Unit</label><input type="text" id="ipFormUnit" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:6px;" value="' + ipEscape(editing ? (editing.unit || '') : '') + '" placeholder="e.g. bags, kg"></div>' +
-            '</div>' +
-            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;">' +
-                '<div><label style="font-size:0.85rem;color:#666;">Material Category</label><input type="text" id="ipFormCategory" list="ipCategoryList" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:6px;" value="' + ipEscape(editing ? (editing.category || '') : '') + '" placeholder="Optional"><datalist id="ipCategoryList">' + categoryOpts + '</datalist></div>' +
+                '<div><label style="font-size:0.85rem;color:#666;">Category</label><input type="text" id="ipFormCategory" list="ipCategoryList" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:6px;" value="' + ipEscape(editing ? (editing.category || '') : '') + '" placeholder="Optional"><datalist id="ipCategoryList">' + categoryOpts + '</datalist></div>' +
                 '<div><label style="font-size:0.85rem;color:#666;">Material Type</label><input type="text" id="ipFormType" list="ipTypeList" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:6px;" value="' + ipEscape(editing ? (editing.category_type || '') : '') + '" placeholder="Optional - type or select"><datalist id="ipTypeList"></datalist></div>' +
             '</div>' +
             '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-top:12px;">' +
@@ -282,7 +405,17 @@ function openIPPurchaseForm(editId) {
                 '<div><label style="font-size:0.85rem;color:#666;">Rate</label><input type="number" id="ipFormRate" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:6px;" value="' + (editing ? (editing.rate || '') : '') + '" step="any"></div>' +
                 '<div><label style="font-size:0.85rem;color:#666;">Total Amount</label><input type="text" id="ipFormAmount" readonly style="width:100%;padding:8px;border:1px solid #ccc;border-radius:6px;background:#f4f6f8;"></div>' +
             '</div>' +
-            '<div style="margin-top:12px;"><label style="font-size:0.85rem;color:#666;">Remarks</label><input type="text" id="ipFormRemarks" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:6px;" value="' + ipEscape(editing ? (editing.remarks || '') : '') + '" placeholder="Optional"></div>' +
+            '</div>' +
+            // --- Other section (narration + amount + category) ---
+            '<div id="ipSectionOther" style="display:none;">' +
+            '<div style="margin-top:12px;"><label style="font-size:0.85rem;color:#666;">Narration *</label><input type="text" id="ipFormNarration" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:6px;" value="' + ipEscape(editing ? (editing.remarks || '') : '') + '" placeholder="e.g. Water bill, Wi-Fi bill, Electricity"></div>' +
+            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;">' +
+                '<div><label style="font-size:0.85rem;color:#666;">Amount *</label><input type="number" id="ipFormOtherAmount" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:6px;" value="' + (editing ? (editing.amount || '') : '') + '" step="any" min="0"></div>' +
+                '<div><label style="font-size:0.85rem;color:#666;">Category</label><input type="text" id="ipFormOtherCategory" list="ipOtherCategoryList" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:6px;" value="' + ipEscape(editing ? (editing.category || '') : '') + '" placeholder="Optional"><datalist id="ipOtherCategoryList">' + categoryOpts + '</datalist></div>' +
+            '</div>' +
+            '</div>' +
+            // --- Common: Remarks (hidden for Other, uses Narration instead) ---
+            '<div id="ipSectionRemarks" style="margin-top:12px;"><label style="font-size:0.85rem;color:#666;">Remarks</label><input type="text" id="ipFormRemarks" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:6px;" value="' + ipEscape(editing ? (editing.remarks || '') : '') + '" placeholder="Optional"></div>' +
             // Payment Details section
             '<div style="margin-top:16px;padding-top:12px;border-top:1px solid #eee;"><h4 style="margin-bottom:12px;font-size:0.9rem;color:#333;">Payment Details (Optional)</h4>' +
                 '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">' +
@@ -306,6 +439,126 @@ function openIPPurchaseForm(editId) {
         '</div>';
 
     document.body.appendChild(modal);
+
+    // Entry Type toggle: Vendor / Contract / Inventory / Other
+    var paymentTypeSelect = document.getElementById('ipFormPaymentType');
+    var vendorFieldWrap = document.getElementById('ipVendorFieldWrap');
+    var contractorFieldWrap = document.getElementById('ipContractorFieldWrap');
+    var sectionVendorContract = document.getElementById('ipSectionVendorContract');
+    var sectionInvoiceGst = document.getElementById('ipSectionInvoiceGst');
+    var sectionMaterial = document.getElementById('ipSectionMaterial');
+    var sectionOther = document.getElementById('ipSectionOther');
+    var sectionRemarks = document.getElementById('ipSectionRemarks');
+
+    function togglePaymentFields() {
+        var pt = paymentTypeSelect.value;
+        // Vendor/Contract section visibility
+        if (pt === 'vendor' || pt === 'contract') {
+            sectionVendorContract.style.display = 'grid';
+        } else {
+            sectionVendorContract.style.display = 'none';
+        }
+        // Vendor vs Contract field swap
+        if (pt === 'contract') {
+            vendorFieldWrap.style.display = 'none';
+            contractorFieldWrap.style.display = '';
+        } else {
+            vendorFieldWrap.style.display = '';
+            contractorFieldWrap.style.display = 'none';
+        }
+        // Invoice/GST section: hidden for Other
+        sectionInvoiceGst.style.display = (pt === 'other') ? 'none' : '';
+        // Material section: hidden for Other
+        sectionMaterial.style.display = (pt === 'other') ? 'none' : '';
+        // Material +New button: only for inventory type
+        var matNewBtn = modal.querySelector('.ip-new-material-btn');
+        if (matNewBtn) matNewBtn.style.display = (pt === 'inventory') ? '' : 'none';
+        // Other section: only for Other
+        sectionOther.style.display = (pt === 'other') ? '' : 'none';
+        // Remarks: hidden for Other (uses Narration instead)
+        sectionRemarks.style.display = (pt === 'other') ? 'none' : '';
+    }
+    paymentTypeSelect.addEventListener('change', togglePaymentFields);
+
+    // Set initial state for editing
+    if (editing && editing.payment_type === 'contract' && editing.vendor_name) {
+        var contractInput = document.getElementById('ipFormContract');
+        if (contractInput) contractInput.value = editing.vendor_name;
+    }
+    togglePaymentFields();
+
+    // --- + New Vendor button ---
+    modal.querySelector('.ip-new-vendor-btn').addEventListener('click', function() {
+        if (typeof openVendorForm !== 'function') { showToast('Vendor form not available', true); return; }
+        openVendorForm(null);
+        // Watch for vendor form modal close, then refresh and auto-select
+        var vendorModal = document.getElementById('vendorFormModal');
+        if (!vendorModal) return;
+        var observer = new MutationObserver(function(mutations) {
+            if (!vendorModal.classList.contains('show')) {
+                observer.disconnect();
+                // Re-fetch vendors from database
+                ipLoadVendors().then(function() {
+                    // Refresh datalist
+                    var dl = document.getElementById('ipVendorList');
+                    if (dl) dl.innerHTML = ipVendors.map(function(v) { return '<option value="' + ipEscape(v.name) + '">'; }).join('');
+                    // Auto-select the most recently added vendor (last in list, or by name if typed)
+                    var vendorInput = document.getElementById('ipFormVendor');
+                    if (vendorInput && !vendorInput.value) {
+                        var latest = ipVendors[ipVendors.length - 1];
+                        if (latest) vendorInput.value = latest.name;
+                    }
+                    showToast('Vendor list refreshed');
+                });
+            }
+        });
+        observer.observe(vendorModal, { attributes: true, attributeFilter: ['class'] });
+    });
+
+    // --- + New Contract button ---
+    modal.querySelector('.ip-new-contract-btn').addEventListener('click', function() {
+        if (typeof openContractForm !== 'function') { showToast('Contract form not available', true); return; }
+        openContractForm();
+        var contractModal = document.getElementById('contractFormModal');
+        if (!contractModal) return;
+        var observer = new MutationObserver(function(mutations) {
+            if (!contractModal.classList.contains('show')) {
+                observer.disconnect();
+                ipLoadContractorContracts().then(function() {
+                    var dl = document.getElementById('ipContractList');
+                    if (dl) dl.innerHTML = ipContractorContracts.map(function(c) {
+                        var label = c.person_name + ' \u2014 ' + (c.work_description || '').substring(0, 40);
+                        if (c.status === 'completed') label += ' (Completed)';
+                        return '<option value="' + ipEscape(c.person_name) + '">';
+                    }).join('');
+                    var contractInput = document.getElementById('ipFormContract');
+                    if (contractInput && !contractInput.value) {
+                        var latest = ipContractorContracts[ipContractorContracts.length - 1];
+                        if (latest) contractInput.value = latest.person_name;
+                    }
+                    showToast('Contract list refreshed');
+                });
+            }
+        });
+        observer.observe(contractModal, { attributes: true, attributeFilter: ['class'] });
+    });
+
+    // --- + New Material button (Inventory type only) ---
+    modal.querySelector('.ip-new-material-btn').addEventListener('click', function() {
+        ipOpenQuickMaterialModal(function(name, unit) {
+            // Refresh material list from database
+            ipLoadMaterials().then(function() {
+                var dl = document.getElementById('ipMaterialList');
+                if (dl) dl.innerHTML = ipMaterials.map(function(m) { return '<option value="' + ipEscape(m.name) + '">'; }).join('');
+                var matInput = document.getElementById('ipFormMaterial');
+                if (matInput) matInput.value = name;
+                if (unit) {
+                    var unitSelect = document.getElementById('ipFormUnit');
+                    if (unitSelect) unitSelect.value = unit;
+                }
+            });
+        });
+    });
 
     // Amount auto-calc
     var qtyInput = document.getElementById('ipFormQty');
@@ -402,25 +655,108 @@ function closeIPPurchaseForm() {
 }
 
 async function ipSavePurchase() {
-    var vendorName = document.getElementById('ipFormVendor').value.trim();
-    var materialName = document.getElementById('ipFormMaterial').value.trim();
-    var isGst = document.getElementById('ipFormIsGst').checked;
-    var invoiceNo = document.getElementById('ipFormInvoiceNo').value.trim();
+    var paymentType = document.getElementById('ipFormPaymentType').value;
     var invoiceDate = document.getElementById('ipFormInvoiceDate').value;
-    var receivedDate = document.getElementById('ipFormReceivedDate').value;
 
-    if (!invoiceDate) { showToast('Invoice Date is required', true); return; }
+    if (!invoiceDate) { showToast('Date is required', true); return; }
+
+    var vendorName, vendorId, contractId;
+    var materialName = '';
+    var qty = 0, rate = 0;
+    var isGst = false, invoiceNo = '', receivedDate = '';
+    var categoryName = '';
+
+    if (paymentType === 'other') {
+        // --- Other: narration + amount + category ---
+        var narration = document.getElementById('ipFormNarration').value.trim();
+        if (!narration) { showToast('Narration is required', true); return; }
+        var otherAmount = parseFloat(document.getElementById('ipFormOtherAmount').value) || 0;
+        if (otherAmount <= 0) { showToast('Amount must be greater than 0', true); return; }
+        categoryName = document.getElementById('ipFormOtherCategory').value.trim() || null;
+
+        var body = {
+            id: ipEditingId || undefined,
+            invoice_date: invoiceDate,
+            invoice_no: null,
+            is_gst: false,
+            received_date: invoiceDate,
+            vendor_id: null,
+            vendor_name: null,
+            material_name: narration,
+            category: categoryName,
+            category_type: null,
+            unit: null,
+            qty: 1,
+            rate: otherAmount,
+            amount: otherAmount,
+            remarks: narration,
+            payment_method: document.getElementById('ipFormPaymentMethod').value || null,
+            payment_type: 'other'
+        };
+
+        var modalEl = document.getElementById('ipFormModal');
+        if (modalEl && modalEl._ipProofData) {
+            var proofData = modalEl._ipProofData();
+            if (proofData) body.proof_image = proofData;
+        }
+
+        var saveBtn = document.getElementById('ipFormSave');
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Saving...';
+        try {
+            await apiPost('/api/day-book', body);
+            showToast('Entry saved');
+            closeIPPurchaseForm();
+            await renderDayBookView();
+        } catch (e) {
+            showToast(ipParseError(e).error || 'Failed to save entry', true);
+        } finally {
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Save';
+        }
+        return;
+    }
+
+    // --- Vendor / Contract / Inventory: shared fields ---
+    isGst = document.getElementById('ipFormIsGst').checked;
+    invoiceNo = document.getElementById('ipFormInvoiceNo').value.trim();
+    receivedDate = document.getElementById('ipFormReceivedDate').value;
+    materialName = document.getElementById('ipFormMaterial').value.trim();
+
     if (!receivedDate) { showToast('Received Date is required', true); return; }
-    if (!vendorName) { showToast('Vendor is required', true); return; }
-    if (!materialName) { showToast('Material Name is required', true); return; }
 
-    var qty = parseFloat(document.getElementById('ipFormQty').value) || 0;
-    var rate = parseFloat(document.getElementById('ipFormRate').value) || 0;
+    qty = parseFloat(document.getElementById('ipFormQty').value) || 0;
+    rate = parseFloat(document.getElementById('ipFormRate').value) || 0;
     if (qty <= 0) { showToast('Quantity must be greater than 0', true); return; }
 
-    // Find vendor_id from name
-    var vendor = ipVendors.find(function(v) { return v.name.toLowerCase() === vendorName.toLowerCase(); });
-    var vendorId = vendor ? vendor.id : null;
+    if (paymentType === 'contract') {
+        var contractInputVal = document.getElementById('ipFormContract').value.trim();
+        if (!contractInputVal) { showToast('Please enter or select a contractor / contract', true); return; }
+        var contract = ipContractorContracts.find(function(c) {
+            return c.person_name.toLowerCase() === contractInputVal.toLowerCase();
+        });
+        if (contract) {
+            contractId = contract.id;
+            vendorName = contract.person_name;
+        } else {
+            contractId = null;
+            vendorName = contractInputVal;
+        }
+        vendorId = null;
+        if (!materialName) { materialName = 'Contract Payment'; }
+    } else if (paymentType === 'vendor') {
+        vendorName = document.getElementById('ipFormVendor').value.trim();
+        if (!vendorName) { showToast('Vendor is required', true); return; }
+        if (!materialName) { showToast('Material Name is required', true); return; }
+        var vendor = ipVendors.find(function(v) { return v.name.toLowerCase() === vendorName.toLowerCase(); });
+        vendorId = vendor ? vendor.id : null;
+    } else if (paymentType === 'inventory') {
+        vendorName = null;
+        vendorId = null;
+        if (!materialName) { showToast('Material Name is required', true); return; }
+    }
+
+    categoryName = document.getElementById('ipFormCategory').value.trim() || null;
 
     var body = {
         id: ipEditingId || undefined,
@@ -431,14 +767,22 @@ async function ipSavePurchase() {
         vendor_id: vendorId,
         vendor_name: vendorName,
         material_name: materialName,
-        category: document.getElementById('ipFormCategory').value.trim() || null,
+        category: categoryName,
         category_type: document.getElementById('ipFormType').value.trim() || null,
         unit: document.getElementById('ipFormUnit').value.trim() || null,
         qty: qty,
         rate: rate,
         remarks: document.getElementById('ipFormRemarks').value.trim() || '',
-        payment_method: document.getElementById('ipFormPaymentMethod').value || null
+        payment_method: document.getElementById('ipFormPaymentMethod').value || null,
+        payment_type: paymentType
     };
+    if (paymentType === 'contract') {
+        if (contractId) {
+            body.contract_id = contractId;
+        } else {
+            body.contractor_name = vendorName;
+        }
+    }
 
     // Add proof image if uploaded
     var modal = document.getElementById('ipFormModal');
@@ -447,6 +791,8 @@ async function ipSavePurchase() {
         if (proofData) body.proof_image = proofData;
     }
 
+    // Skip material/category auto-save for contract and other types
+    if (paymentType !== 'contract' && paymentType !== 'other') {
     // Auto-save material master if new
     var materialExists = ipMaterials.some(function(m) { return m.name.toLowerCase() === materialName.toLowerCase(); });
     if (!materialExists) {
@@ -482,6 +828,7 @@ async function ipSavePurchase() {
             }
         }
     }
+    } // end if (paymentType !== 'contract')
 
     var saveBtn = document.getElementById('ipFormSave');
     saveBtn.disabled = true;
