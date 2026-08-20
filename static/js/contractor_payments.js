@@ -283,7 +283,7 @@ async function openContractForm() {
     await cpEnsureVentures();
     var ventureSel = document.getElementById('cpFormVenture');
     if (ventureSel) {
-        ventureSel.innerHTML = '<option value="">-- None --</option>';
+        ventureSel.innerHTML = '<option value="">-- Select Venture --</option>';
         if (typeof venturesList !== 'undefined') {
             venturesList.forEach(function(v) {
                 var o = document.createElement('option');
@@ -318,6 +318,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         if (!person_name) { showToast('Please enter contractor name', true); return; }
         if (!work_description) { showToast('Please enter work description', true); return; }
+        if (!venture_id) { showToast('Please select a venture', true); return; }
         if (!total_amount || total_amount <= 0) { showToast('Please enter a valid total amount', true); return; }
         if (!total_units || total_units <= 0) { showToast('Please enter valid total units (> 0)', true); return; }
 
@@ -387,6 +388,32 @@ async function openContractDetail(contractId) {
     var notesInput = document.getElementById('cpDetailNotes');
     if (notesInput) notesInput.value = c.notes || '';
 
+    // Populate editable detail fields
+    var nameInput = document.getElementById('cpDetailName');
+    if (nameInput) nameInput.value = c.person_name || '';
+    var descInput = document.getElementById('cpDetailDesc');
+    if (descInput) descInput.value = c.work_description || '';
+    var amountInput = document.getElementById('cpDetailAmount');
+    if (amountInput) amountInput.value = c.total_amount || '';
+    var totalUnitsInput = document.getElementById('cpDetailTotalUnits');
+    if (totalUnitsInput) totalUnitsInput.value = c.total_units || '';
+    var unitLabelInput = document.getElementById('cpDetailUnitLabel');
+    if (unitLabelInput) unitLabelInput.value = c.unit_label || '';
+
+    // Populate venture dropdown in detail
+    var detailVentureSel = document.getElementById('cpDetailVenture');
+    if (detailVentureSel) {
+        detailVentureSel.innerHTML = '<option value="">-- Select Venture --</option>';
+        if (typeof venturesList !== 'undefined') {
+            venturesList.forEach(function(v) {
+                var o = document.createElement('option');
+                o.value = v.id; o.textContent = v.name;
+                detailVentureSel.appendChild(o);
+            });
+        }
+        detailVentureSel.value = c.venture_id || '';
+    }
+
     var cancelContractBtn = document.getElementById('cpCancelContractBtn');
     if (cancelContractBtn) {
         cancelContractBtn.onclick = function() {
@@ -409,13 +436,28 @@ async function openContractDetail(contractId) {
             var completed_units = parseInt(unitsInput.value, 10);
             var status = statusSel.value;
             var notes = notesInput.value.trim();
+            var person_name = nameInput ? nameInput.value.trim() : '';
+            var work_description = descInput ? descInput.value.trim() : '';
+            var total_amount = amountInput ? parseFloat(amountInput.value) : 0;
+            var total_units = totalUnitsInput ? parseInt(totalUnitsInput.value, 10) : c.total_units;
+            var unit_label = unitLabelInput ? unitLabelInput.value.trim() : 'units';
+            var venture_id = detailVentureSel ? detailVentureSel.value : '';
             if (isNaN(completed_units) || completed_units < 0) { showToast('Invalid completed units', true); return; }
-            if (completed_units > c.total_units) { showToast('Completed units cannot exceed total units (' + c.total_units + ')', true); return; }
+            if (completed_units > total_units) { showToast('Completed units cannot exceed total units (' + total_units + ')', true); return; }
+            if (!person_name) { showToast('Contractor name is required', true); return; }
+            if (!work_description) { showToast('Work description is required', true); return; }
+            if (!total_amount || total_amount <= 0) { showToast('Total amount must be greater than 0', true); return; }
+            if (!total_units || total_units <= 0) { showToast('Total units must be greater than 0', true); return; }
             try {
                 var r = await fetch('/api/contractor-contracts/' + encodeURIComponent(c.id), {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ completed_units: completed_units, status: status, notes: notes })
+                    body: JSON.stringify({
+                        completed_units: completed_units, status: status, notes: notes,
+                        person_name: person_name, work_description: work_description,
+                        total_amount: total_amount, total_units: total_units,
+                        unit_label: unit_label, venture_id: venture_id || null
+                    })
                 });
                 var data = await r.json().catch(function() { return {}; });
                 if (!r.ok) throw new Error(data.error || 'Request failed');

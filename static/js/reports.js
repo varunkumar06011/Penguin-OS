@@ -498,6 +498,53 @@ function renderInstantReportOutput(container, data) {
         html += '</div>';
     }
 
+    // --- Block Summary ---
+    if (data.block_summary && data.block_summary.length > 0) {
+        html += '<div class="ir-section"><h3 class="ir-section-title">Block-wise Summary</h3>';
+        html += '<div class="ir-cat-cards">';
+        data.block_summary.forEach(b => {
+            const bPct = b.pct || 0;
+            const barColor = bPct >= 75 ? '#2ecc71' : bPct >= 40 ? '#f1c40f' : '#e74c3c';
+            html += `<div class="ir-cat-card">
+                <div class="ir-cat-header">
+                    <h4 class="ir-cat-name">Block ${escapeHtml(b.block)}</h4>
+                    <span class="ir-cat-pct-badge" style="background:${barColor};">${bPct}%</span>
+                </div>
+                <div class="ir-cat-progress-bar"><div class="ir-cat-progress-fill" style="width:${bPct}%;background:${barColor};"></div></div>
+                <div class="ir-cat-stats">
+                    <div class="ir-cat-stat-row"><span class="ir-cat-stat-label">Total Cells</span><span class="ir-cat-stat-value">${b.total}</span></div>
+                    <div class="ir-cat-stat-row"><span class="ir-cat-stat-label"><span class="ir-cat-dot" style="background:#2ecc71;"></span>Completed</span><span class="ir-cat-stat-value ir-cat-val-green">${b.completed}</span></div>
+                    <div class="ir-cat-stat-row"><span class="ir-cat-stat-label"><span class="ir-cat-dot" style="background:#f1c40f;"></span>In Progress</span><span class="ir-cat-stat-value ir-cat-val-yellow">${b.in_progress}</span></div>
+                    <div class="ir-cat-stat-row"><span class="ir-cat-stat-label"><span class="ir-cat-dot" style="background:#3498db;"></span>Patch Work</span><span class="ir-cat-stat-value ir-cat-val-blue">${b.patch_work}</span></div>
+                    <div class="ir-cat-stat-row"><span class="ir-cat-stat-label"><span class="ir-cat-dot" style="background:#e74c3c;"></span>Yet to Start</span><span class="ir-cat-stat-value ir-cat-val-red">${b.yet_to_start}</span></div>
+                </div>
+            </div>`;
+        });
+        html += '</div></div>';
+    }
+
+    // --- Floor Summary ---
+    if (data.floor_summary && data.floor_summary.length > 0) {
+        html += '<div class="ir-section"><h3 class="ir-section-title">Floor-wise Summary</h3>';
+        html += '<table class="cp-detail-table" style="width:100%;border-collapse:collapse;font-size:0.85rem;">';
+        html += '<thead><tr style="border-bottom:2px solid #eee;"><th style="text-align:left;padding:8px;">Block</th><th style="text-align:left;padding:8px;">Floor</th><th style="text-align:right;padding:8px;">Total</th><th style="text-align:right;padding:8px;">Completed</th><th style="text-align:right;padding:8px;">In Progress</th><th style="text-align:right;padding:8px;">Patch Work</th><th style="text-align:right;padding:8px;">Yet to Start</th><th style="text-align:right;padding:8px;">%</th></tr></thead><tbody>';
+        data.floor_summary.forEach(f => {
+            const fPct = f.pct || 0;
+            const pctColor = fPct >= 75 ? '#2ecc71' : fPct >= 40 ? '#f1c40f' : '#e74c3c';
+            html += `<tr style="border-bottom:1px solid #f0f0f0;">
+                <td style="padding:8px;">${escapeHtml(f.block)}</td>
+                <td style="padding:8px;">${escapeHtml(String(f.floor))}</td>
+                <td style="text-align:right;padding:8px;">${f.total}</td>
+                <td style="text-align:right;padding:8px;color:#2ecc71;">${f.completed}</td>
+                <td style="text-align:right;padding:8px;color:#f1c40f;">${f.in_progress}</td>
+                <td style="text-align:right;padding:8px;color:#3498db;">${f.patch_work}</td>
+                <td style="text-align:right;padding:8px;color:#e74c3c;">${f.yet_to_start}</td>
+                <td style="text-align:right;padding:8px;font-weight:600;color:${pctColor};">${fPct}%</td>
+            </tr>`;
+        });
+        html += '</tbody></table></div>';
+    }
+
     if (total === 0) {
         html = '<div class="ir-empty">No data found for the selected filters.</div>';
     }

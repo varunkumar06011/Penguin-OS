@@ -3633,8 +3633,18 @@ def api_instant_reports():
                 if iid:
                     item_id_to_label[iid] = item.get('label', iid)
 
-        # Fetch all cell_data and filter by venture
-        cells_res = supabase.table('cell_data').select('*').execute()
+        # Fetch cell_data filtered by venture at DB level for accuracy + performance
+        query = supabase.table('cell_data').select('*').filter('data->>venture_id', 'eq', venture_id)
+        # Paginate to overcome Supabase's default 1000-row limit
+        all_cell_rows = []
+        page_size = 1000
+        offset = 0
+        while True:
+            res = query.range(offset, offset + page_size - 1).execute()
+            all_cell_rows.extend(res.data)
+            if len(res.data) < page_size:
+                break
+            offset += page_size
         status_counts = {'green': 0, 'yellow': 0, 'blue': 0, 'red': 0, 'none': 0}
         total_cells = 0
         work_item_stats = {}
@@ -3656,7 +3666,7 @@ def api_instant_reports():
                 iid = item.get('id', '')
                 if iid:
                     work_item_stats[iid] = {'total': 0, 'green': 0, 'yellow': 0, 'blue': 0, 'red': 0, 'none': 0}
-        for row in (cells_res.data or []):
+        for row in all_cell_rows:
             d = row.get('data') or {}
             cell_id = row.get('id', '')
             color = d.get('color', '') or 'none'
@@ -4603,7 +4613,7 @@ def api_contractor_contracts_update(contract_id):
         return jsonify({'error': 'Forbidden'}), 403
     body = request.get_json() or {}
     allowed_fields = {}
-    for k in ('completed_units', 'status', 'notes', 'unit_label', 'person_name', 'work_description', 'venture_id'):
+    for k in ('completed_units', 'status', 'notes', 'unit_label', 'person_name', 'work_description', 'venture_id', 'total_amount', 'total_units'):
         if k in body:
             allowed_fields[k] = body[k]
     if not allowed_fields:
@@ -4613,12 +4623,31 @@ def api_contractor_contracts_update(contract_id):
         if allowed_fields['venture_id'] not in allowed_vents:
             return jsonify({'error': 'Forbidden: venture not in your org'}), 403
     if 'completed_units' in allowed_fields:
-        total_units = contract['total_units']
+        total_units = int(allowed_fields.get('total_units', contract['total_units']))
         cu = int(allowed_fields['completed_units'])
         if cu < 0:
             return jsonify({'error': 'Completed units cannot be negative.'}), 400
         if cu > total_units:
             return jsonify({'error': 'Completed units cannot exceed total units.'}), 400
+    if 'total_amount' in allowed_fields:
+        try:
+            ta = float(allowed_fields['total_amount'])
+            if ta <= 0:
+                return jsonify({'error': 'Total amount must be greater than 0.'}), 400
+            allowed_fields['total_amount'] = ta
+        except (ValueError, TypeError):
+            return jsonify({'error': 'Total amount must be a number.'}), 400
+    if 'total_units' in allowed_fields:
+        try:
+            tu = int(allowed_fields['total_units'])
+            if tu <= 0:
+                return jsonify({'error': 'Total units must be greater than 0.'}), 400
+            allowed_fields['total_units'] = tu
+            cu = int(allowed_fields.get('completed_units', contract.get('completed_units', 0)))
+            if cu > tu:
+                return jsonify({'error': 'Completed units cannot exceed total units.'}), 400
+        except (ValueError, TypeError):
+            return jsonify({'error': 'Total units must be an integer.'}), 400
     if 'status' in allowed_fields:
         if allowed_fields['status'] not in ('active', 'completed', 'cancelled'):
             return jsonify({'error': 'Invalid contract status.'}), 400

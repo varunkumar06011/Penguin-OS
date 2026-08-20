@@ -1112,9 +1112,9 @@
                 </div>
                 <div class="invoice-form-row">
                     <div class="invoice-form-field">
-                        <label>Venture</label>
+                        <label>Venture <span class="req">*</span></label>
                         <select id="vendorVentureInput">
-                            <option value="">-- All Ventures --</option>
+                            <option value="">-- Select Venture --</option>
                         </select>
                     </div>
                 </div>
@@ -1613,8 +1613,8 @@
                         <input type="text" id="cpFormName" placeholder="e.g. Ramesh Electrician">
                     </div>
                     <div class="invoice-form-field">
-                        <label>Venture (optional)</label>
-                        <select id="cpFormVenture"><option value="">-- None --</option></select>
+                        <label>Venture <span class="req">*</span></label>
+                        <select id="cpFormVenture"><option value="">-- Select Venture --</option></select>
                     </div>
                 </div>
                 <div class="invoice-form-field" style="margin-bottom:12px;">
@@ -1655,6 +1655,35 @@
                 <button class="close-btn" id="closeContractDetail">&times;</button>
             </div>
             <div id="contractDetailSummary" style="margin-bottom:16px;"></div>
+            <div class="po-section-label" style="margin-top:8px;">Edit Contract Details</div>
+            <div class="invoice-form-row" style="margin-bottom:12px;">
+                <div class="invoice-form-field" style="flex:2;">
+                    <label>Contractor Name</label>
+                    <input type="text" id="cpDetailName" placeholder="Contractor name">
+                </div>
+                <div class="invoice-form-field">
+                    <label>Venture</label>
+                    <select id="cpDetailVenture"><option value="">-- Select Venture --</option></select>
+                </div>
+            </div>
+            <div class="invoice-form-field" style="margin-bottom:12px;">
+                <label>Work Description</label>
+                <input type="text" id="cpDetailDesc" placeholder="Work description">
+            </div>
+            <div class="invoice-form-row" style="margin-bottom:12px;">
+                <div class="invoice-form-field">
+                    <label>Total Amount (&#8377;)</label>
+                    <input type="number" id="cpDetailAmount" step="0.01" min="0">
+                </div>
+                <div class="invoice-form-field">
+                    <label>Total Units</label>
+                    <input type="number" id="cpDetailTotalUnits" min="1">
+                </div>
+                <div class="invoice-form-field">
+                    <label>Unit Label</label>
+                    <input type="text" id="cpDetailUnitLabel" placeholder="units">
+                </div>
+            </div>
             <div class="invoice-form-row" style="align-items:flex-end;margin-bottom:16px;">
                 <div class="invoice-form-field">
                     <label>Completed Units</label>
@@ -1718,12 +1747,12 @@
     <script src="/static/js/features.js?v=6"></script>
     <script src="/static/js/daily_report.js?v=3"></script>
     <script src="/static/js/cells.js?v=43"></script>
-    <script src="/static/js/invoices.js?v=24"></script>
+    <script src="/static/js/invoices.js?v=25"></script>
     <script src="/static/js/payroll.js?v=27"></script>
     <script src="/static/js/inventory.js?v=35"></script>
     <script src="/static/js/venture_analysis.js?v=4"></script>
-    <script src="/static/js/reports.js?v=1"></script>
-    <script src="/static/js/contractor_payments.js?v=6"></script>
+    <script src="/static/js/reports.js?v=2"></script>
+    <script src="/static/js/contractor_payments.js?v=7"></script>
     <script src="/static/js/inventory_purchase.js?v=22"></script>
     <script src="/static/js/inventory_register.js?v=15"></script>
     <script src="/static/js/vendor_directory.js?v=7"></script>

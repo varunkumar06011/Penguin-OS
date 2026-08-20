@@ -1328,7 +1328,7 @@ async function openVendorForm(vendorId, fromPOForm) {
     // Populate venture dropdown
     var ventureSel = document.getElementById('vendorVentureInput');
     if (ventureSel) {
-        ventureSel.innerHTML = '<option value="">-- All Ventures --</option>';
+        ventureSel.innerHTML = '<option value="">-- Select Venture --</option>';
         if (typeof venturesList !== 'undefined') {
             venturesList.forEach(function(v) {
                 var o = document.createElement('option');
@@ -1379,8 +1379,10 @@ document.getElementById('vendorFormModal').addEventListener('click', e => {
 document.getElementById('saveVendorBtn').addEventListener('click', async () => {
     const name = document.getElementById('vendorNameInput').value.trim();
     const phone = document.getElementById('vendorPhoneInput').value.trim();
+    const venture_id = document.getElementById('vendorVentureInput').value;
     if (!name) { showToast('Please enter a vendor name', true); return; }
     if (!phone) { showToast('Please enter a phone number', true); return; }
+    if (!venture_id) { showToast('Please select a venture', true); return; }
 
     const vendors = loadVendors();
     const vendorData = {
@@ -1391,7 +1393,7 @@ document.getElementById('saveVendorBtn').addEventListener('click', async () => {
         email: document.getElementById('vendorEmailInput').value.trim(),
         gstin: document.getElementById('vendorGSTInput').value.trim(),
         type: document.getElementById('vendorTypeInput').value,
-        venture_id: document.getElementById('vendorVentureInput').value || '',
+        venture_id: venture_id,
         address: document.getElementById('vendorAddressInput').value.trim(),
         bankName: document.getElementById('vendorBankNameInput').value.trim(),
         accountNo: document.getElementById('vendorAccNoInput').value.trim(),
