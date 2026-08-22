@@ -1,0 +1,16 @@
+# robots.txt for Penguin OS (vgrand-infra-tracking)
+# https://vgrand-infra-tracking.vercel.app/
+
+User-agent: *
+# Allow the public-facing HTML pages
+Allow: /
+Allow: /login
+Allow: /visitor-portal
+
+# Block all JSON API endpoints from being indexed
+Disallow: /api/
+
+# Block static asset crawling noise (optional — remove if you want assets indexed)
+# Allow: /static/
+
+Sitemap: https://vgrand-infra-tracking.vercel.app/sitemap.xml

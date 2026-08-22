@@ -161,6 +161,20 @@ def static_files(filename):
     response.headers['Vary'] = 'Accept-Encoding'
     return response
 
+@app.route('/robots.txt')
+def robots_txt():
+    """Serve robots.txt for search engine crawlers."""
+    response = send_from_directory(app.static_folder, 'robots.txt', mimetype='text/plain')
+    response.headers['Cache-Control'] = 'public, max-age=3600'
+    return response
+
+@app.route('/sitemap.xml')
+def sitemap_xml():
+    """Serve sitemap.xml for search engine crawlers."""
+    response = send_from_directory(app.static_folder, 'sitemap.xml', mimetype='application/xml')
+    response.headers['Cache-Control'] = 'public, max-age=3600'
+    return response
+
 app.config.update(
     SESSION_COOKIE_SAMESITE='Lax',
     SESSION_COOKIE_HTTPONLY=True,
